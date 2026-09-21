@@ -1,14 +1,17 @@
 package com.thomaswcode.whatsappscheduler.sending.accessibility.steps
 
 import android.app.KeyguardManager
+import android.view.accessibility.AccessibilityNodeInfo
 import com.thomaswcode.whatsappscheduler.sending.accessibility.Selectors
 import com.thomaswcode.whatsappscheduler.sending.accessibility.UiDriver
 import com.thomaswcode.whatsappscheduler.util.AutomationLog
 import kotlinx.coroutines.delay
 
 /**
- * Enters the stored PIN on the system lock screen (the "bouncer"). Supports both a text field
- * (PIN/password) and a numeric keypad, and both auto-submit and explicit Enter.
+ * Enters the stored PIN on the system lock screen (the "bouncer"). A numeric PIN is typed on the
+ * keypad whenever one is showing: the PIN bouncer's `pinEntry` reports itself as an editable
+ * EditText but only takes input from its own keys, so ACTION_SET_TEXT "succeeds" and enters
+ * nothing. The text field is used only for password bouncers, which have a real EditText.
  */
 class UnlockKeyguard(private val driver: UiDriver, private val log: AutomationLog, private val keyguard: KeyguardManager) {
 
@@ -16,33 +19,20 @@ class UnlockKeyguard(private val driver: UiDriver, private val log: AutomationLo
 
     suspend fun run(pin: String, timeoutMs: Long) {
         if (!keyguard.isKeyguardLocked) return
-        var field = driver.tryWaitFor(Selectors.keyguardPasswordField, 2_500)
-            ?: driver.tryWaitFor(Selectors.keyguardAnyEditable, 1_000)
-        var keypad = if (field == null) driver.find(Selectors.keypadDigitById('1')) ?: driver.find(Selectors.keypadDigit('1')) else null
-        if (field == null && keypad == null) {
+        if (!awaitBouncer()) {
             log.info("$step: no bouncer visible yet, swiping up")
             driver.swipeUp()
-            field = driver.tryWaitFor(Selectors.keyguardPasswordField, 2_500) ?: driver.tryWaitFor(Selectors.keyguardAnyEditable, 1_000)
-            keypad = if (field == null) driver.find(Selectors.keypadDigitById('1')) ?: driver.find(Selectors.keypadDigit('1')) else null
+            if (!awaitBouncer()) driver.fail(step, "Lock screen PIN entry not found (is the lock type PIN or password?)")
         }
-        when {
-            field != null -> {
-                driver.setText(step, field, pin, secret = true)
-                delay(300)
-                if (keyguard.isKeyguardLocked) submit()
-            }
-            keypad != null -> {
-                log.info("$step: typing on keypad")
-                for (ch in pin) {
-                    val key = driver.find(Selectors.keypadDigitById(ch)) ?: driver.find(Selectors.keypadDigit(ch))
-                        ?: driver.fail(step, "Keypad digit not found")
-                    driver.click(step, key)
-                    delay(80)
-                }
-                delay(300)
-                if (keyguard.isKeyguardLocked) submit()
-            }
-            else -> driver.fail(step, "Lock screen PIN entry not found (is the lock type PIN or password?)")
+        val numeric = pin.all { it in '0'..'9' }
+        if (numeric && findKey(pin.first()) != null) {
+            unlockWithKeypad(pin, timeoutMs)
+        } else {
+            val field = driver.findAny(Selectors.keyguardPasswordField, Selectors.keyguardAnyEditable)
+                ?: driver.fail(step, "Lock screen shows a keypad but the stored PIN is not numeric")
+            driver.setText(step, field, pin, secret = true)
+            delay(300)
+            if (keyguard.isKeyguardLocked) submit()
         }
         if (!driver.waitUntil(timeoutMs) { !keyguard.isKeyguardLocked }) {
             driver.fail(step, "Keyguard still locked after entering PIN (wrong PIN, or bouncer layout changed)")
@@ -50,10 +40,48 @@ class UnlockKeyguard(private val driver: UiDriver, private val log: AutomationLo
         log.info("$step: keyguard dismissed")
     }
 
+    private suspend fun awaitBouncer(): Boolean =
+        driver.tryWaitForAny(Selectors.keypadDigitById('1'), Selectors.keyguardPasswordField, Selectors.keypadDigit('1'), Selectors.keyguardAnyEditable, timeoutMs = 3_000) != null
+
+    private fun findKey(digit: Char): AccessibilityNodeInfo? = driver.findAny(Selectors.keypadDigitById(digit), Selectors.keypadDigit(digit))
+
+    /**
+     * Types with ACTION_CLICK first. Touch gestures are tried only when the field shows those
+     * clicks never registered and the bouncer has not rejected a PIN, so a wrong stored PIN
+     * costs one attempt rather than two.
+     */
+    private suspend fun unlockWithKeypad(pin: String, timeoutMs: Long) {
+        log.info("$step: typing on keypad")
+        typeOnKeypad(pin, gestures = false)
+        val registered = enteredLength() == pin.length
+        delay(300)
+        if (keyguard.isKeyguardLocked) submit()
+        if (driver.waitUntil(minOf(timeoutMs, 3_000)) { !keyguard.isKeyguardLocked }) return
+        if (registered || driver.find(Selectors.keyguardWrongPin) != null) return
+        log.warn("$step: key clicks did not register, retrying with touch gestures")
+        typeOnKeypad(pin, gestures = true)
+        delay(300)
+        if (keyguard.isKeyguardLocked) submit()
+    }
+
+    private suspend fun typeOnKeypad(pin: String, gestures: Boolean) {
+        for (ch in pin) {
+            if (!keyguard.isKeyguardLocked) return
+            val key = findKey(ch) ?: driver.fail(step, "Keypad digit not found")
+            if (gestures) driver.tapNode(step, key, quiet = true) else driver.click(step, key, quiet = true)
+            delay(80)
+        }
+    }
+
+    /** Number of masked characters showing in the PIN field, or null when it cannot be read. */
+    private fun enteredLength(): Int? = driver.find(Selectors.keyguardPasswordField)?.text?.length
+
     private suspend fun submit() {
-        val enter = driver.find(Selectors.keyguardEnter) ?: driver.find(Selectors.keyguardEnterByText)
+        val enter = driver.findAny(Selectors.keyguardEnter, Selectors.keyguardEnterByText)
         if (enter != null) {
-            driver.click(step, enter)
+            log.info("$step: pressing ${enter.viewIdResourceName ?: "enter"}")
+            // A non-clickable key (One UI's OK) is tapped directly rather than clicking some ancestor.
+            if (enter.isClickable) driver.click(step, enter, quiet = true) else driver.tapNode(step, enter, quiet = true)
             return
         }
         driver.find(Selectors.keyguardPasswordField)?.let { if (driver.imeEnter(it)) log.info("$step: IME enter") }

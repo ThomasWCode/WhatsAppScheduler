@@ -9,6 +9,14 @@ import com.thomaswcode.whatsappscheduler.sending.accessibility.UiDriver
 import com.thomaswcode.whatsappscheduler.util.AutomationLog
 import kotlinx.coroutines.delay
 
+private val youSuffix = Regex("\\s*\\(You\\)$", RegexOption.IGNORE_CASE)
+
+/** True when a row or chat title shows [name]; WhatsApp lists the message-yourself chat as "Name (You)". */
+internal fun chatNameMatches(shown: CharSequence?, name: String, ignoreCase: Boolean = false): Boolean {
+    val text = shown?.toString()?.trim() ?: return false
+    return text.equals(name, ignoreCase) || text.replace(youSuffix, "").equals(name, ignoreCase)
+}
+
 /** Finds a chat (group or contact) by its exact name using WhatsApp's own search. */
 class OpenChatBySearch(private val context: Context, private val driver: UiDriver, private val log: AutomationLog) {
 
@@ -20,21 +28,39 @@ class OpenChatBySearch(private val context: Context, private val driver: UiDrive
             ?: driver.fail(step, "WhatsApp is not installed")
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
         context.startActivity(launch)
-        repeat(4) {
-            if (driver.tryWaitFor(Selectors.waSearchButton, 1_500) != null || driver.find(Selectors.waSearchByDesc) != null) return
-            if (driver.find(Selectors.waEntry) != null) {
+        // The composer is checked first: inside a conversation, message text could pass for a search label.
+        var backs = 0
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (driver.find(Selectors.waEntry) != null && backs < 4) {
                 log.info("$step: a conversation is open, backing out")
                 driver.back()
+                backs++
+            } else if (driver.findAny(*Selectors.waSearchEntryPoints) != null) {
+                return
+            } else {
+                delay(200)
             }
         }
-        driver.waitForAny(step, Selectors.waSearchButton, Selectors.waSearchByDesc, timeoutMs = timeoutMs)
+        driver.fail(step, "WhatsApp chat list search not found after ${timeoutMs}ms")
     }
 
     /** Types [query] into the chat-list search box. */
     suspend fun search(query: String, timeoutMs: Long, secret: Boolean = false) {
-        val (_, button) = driver.waitForAny(step, Selectors.waSearchButton, Selectors.waSearchByDesc, timeoutMs = timeoutMs)
-        driver.click(step, button)
-        val input = driver.tryWaitFor(Selectors.waSearchInput, timeoutMs) ?: driver.waitFor(step, Selectors.waAnyEditable, timeoutMs)
+        // A click that lands while WhatsApp is still animating in is swallowed, so it is repeated until the box opens.
+        var input: AccessibilityNodeInfo? = null
+        for (attempt in 1..3) {
+            val button = if (attempt == 1) {
+                driver.waitForAny(step, *Selectors.waSearchEntryPoints, timeoutMs = timeoutMs).second
+            } else {
+                driver.findAny(*Selectors.waSearchEntryPoints) ?: break
+            }
+            driver.click(step, button)
+            input = driver.tryWaitForAny(Selectors.waSearchInput, Selectors.waAnyEditable, timeoutMs = 2_500)
+            if (input != null) break
+            log.warn("$step: search box did not open (try $attempt)")
+        }
+        if (input == null) input = driver.waitForAny(step, Selectors.waSearchInput, Selectors.waAnyEditable, timeoutMs = timeoutMs).second
         driver.setText(step, input, query, secret = secret)
         delay(600)
     }
@@ -47,25 +73,31 @@ class OpenChatBySearch(private val context: Context, private val driver: UiDrive
             candidates = driver.findAll(Selectors.waConversationRowTitle).ifEmpty {
                 driver.findAll(rowByText(name))
             }
-            if (candidates.any { it.text?.toString()?.trim() == name }) break
+            if (candidates.any { chatNameMatches(it.text, name) }) break
             delay(200)
         }
-        val exact = candidates.filter { it.text?.toString()?.trim() == name }
-        val loose = candidates.filter { it.text?.toString()?.trim().equals(name, ignoreCase = true) }
+        val exact = candidates.filter { chatNameMatches(it.text, name) }
+        val loose = candidates.filter { chatNameMatches(it.text, name, ignoreCase = true) }
         val chosen = exact.firstOrNull() ?: loose.firstOrNull()
             ?: driver.fail(step, "No chat named '$name' in search results (${candidates.size} rows)")
         if (exact.size > 1) log.warn("$step: ${exact.size} chats named '$name'; picking the first")
         if (exact.isEmpty()) log.warn("$step: only a case-insensitive match for '$name'")
         driver.click(step, chosen)
+        // Rows are clicked as soon as they appear, so a click lost to the list's entry animation is repeated once.
+        if (driver.tryWaitFor(Selectors.waEntry, 2_500) == null) {
+            log.warn("$step: chat did not open, clicking the row again")
+            chosen.refresh()
+            driver.click(step, chosen)
+        }
         driver.waitFor(step, Selectors.waEntry, timeoutMs)
         val title = driver.find(Selectors.waChatTitle)?.text?.toString()
-        if (title != null && !title.equals(name, ignoreCase = true)) {
+        if (title != null && !chatNameMatches(title, name, ignoreCase = true)) {
             driver.fail(step, "Opened chat titled '$title' instead of '$name'")
         }
         delay(300)
     }
 
-    /** Fallback when the row-title id is unknown: any WhatsApp node showing exactly [name]. */
+    /** Fallback when the row-title id is unknown: any WhatsApp node showing exactly [name], except the search box itself. */
     private fun rowByText(name: String) =
-        Selector("wa.rowByText", text = Regex(Regex.escape(name)), pkg = Regex("com\\.whatsapp(\\.w4b)?"))
+        Selector("wa.rowByText", text = Regex(Regex.escape(name)), pkg = Regex("com\\.whatsapp(\\.w4b)?"), editable = false)
 }

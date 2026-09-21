@@ -25,11 +25,25 @@ class OpenLockedChat(
         val folder = driver.tryWaitFor(Selectors.waLockedChatsRow, stepTimeoutMs)
             ?: driver.fail(step, "'Locked chats' folder not visible (hidden by a secret code that is not configured?)")
         driver.click(step, folder)
-        auth.run(pin, appearTimeoutMs = 4_000, stepTimeoutMs = stepTimeoutMs)
-        delay(500)
-        if (driver.find(Selectors.waLockedChatsRow) != null && driver.find(Selectors.waConversationRowTitle) == null) {
+        // WhatsApp authenticates before it shows the folder, so once the folder is up there is no prompt to wait for.
+        val prompted = auth.run(pin, appearTimeoutMs = 4_000, stepTimeoutMs = stepTimeoutMs, alreadyPast = ::folderOpen)
+        if (prompted) delay(500)
+        // The open folder is itself titled "Locked chats", so only a search box still on screen means it did not open.
+        if (driver.find(Selectors.waLockedChatsRow) != null && driver.find(Selectors.waSearchInput) != null) {
             driver.fail(step, "Locked chats folder did not open after authentication")
         }
+        log.info("$step: folder open, selecting chat")
         search.openResult(name, stepTimeoutMs)
     }
+
+    /** The folder's chat list is showing: its title and rows are present and the search box is gone. */
+    /**
+     * The folder's chat list is showing: its title and rows are present, the search box is gone,
+     * and WhatsApp still has focus (an authentication prompt would have taken it).
+     */
+    private fun folderOpen(): Boolean =
+        driver.find(Selectors.waSearchInput) == null &&
+            driver.find(Selectors.waConversationRowTitle) != null &&
+            driver.find(Selectors.waLockedChatsRow) != null &&
+            driver.foregroundPackage()?.startsWith(Selectors.WHATSAPP) == true
 }

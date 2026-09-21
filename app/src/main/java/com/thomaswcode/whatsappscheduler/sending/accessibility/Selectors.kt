@@ -50,8 +50,19 @@ object Selectors {
     val waEntry = Selector("wa.entry", ids = listOf("$WHATSAPP:id/entry", "$WHATSAPP_BUSINESS:id/entry"), editable = true)
     val waSend = Selector("wa.send", ids = listOf("$WHATSAPP:id/send", "$WHATSAPP_BUSINESS:id/send"))
     val waSendByDesc = Selector("wa.send.desc", pkg = waPkg, desc = Regex("(?i)^send$"), clickable = true)
+    /** Search bar at the top of the chat list ("Ask Meta AI or Search"), which replaced the toolbar icon. */
+    val waSearchBar = Selector("wa.searchBar", ids = listOf("$WHATSAPP:id/search_bar_inner_layout", "$WHATSAPP_BUSINESS:id/search_bar_inner_layout"))
+
+    /** Non-clickable wrapper of [waSearchBar]; a separate selector so the clickable child wins. */
+    val waSearchBarContainer = Selector("wa.searchBar.container", ids = listOf("$WHATSAPP:id/my_search_bar", "$WHATSAPP_BUSINESS:id/my_search_bar"))
     val waSearchButton = Selector("wa.search", ids = listOf("$WHATSAPP:id/menuitem_search", "$WHATSAPP_BUSINESS:id/menuitem_search"))
     val waSearchByDesc = Selector("wa.search.desc", pkg = waPkg, desc = Regex("(?i)^search.*"), clickable = true)
+
+    /** Kept strict so a message preview that merely mentions "search" is never mistaken for the bar. */
+    val waSearchByLabel = Selector("wa.search.label", pkg = waPkg, text = Regex("(?i)^((ask [\\w ]{1,20} or )?search(…|\\.{3})?|search or ask [\\w ]{1,20})$"))
+
+    /** Every known way into chat-list search, most specific first. */
+    val waSearchEntryPoints = arrayOf(waSearchBar, waSearchButton, waSearchByDesc, waSearchBarContainer, waSearchByLabel)
     val waSearchInput = Selector(
         "wa.searchInput",
         ids = listOf("$WHATSAPP:id/search_input", "$WHATSAPP:id/search_src_text", "$WHATSAPP:id/search_view_edit_text", "$WHATSAPP_BUSINESS:id/search_input", "$WHATSAPP_BUSINESS:id/search_src_text"),
@@ -74,18 +85,24 @@ object Selectors {
         editable = true,
     )
     val keyguardAnyEditable = Selector("keyguard.anyEditable", pkg = Regex("com\\.android\\.systemui"), editable = true)
+    /** One UI's OK key is `key_enter_text`: a plain TextView that is not clickable and has no clickable parent. */
     val keyguardEnter = Selector(
         "keyguard.enter",
-        ids = listOf("com.android.systemui:id/key_enter", "com.android.systemui:id/keyguard_enter", "com.android.systemui:id/ok_button", "com.android.systemui:id/confirm_button"),
+        ids = listOf("com.android.systemui:id/key_enter", "com.android.systemui:id/key_enter_text", "com.android.systemui:id/keyguard_enter", "com.android.systemui:id/ok_button", "com.android.systemui:id/confirm_button"),
     )
-    val keyguardEnterByText = Selector("keyguard.enter.text", pkg = Regex("com\\.android\\.systemui"), text = Regex("(?i)^(enter|ok|done|confirm|next)$"), clickable = true)
+    val keyguardEnterByText = Selector("keyguard.enter.text", pkg = Regex("com\\.android\\.systemui"), text = Regex("(?i)^(enter|ok|done|confirm|next)$"))
     val keyguardDelete = Selector("keyguard.delete", ids = listOf("com.android.systemui:id/delete_button"))
+    val keyguardWrongPin = Selector(
+        "keyguard.wrongPin",
+        ids = listOf("com.android.systemui:id/sec_bouncer_message_area", "com.android.systemui:id/bouncer_message_area", "com.android.systemui:id/keyguard_message_area"),
+        text = Regex("(?i).*\\b(incorrect|wrong|try again)\\b.*"),
+    )
 
     /** Digit key on a numeric keypad: matches by id `keyN` or by visible text. */
     fun keypadDigit(digit: Char) = Selector(
         "keypad.$digit",
         pkg = Regex("com\\.android\\.systemui"),
-        text = Regex("^$digit(\\s.*)?$"),
+        text = Regex("^$digit(\\W.*)?$"),
         clickable = true,
     )
 
