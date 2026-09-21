@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">WhatsApp Scheduler</string>
+    <string name="accessibility_service_label">WhatsApp Scheduler auto-send</string>
+    <string name="accessibility_service_description">Used only at the moment a scheduled message is due: unlocks the phone with the PIN you stored in this app, opens the WhatsApp chat you chose, enters your message and taps Send. It reads nothing at any other time and never sends data off the device.</string>
+    <string name="notification_channel_sending">Sending in progress</string>
+    <string name="notification_channel_fallback">Message needs your tap</string>
+    <string name="notification_channel_unlock">Unlock for sending</string>
+</resources>
