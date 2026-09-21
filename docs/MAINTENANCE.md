@@ -16,6 +16,14 @@ Alternative from a computer:
 adb shell uiautomator dump /sdcard/ui.xml && adb pull /sdcard/ui.xml
 ```
 
+`uiautomator dump` fails with `could not get idle state` on WhatsApp's chat list (it animates continuously). The app's own failure dump does not have that problem, and on a debug build can be pulled directly:
+
+```bash
+adb exec-out run-as com.thomaswcode.whatsappscheduler cat files/last_window_dump.txt > last_dump.txt
+```
+
+From Git Bash on Windows, prefix adb commands that take device paths with `MSYS_NO_PATHCONV=1`.
+
 ## Fix
 
 - Add the new id to the front of the relevant `ids` list in `Selectors.kt` (keep the old one; different WhatsApp versions coexist across devices).
@@ -26,10 +34,10 @@ adb shell uiautomator dump /sdcard/ui.xml && adb pull /sdcard/ui.xml
 
 | Step | Selector(s) | Typical breakage |
 |---|---|---|
-| `unlockKeyguard` | `keyguardPasswordField`, `keypadDigit*`, `keyguardEnter*` | One UI lock-screen redesign |
+| `unlockKeyguard` | `keypadDigit*` (numeric PIN), `keyguardPasswordField` (password), `keyguardEnter*`, `keyguardWrongPin` | One UI lock-screen redesign. The PIN bouncer's `pinEntry` claims to be editable but ignores set-text, so a numeric PIN is always typed on the keypad |
 | `authPrompt` | `authUseCredential*`, `authPasswordField`, `authEnterByText` | Biometric prompt redesign; button label change ("Use PIN" → other wording) |
 | `deepLink` | `waEntry`, `waInvalidNumberDialog` | Composer id change |
-| `search` | `waSearchButton`, `waSearchInput`, `waConversationRowTitle`, `waChatTitle` | WhatsApp search redesign |
+| `search` | `waSearchEntryPoints` (`waSearchBar`, `waSearchButton`, …), `waSearchInput`, `waConversationRowTitle`, `waChatTitle` | WhatsApp search redesign |
 | `lockedChat` | `waLockedChatsRow` + the above | Folder renamed or moved |
 | `typeAndSend` | `waEntry`, `waSend` | Send button id change |
 | `verify` | `waEntry`, `waMessageText` | Bubble id change (only affects the confidence log line) |

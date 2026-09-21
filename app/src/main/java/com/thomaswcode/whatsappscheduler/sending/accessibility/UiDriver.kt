@@ -25,13 +25,25 @@ class UiDriver(
 ) {
     private val pollMs = 200L
 
-    fun find(selector: Selector): AccessibilityNodeInfo? = findAll(selector).firstOrNull()
+    /** First match in tree order. Stops walking at the match, since polls call this constantly. */
+    fun find(selector: Selector): AccessibilityNodeInfo? = roots().firstNotNullOfOrNull { first(it, selector, 0) }
+
+    private fun first(node: AccessibilityNodeInfo?, selector: Selector, depth: Int): AccessibilityNodeInfo? {
+        if (node == null || depth > 60) return null
+        if (selector.matches(node)) return node
+        for (i in 0 until node.childCount) first(node.getChild(i), selector, depth + 1)?.let { return it }
+        return null
+    }
 
     fun findAll(selector: Selector): List<AccessibilityNodeInfo> {
         val out = ArrayList<AccessibilityNodeInfo>()
-        service.allRoots().forEach { root -> collect(root, selector, out, 0) }
+        roots().forEach { root -> collect(root, selector, out, 0) }
         return out
     }
+
+    /** The active window is also in the window list, so without this every tree would be walked twice. */
+    /** The active window is also in the window list, so without this every tree would be walked twice. */
+    private fun roots(): List<AccessibilityNodeInfo> = service.allRoots().distinct()
 
     private fun collect(node: AccessibilityNodeInfo?, selector: Selector, out: MutableList<AccessibilityNodeInfo>, depth: Int) {
         if (node == null || depth > 60) return
@@ -43,7 +55,8 @@ class UiDriver(
     suspend fun waitForAny(step: String, vararg selectors: Selector, timeoutMs: Long = defaultTimeoutMs): Pair<Selector, AccessibilityNodeInfo> {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
-            for (s in selectors) find(s)?.let { return s to it }
+            val hits = scan(selectors)
+            hits.indexOfFirst { it != null }.takeIf { it >= 0 }?.let { return selectors[it] to hits[it]!! }
             delay(pollMs)
         }
         fail(step, "Timed out after ${timeoutMs}ms waiting for ${selectors.joinToString { it.name }}")
@@ -53,13 +66,35 @@ class UiDriver(
         waitForAny(step, selector, timeoutMs = timeoutMs).second
 
     /** Like [waitFor] but returns null instead of failing. */
-    suspend fun tryWaitFor(selector: Selector, timeoutMs: Long): AccessibilityNodeInfo? {
+    suspend fun tryWaitFor(selector: Selector, timeoutMs: Long): AccessibilityNodeInfo? = tryWaitForAny(selector, timeoutMs = timeoutMs)
+
+    /** Like [waitForAny] but returns null instead of failing. */
+    suspend fun tryWaitForAny(vararg selectors: Selector, timeoutMs: Long): AccessibilityNodeInfo? {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
-            find(selector)?.let { return it }
+            findAny(*selectors)?.let { return it }
             delay(pollMs)
         }
         return null
+    }
+
+    /** Match of the earliest-listed selector that has one, as if each were tried in order. */
+    fun findAny(vararg selectors: Selector): AccessibilityNodeInfo? = scan(selectors).firstOrNull { it != null }
+
+    /** One walk for all the selectors: the first match of each, by position. Ends early once the top-priority one hits. */
+    private fun scan(selectors: Array<out Selector>): Array<AccessibilityNodeInfo?> {
+        val hits = arrayOfNulls<AccessibilityNodeInfo>(selectors.size)
+        if (selectors.isEmpty()) return hits
+        for (root in roots()) if (scanNode(root, selectors, hits, 0)) break
+        return hits
+    }
+
+    private fun scanNode(node: AccessibilityNodeInfo?, selectors: Array<out Selector>, hits: Array<AccessibilityNodeInfo?>, depth: Int): Boolean {
+        if (node == null || depth > 60) return false
+        for (i in selectors.indices) if (hits[i] == null && selectors[i].matches(node)) hits[i] = node
+        if (hits[0] != null) return true
+        for (i in 0 until node.childCount) if (scanNode(node.getChild(i), selectors, hits, depth + 1)) return true
+        return false
     }
 
     suspend fun waitUntilGone(selector: Selector, timeoutMs: Long): Boolean {
@@ -81,22 +116,30 @@ class UiDriver(
         return condition()
     }
 
-    /** Clicks the node or its nearest clickable ancestor, falling back to a tap gesture. */
-    suspend fun click(step: String, node: AccessibilityNodeInfo) {
+    /**
+     * Clicks the node or its nearest clickable ancestor, falling back to a tap gesture.
+     * [quiet] keeps the node out of the log, for keys that would spell out the PIN.
+     */
+    suspend fun click(step: String, node: AccessibilityNodeInfo, quiet: Boolean = false) {
         var current: AccessibilityNodeInfo? = node
         var hops = 0
         while (current != null && hops < 6) {
             if (current.isClickable && current.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                log.info("$step: clicked ${describe(current)}")
+                if (!quiet) log.info("$step: clicked ${describe(current)}")
                 delay(150)
                 return
             }
             current = current.parent
             hops++
         }
+        tapNode(step, node, quiet)
+    }
+
+    /** Taps the centre of the node with a real touch gesture, for views that ignore ACTION_CLICK. */
+    suspend fun tapNode(step: String, node: AccessibilityNodeInfo, quiet: Boolean = false) {
         val bounds = Rect().also { node.getBoundsInScreen(it) }
-        if (bounds.isEmpty) fail(step, "Node not clickable and has no bounds: ${describe(node)}")
-        log.info("$step: tapping at ${bounds.centerX()},${bounds.centerY()} for ${describe(node)}")
+        if (bounds.isEmpty) fail(step, if (quiet) "Node has no bounds to tap" else "Node not clickable and has no bounds: ${describe(node)}")
+        if (!quiet) log.info("$step: tapping at ${bounds.centerX()},${bounds.centerY()} for ${describe(node)}")
         tap(bounds.centerX().toFloat(), bounds.centerY().toFloat())
     }
 
@@ -137,7 +180,9 @@ class UiDriver(
         delay(200)
         node.refresh()
         val now = node.text?.toString() ?: ""
-        if (!secret && now != text && !node.isPassword) {
+        // An empty field reports its hint ("Message") as its text, and WhatsApp's composer does not
+        // flag that reliably, so clearing a field is not verified.
+        if (!secret && text.isNotEmpty() && now != text && !node.isPassword) {
             fail(step, "Text did not stick on ${describe(node)}: got '${now.take(40)}'")
         }
         log.info("$step: set text on ${describe(node)}" + if (secret) " (secret)" else " (${text.length} chars)")
@@ -174,10 +219,12 @@ class UiDriver(
     private fun dumpNode(node: AccessibilityNodeInfo?, depth: Int, sb: StringBuilder) {
         if (node == null || depth > 60) return
         val b = Rect().also { node.getBoundsInScreen(it) }
+        // Typed input is never dumped: the search box may hold the locked-chats secret code.
+        val text = node.text?.toString()?.let { if (node.isEditable) "<${it.length} chars>" else "'${it.replace('\n', ' ').take(60)}'" }
         sb.append("  ".repeat(depth))
             .append(node.className?.toString()?.substringAfterLast('.') ?: "?")
             .append(" id=").append(node.viewIdResourceName ?: "-")
-            .append(" text=").append(node.text?.toString()?.replace('\n', ' ')?.take(60)?.let { "'$it'" } ?: "-")
+            .append(" text=").append(text ?: "-")
             .append(" desc=").append(node.contentDescription?.toString()?.take(40)?.let { "'$it'" } ?: "-")
             .append(if (node.isClickable) " clickable" else "")
             .append(if (node.isEditable) " editable" else "")
@@ -187,9 +234,10 @@ class UiDriver(
         for (i in 0 until node.childCount) dumpNode(node.getChild(i), depth + 1, sb)
     }
 
+    /** Short label for log lines; typed input is left out, as in [dump]. */
     fun describe(node: AccessibilityNodeInfo): String =
         (node.viewIdResourceName ?: node.className?.toString()?.substringAfterLast('.') ?: "?") +
-            (node.text?.toString()?.take(20)?.let { " '$it'" } ?: "") +
+            (node.text?.toString()?.takeUnless { node.isEditable }?.take(20)?.let { " '$it'" } ?: "") +
             (node.contentDescription?.toString()?.take(20)?.let { " desc='$it'" } ?: "")
 
     fun fail(step: String, reason: String): Nothing {
