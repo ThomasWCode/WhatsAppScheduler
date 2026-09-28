@@ -36,7 +36,6 @@ class OpenLockedChat(
         search.openResult(name, stepTimeoutMs)
     }
 
-    /** The folder's chat list is showing: its title and rows are present and the search box is gone. */
     /**
      * The folder's chat list is showing: its title and rows are present, the search box is gone,
      * and WhatsApp still has focus (an authentication prompt would have taken it).

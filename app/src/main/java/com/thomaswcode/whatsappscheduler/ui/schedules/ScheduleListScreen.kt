@@ -47,6 +47,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.thomaswcode.whatsappscheduler.AppContainer
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
+import com.thomaswcode.whatsappscheduler.sending.SendKind
+import com.thomaswcode.whatsappscheduler.sending.SendRequest
 import com.thomaswcode.whatsappscheduler.sending.SendService
 import com.thomaswcode.whatsappscheduler.ui.formatStamp
 import com.thomaswcode.whatsappscheduler.ui.onboarding.PermissionChecks
@@ -119,8 +121,8 @@ fun ScheduleListScreen(
                                 }
                             },
                             onEdit = { onEdit(schedule.id) },
-                            onSendNow = { SendService.enqueue(context, schedule.id, advance = false) },
-                            onDryRun = { SendService.enqueue(context, schedule.id, advance = false, forceDryRun = true) },
+                            onSendNow = { SendService.enqueue(context, SendRequest(schedule.id, SendKind.EXTRA_COPY)) },
+                            onDryRun = { SendService.enqueue(context, SendRequest(schedule.id, SendKind.TEST)) },
                             onDelete = { pendingDelete = schedule },
                         )
                     }

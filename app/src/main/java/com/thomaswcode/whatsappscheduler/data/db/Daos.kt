@@ -29,6 +29,13 @@ interface ScheduleDao {
 
     @Delete
     suspend fun delete(schedule: Schedule)
+
+    /** Writes only the run columns, so edits made while a send was running survive it (B08). */
+    @Query("UPDATE schedules SET nextAtMillis = :nextAtMillis, lastRunAtMillis = :ranAtMillis, lastResult = :result WHERE id = :id")
+    suspend fun updateRun(id: Long, nextAtMillis: Long?, ranAtMillis: Long, result: String)
+
+    @Query("UPDATE schedules SET lastRunAtMillis = :ranAtMillis, lastResult = :result WHERE id = :id")
+    suspend fun updateLastRun(id: Long, ranAtMillis: Long, result: String)
 }
 
 @Dao

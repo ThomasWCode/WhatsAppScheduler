@@ -3,7 +3,23 @@ package com.thomaswcode.whatsappscheduler.domain
 sealed class SendResult {
     data object Sent : SendResult()
     data object DryRun : SendResult()
-    data class Failed(val step: String, val reason: String, val windowDump: String? = null) : SendResult()
+
+    /**
+     * Failed before Send was tapped, so another attempt cannot duplicate the message. [retryable]
+     * is false when waiting cannot help, e.g. no PIN is stored or PIN entry is paused.
+     */
+    data class Failed(val step: String, val reason: String, val windowDump: String? = null, val retryable: Boolean = true) : SendResult() {
+        companion object {
+            /** Step name for checks made before anything happens on the phone. */
+            const val PRECHECK = "precheck"
+        }
+    }
+
+    /** Went wrong after Send was tapped: the message may have gone out, so it is never retried (B02). */
+    data class Uncertain(val step: String, val reason: String, val windowDump: String? = null) : SendResult()
+
+    /** The phone or the Chat Lock prompt stayed locked after the stored PIN was entered (B04). Never retried. */
+    data class PinRejected(val step: String, val reason: String, val windowDump: String? = null) : SendResult()
 }
 
 /** One unit of work handed to a [com.thomaswcode.whatsappscheduler.sending.MessageSender]. */

@@ -1,6 +1,7 @@
 package com.thomaswcode.whatsappscheduler.sending.accessibility.steps
 
 import android.view.accessibility.AccessibilityNodeInfo
+import com.thomaswcode.whatsappscheduler.sending.accessibility.JobProgress
 import com.thomaswcode.whatsappscheduler.sending.accessibility.Selectors
 import com.thomaswcode.whatsappscheduler.sending.accessibility.UiDriver
 import com.thomaswcode.whatsappscheduler.util.AutomationLog
@@ -8,10 +9,16 @@ import kotlinx.coroutines.delay
 
 /**
  * Handles the biometric prompt WhatsApp shows for locked chats by switching it to the device
- * PIN and entering the stored PIN. Returns quietly when no prompt appears.
+ * PIN and entering the stored PIN. Returns quietly when no prompt appears. A wrong PIN here counts
+ * against the phone's lockout like one on the lock screen, so the same guard applies (B04):
+ * [pinBlock] stops entry outright, and [JobProgress.pinUnconfirmed] covers the entry itself.
  */
-class HandleAuthPrompt(private val driver: UiDriver, private val log: AutomationLog) {
-
+class HandleAuthPrompt(
+    private val driver: UiDriver,
+    private val log: AutomationLog,
+    private val progress: JobProgress,
+    private val pinBlock: String?,
+) {
     private val step = "authPrompt"
     private val prompt = arrayOf(Selectors.authUseCredentialById, Selectors.authUseCredentialButton, Selectors.authPasswordField)
 
@@ -38,7 +45,8 @@ class HandleAuthPrompt(private val driver: UiDriver, private val log: Automation
             log.info("$step: no authentication prompt within ${appearTimeoutMs}ms")
             return false
         }
-        if (pin.isNullOrEmpty()) driver.fail(step, "Locked chat needs the PIN but none is stored")
+        if (pin.isNullOrEmpty()) driver.fail(step, "Locked chat needs the PIN but none is stored", retryable = false)
+        pinBlock?.let { driver.fail(step, it, retryable = false) }
         if (!Selectors.authPasswordField.matches(node)) {
             driver.click(step, node)
             delay(400)
@@ -46,6 +54,7 @@ class HandleAuthPrompt(private val driver: UiDriver, private val log: Automation
         val field = driver.tryWaitFor(Selectors.authPasswordField, stepTimeoutMs)
             ?: driver.tryWaitFor(Selectors.authAnyEditable, 1_500)
             ?: driver.fail(step, "PIN field of the credential prompt not found")
+        progress.pinUnconfirmed = true
         driver.setText(step, field, pin, secret = true)
         delay(300)
         if (driver.find(Selectors.authPasswordField) != null || driver.find(Selectors.authAnyEditable) != null) {
@@ -55,6 +64,8 @@ class HandleAuthPrompt(private val driver: UiDriver, private val log: Automation
         if (!driver.waitUntilGone(Selectors.authPasswordField, stepTimeoutMs)) {
             driver.fail(step, "Credential prompt did not close after entering PIN")
         }
+        progress.pinUnconfirmed = false
+        progress.pinAccepted = true
         log.info("$step: prompt completed")
         return true
     }

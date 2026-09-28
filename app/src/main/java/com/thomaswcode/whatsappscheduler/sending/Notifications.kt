@@ -74,6 +74,7 @@ class Notifications(private val context: Context) {
         const val CHANNEL_UNLOCK = "unlock"
         const val ID_SENDING = 1
         const val ID_UNLOCK = 2
+        const val ID_PIN_PAUSED = 3
         const val ID_FALLBACK_BASE = 1000
     }
 }
