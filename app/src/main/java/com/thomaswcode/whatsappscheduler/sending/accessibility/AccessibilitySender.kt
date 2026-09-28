@@ -32,7 +32,7 @@ class AccessibilitySender(
     private val secrets: SecretStore,
     private val pinGuard: PinGuard,
     private val log: AutomationLog,
-    notifications: Notifications,
+    private val notifications: Notifications,
 ) : MessageSender {
 
     private val wake = WakeUnlockController(context, log, notifications)
@@ -106,8 +106,14 @@ class AccessibilitySender(
             service.active.set(false)
             wake.releaseActivity()
             wake.releaseWakeLock()
-            // A PIN entry that unlocked the phone reset its failure counter, so the app's count starts over too.
-            if (progress.pinAccepted) runCatching { pinGuard.recordAccepted() }
+            // A PIN entry that unlocked the phone reset its failure counter, so the app's count starts over
+            // too, and a "paused" notice left from an expired daily limit is no longer true.
+            if (progress.pinAccepted) {
+                runCatching {
+                    pinGuard.recordAccepted()
+                    if (pinGuard.block() == null) notifications.cancel(Notifications.ID_PIN_PAUSED)
+                }
+            }
         }
     }
 
