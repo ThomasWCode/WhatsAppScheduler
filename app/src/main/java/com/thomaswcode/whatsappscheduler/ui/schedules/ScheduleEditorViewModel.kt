@@ -14,6 +14,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.thomaswcode.whatsappscheduler.AppContainer
 import com.thomaswcode.whatsappscheduler.data.RecipientDraft
+import com.thomaswcode.whatsappscheduler.data.db.Recipient
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.domain.PhoneNormaliser
 import com.thomaswcode.whatsappscheduler.domain.Recurrence
@@ -49,6 +50,8 @@ data class EditorForm(
     val every: String = "1",
     /** The name the contact picker last filled in, so picking someone else replaces it (B22). */
     val pickedName: String? = null,
+    /** The user flipped the Chat Lock switch here, rather than it coming from the schedule or its chat. */
+    val lockedTouched: Boolean = false,
 ) {
     fun rule(): Recurrence = when (ruleKind) {
         RuleKind.ONCE -> Recurrence.Once
@@ -98,6 +101,7 @@ data class EditorForm(
                 listOf(
                     it.kind.name, it.name, it.phone, it.locked, it.message, it.date.toEpochDay(), it.time.toSecondOfDay(),
                     it.ruleKind.name, ArrayList(it.weekdays.map(DayOfWeek::getValue)), it.monthDay, it.every, it.pickedName ?: "",
+                    it.lockedTouched,
                 )
             },
             restore = {
@@ -115,6 +119,7 @@ data class EditorForm(
                     monthDay = it[9] as String,
                     every = it[10] as String,
                     pickedName = (it[11] as String).ifEmpty { null },
+                    lockedTouched = it[12] as Boolean,
                 )
             },
         )
@@ -212,14 +217,14 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
             // Not cancelled if the screen closes mid-save, which would leave the row without its alarm.
             val outcome = withContext(NonCancellable) {
                 runCatching {
-                    // Linked to a recipient so it shows in the quick sheet's recents; Chat Lock set here is
+                    // Linked to a recipient so it shows in the quick sheet's recents; Chat Lock switched here is
                     // remembered for that chat (quick-schedule.md §3).
                     val recipient = container.recipients.resolve(RecipientDraft(f.kind, f.name.trim(), phoneE164 = phoneE164, isLocked = f.locked))
-                    if (recipient.isLocked != f.locked) container.recipients.updateDetails(recipient.copy(isLocked = f.locked))
-                    val saved = container.repository.save(schedule.copy(recipientId = recipient.id))
-                    container.recipients.markUsed(listOf(recipient.id))
+                    if (f.lockedTouched && recipient.isLocked != f.locked) container.recipients.updateDetails(recipient.copy(isLocked = f.locked))
+                    val saved = container.repository.save(schedule.copy(recipientId = recipient.id, isLocked = lockFor(f, recipient, existing)))
                     // If a later step fails, Save again updates this row rather than inserting another.
                     existing = saved
+                    container.recipients.markUsed(listOf(recipient.id))
                     container.alarmScheduler.sync(saved)
                     // A prompt for the old version of the message is stale now (B10).
                     container.fallbackNotifier.cancel(saved.id)
@@ -263,6 +268,17 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
                 weekdays = setOf((first ?: now).dayOfWeek),
                 monthDay = (first ?: now).dayOfMonth.toString(),
             )
+        }
+
+        /**
+         * Chat Lock belongs to the chat. A switch flipped here decides (and is remembered for the chat);
+         * otherwise a chat that is already known keeps its remembered setting, so retargeting to a locked
+         * chat can't quietly drop the lock. The schedule's own chat keeps the schedule's setting.
+         */
+        fun lockFor(form: EditorForm, recipient: Recipient, existing: Schedule?): Boolean = when {
+            form.lockedTouched -> form.locked
+            existing != null && existing.recipientId == recipient.id -> form.locked
+            else -> recipient.isLocked
         }
 
         fun validate(form: EditorForm, phoneE164: String?, rule: Recurrence, firstAt: Instant, now: Instant = Instant.now()): String? = when {

@@ -140,7 +140,7 @@ fun ScheduleEditorScreen(
             }
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Switch(checked = form.locked, onCheckedChange = { locked -> vm.update { copy(locked = locked) } })
+                Switch(checked = form.locked, onCheckedChange = { locked -> vm.update { copy(locked = locked, lockedTouched = true) } })
                 Spacer(Modifier.width(8.dp))
                 Column {
                     Text("This chat is behind WhatsApp Chat Lock")
