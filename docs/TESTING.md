@@ -1,6 +1,6 @@
 # Device test protocol
 
-Unit tests (`./gradlew test`) cover recurrence arithmetic and selector regexes. Everything else needs the phone. Run these in order after every selector change or WhatsApp update. Use **Dry run** first for steps 1–5, then repeat 1, 2 and 5 with Dry run off.
+Unit tests (`./gradlew test`) cover recurrence arithmetic, selector regexes, the send queue (de-duplication, occurrence keys, which failures are retried), the PIN circuit breaker, composer verification, phone-number parsing and the repository's run updates. Everything else needs the phone. Run these in order after every selector change or WhatsApp update. Use **Dry run** first for steps 1–5, then repeat 1, 2 and 5 with Dry run off.
 
 | # | Scenario | Expected |
 |---|---|---|
@@ -12,8 +12,13 @@ Unit tests (`./gradlew test`) cover recurrence arithmetic and selector regexes. 
 | 6 | Force-stop the app (Settings → Apps → Force stop), then reboot | `adb shell dumpsys alarm \| grep whatsappscheduler` lists the alarms again after boot. |
 | 7 | Edit `Selectors.waSend` to a wrong id, rebuild, schedule a send | Two retries 30 s apart, then a "Tap to send" notification; tapping it opens the chat with the text pre-filled. |
 | 8 | Weekly rule on two weekdays | List shows the next occurrence; `dumpsys alarm` shows one alarm; after it fires the next occurrence advances. |
-| 9 | Set the phone clock forward past a scheduled time while the app is closed (or leave the phone off across one) | Within the grace window: sent on next boot/app open. Beyond it: SKIPPED with "missed by N min" in Sends. |
+| 9 | Set the phone clock forward past a scheduled time while the app is closed (or leave the phone off across one) | Within the grace window: sent on next boot/app open. Beyond it: SKIPPED with "missed by N min" in Sends, and a "Missed: message to … (time)" notification whose tap opens the chat with the message ready. |
 | 10 | Leave the phone idle 24 h with the accessibility service enabled | WhatsApp Scheduler does not appear above 1 % in Settings → Battery usage. |
+| 11 | Schedule a message to yourself; while it is being sent, open the app, rotate it, and tap Settings → Re-arm all alarms | Sent once. The trace shows "already queued or sending; ignoring the duplicate" or "is being sent; not re-arming it". |
+| 12 | **Turn Auto factory reset off first** (Lock screen → Secure lock settings). Store a deliberately wrong PIN, schedule a message 2 min ahead, lock the phone | The PIN is typed once. No retry; an "Automatic sending paused" notification and a Tap to send prompt. Settings shows why unlocking is paused. A second locked send fails at precheck without touching the lock screen. Storing the right PIN resumes sending. |
+| 13 | Send now… on a one-off due in 10 min | The dialog names the recipient and the time. The message is sent once now and not again at its time; the row shows it finished. |
+| 14 | Send now… on a daily schedule: once with "Send early", once with "Send a copy" | "Send early" moves the next occurrence to tomorrow; "Send a copy" leaves it as it was. |
+| 15 | Editor: type a local number (`07…`), then one with a typo | The first shows "Opens chat with +44 …"; the second is flagged and Save explains why. Double-tapping Save creates one schedule. |
 
 Useful commands:
 

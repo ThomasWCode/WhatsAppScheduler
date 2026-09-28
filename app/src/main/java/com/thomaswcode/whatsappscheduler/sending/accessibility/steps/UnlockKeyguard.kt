@@ -86,8 +86,11 @@ class UnlockKeyguard(
         delay(80)
     }
 
-    /** Number of masked characters showing in the PIN field, or null when it cannot be read. */
-    private fun enteredLength(): Int? = driver.find(Selectors.keyguardPasswordField)?.text?.length
+    /** Number of masked characters showing in the PIN field, or null when it cannot be read. A hint counts as empty. */
+    private fun enteredLength(): Int? {
+        val field = driver.find(Selectors.keyguardPasswordField) ?: return null
+        return if (field.isShowingHintText) 0 else field.text?.length
+    }
 
     private suspend fun submit() {
         val enter = driver.findAny(Selectors.keyguardEnter, Selectors.keyguardEnterByText)

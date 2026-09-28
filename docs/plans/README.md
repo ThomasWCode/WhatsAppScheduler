@@ -15,7 +15,7 @@ The phases are ordered so that the safety fixes land first, and the schema chang
 
 | Phase | Scope | Why this order | Status |
 |---|---|---|---|
-| **0 · Safety** | B01–B08, B10, B12, B14; T3 (extract `SendQueueProcessor`) with its tests. Interim for B09: notify on skip. | Duplicate sends and repeated wrong-PIN entries are the only issues that can cause real-world harm. None of these needs a schema change; new `SendStatus` values are stored as text. | In progress |
+| **0 · Safety** | B01–B08, B10, B12, B14; T3 (extract `SendQueueProcessor`) with its tests. Interim for B09: notify on skip. | Duplicate sends and repeated wrong-PIN entries are the only issues that can cause real-world harm. None of these needs a schema change; new `SendStatus` values are stored as text. | Done, plus B21, B22, I10 and the T5 lenient converter; awaiting the device checks in TESTING.md #11–15 |
 | **1 · Groundwork** | T7 toolchain (optional; do it first if at all); R1 minSdk decision; T1 schema v2 + migration test; T2 ViewModels; T4 send state; T5 typed status; B17 | Everything after this depends on the v2 tables and on ViewModels. | Not started |
 | **2 · Quick sheet** | [quick-schedule.md](quick-schedule.md) §2–6 and §10: the sheet, Share, recipients and type-ahead, time chips, Repeat…, multiple recipients; B16, B22, B23 | The headline feature. | Not started |
 | **3 · List** | §7–9: health strip, sections, swipe, in-flight rows, Postpone, Sent and auto-clear; F4; F5 live status; B24, B28, B29 | Builds on the phase 1 status columns. | Not started |
