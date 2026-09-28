@@ -20,6 +20,7 @@ import com.thomaswcode.whatsappscheduler.data.db.Recipient
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.data.settings.Settings
 import com.thomaswcode.whatsappscheduler.domain.FriendlyTime
+import com.thomaswcode.whatsappscheduler.domain.PhoneNormaliser
 import com.thomaswcode.whatsappscheduler.domain.PinFailures
 import com.thomaswcode.whatsappscheduler.domain.QuickTimes
 import com.thomaswcode.whatsappscheduler.domain.Recurrence
@@ -245,15 +246,33 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
             error = "${hit.number} isn't a number WhatsApp can open. Edit the contact, or type the number with its country code."
             return
         }
+        // At once, so a Schedule tapped straight after can't leave it out; saving resolves it by number
+        // anyway. The lookup only shows sooner what is known about the chat, such as Chat Lock.
+        val picked = RecipientDraft(TargetKind.CONTACT, hit.name, phoneE164 = e164)
+        add(picked)
         viewModelScope.launch {
-            val saved = container.recipients.byPhone(e164)
-            if (saved != null) add(saved) else add(RecipientDraft(TargetKind.CONTACT, hit.name, phoneE164 = e164))
+            val saved = container.recipients.byPhone(e164) ?: return@launch
+            if (!saving) draft = draft.copy(recipients = draft.recipients.map { if (it == picked) saved.toDraft() else it })
         }
     }
 
-    /** "Use "Work crew" as a group or chat name": found by name through WhatsApp's search. */
-    fun addChatName(name: String) {
-        if (name.isNotBlank()) add(RecipientDraft(TargetKind.GROUP, name.trim()))
+    /**
+     * Something typed into To and confirmed. A phone number is a contact reached by that number; one
+     * that doesn't parse is refused rather than searched for as a chat name. Anything else is a group
+     * or chat found by that exact name through WhatsApp's search.
+     */
+    fun addTyped(text: String) {
+        if (saving) return
+        val typed = text.trim()
+        if (typed.isEmpty()) return
+        if (!looksLikeNumber(typed)) return add(RecipientDraft(TargetKind.GROUP, typed))
+        val iso = settings.value.defaultCountryIso
+        val e164 = PhoneNormaliser.toE164(typed, iso)
+        if (e164 == null) {
+            error = "$typed isn't a number WhatsApp can open. Type it with its country code."
+            return
+        }
+        add(RecipientDraft(TargetKind.CONTACT, PhoneNormaliser.display(e164, iso), phoneE164 = e164))
     }
 
     fun remove(recipient: RecipientDraft) {
@@ -367,7 +386,14 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
                         runCatching { container.alarmScheduler.cancel(removed.id) }.onFailure { container.log.error("Cancelling a removed member's alarm failed", it) }
                         runCatching { container.fallbackNotifier.cancel(removed.id) }.onFailure { container.log.error("Clearing a removed member's prompt failed", it) }
                     }
-                    change.saved.forEach { container.alarmScheduler.sync(it); container.fallbackNotifier.cancel(it.id) }
+                    // Each member's stale prompt first, then its alarm, each on its own: one failure mustn't
+                    // leave an old prompt behind or skip the other members. The first failure is reported.
+                    var armFailure: Throwable? = null
+                    change.saved.forEach { saved ->
+                        runCatching { container.fallbackNotifier.cancel(saved.id) }.onFailure { container.log.error("Clearing a prompt failed", it) }
+                        runCatching { container.alarmScheduler.sync(saved) }.onFailure { armFailure = armFailure ?: it }
+                    }
+                    armFailure?.let { throw it }
                     // Only orders the recent chips, so it doesn't fail the save.
                     runCatching { container.recipients.markUsed(resolved.map { it.id }) }.onFailure { container.log.error("Marking recipients used failed", it) }
                     change
@@ -452,6 +478,10 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
 
         /** A time far enough ahead to schedule: at least a minute from now. The sheet's button uses it too. */
         fun isSendable(at: ZonedDateTime, now: ZonedDateTime): Boolean = at.isAfter(now.plusSeconds(59))
+
+        /** Digits with the usual separators, at least five of them: a phone number, not a chat name. */
+        fun looksLikeNumber(text: String): Boolean =
+            text.count(Char::isDigit) >= 5 && text.all { it.isDigit() || it in "+ -()." }
 
         /** "Mum", "Mum and Dad", "Mum, Dad +1". */
         fun names(recipients: List<RecipientDraft>): String = when (recipients.size) {

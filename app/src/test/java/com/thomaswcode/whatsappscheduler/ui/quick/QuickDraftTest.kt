@@ -62,6 +62,15 @@ class QuickDraftTest {
     }
 
     @Test
+    fun aTypedNumberIsANumberNotAChatName() {
+        assertTrue(QuickScheduleViewModel.looksLikeNumber("07400 123456"))
+        assertTrue(QuickScheduleViewModel.looksLikeNumber("+44 (0)7400-123456"))
+        assertFalse(QuickScheduleViewModel.looksLikeNumber("Work crew"))
+        assertFalse(QuickScheduleViewModel.looksLikeNumber("Flat 42"))
+        assertFalse(QuickScheduleViewModel.looksLikeNumber("2024 reunion"))
+    }
+
+    @Test
     fun aChatChosenTwiceIsKeptOnce() {
         // Details edited so that Sam now has Dad's number: the message must not go to that chat twice.
         val chosen = listOf(dad.toDraft(), RecipientDraft(TargetKind.CONTACT, "Sam", phoneE164 = "+447400123456", recipientId = 9), crew.toDraft())
