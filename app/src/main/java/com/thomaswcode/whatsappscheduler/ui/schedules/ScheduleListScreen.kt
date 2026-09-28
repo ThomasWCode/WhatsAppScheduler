@@ -245,7 +245,7 @@ fun ScheduleListScreen(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 96.dp),
         ) {
             item(key = "health") {
-                HealthStrip(health, showReady = true, minorToo = true, onOpenSettings = onSettings, onClick = onSetup, modifier = Modifier.padding(bottom = 4.dp))
+                HealthStrip(health, showReady = true, onOpenSettings = onSettings, onClick = onSetup, modifier = Modifier.padding(bottom = 4.dp))
             }
             if (sections.isEmpty) {
                 item(key = "empty") {
