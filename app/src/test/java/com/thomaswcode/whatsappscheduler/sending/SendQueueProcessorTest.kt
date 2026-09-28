@@ -150,6 +150,32 @@ class SendQueueProcessorTest {
         assertFalse(state.state.value.isBusy(1))
     }
 
+    @Test
+    fun onlyRequestsThatUseUpTheOccurrenceHoldItFromReArming() = runTest {
+        store.put(daily())
+        val sender = FakeSender()
+        val queue = processor(sender)
+        val seen = mutableListOf<Pair<SendKind, Boolean>>()
+        sender.onSend = { job -> seen += (if (job.dryRun) SendKind.TEST else SendKind.SCHEDULED) to state.state.value.holdsOccurrence(1) }
+        queue.enqueue(SendRequest(1, SendKind.TEST))
+        queue.drain()
+        queue.enqueue(scheduled())
+        queue.drain()
+        assertEquals(listOf(SendKind.TEST to false, SendKind.SCHEDULED to true), seen)
+    }
+
+    @Test
+    fun everyFinishedRunReArmsTheAlarm() = runTest {
+        // Re-arming skips a schedule while it is busy, so a test run or a copy must restore the alarm itself.
+        store.put(daily())
+        processor(FakeSender()).run {
+            enqueue(SendRequest(1, SendKind.TEST)); drain()
+            enqueue(SendRequest(1, SendKind.EXTRA_COPY)); drain()
+        }
+        assertEquals(2, alarms.synced.size)
+        assertTrue(alarms.synced.all { it.nextAtMillis == due.toEpochMilli() })
+    }
+
     // Missed occurrences (B09 interim): decided in the queue, so a re-arm and a late alarm agree
 
     @Test
