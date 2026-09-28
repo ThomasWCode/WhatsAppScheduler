@@ -71,6 +71,8 @@ class SendService : LifecycleService() {
     private suspend fun drainAndStop() {
         while (true) {
             processor.drain()
+            // With the queue empty: clear old sent messages and history (B28).
+            runCatching { container.housekeeping.run() }.onFailure { container.log.error("Housekeeping failed", it) }
             if (stopSelfResult(lastStartId)) return
             // A start is on its way (the system has issued it, onStartCommand hasn't run yet). Yield the
             // main thread so it can be delivered, instead of spinning here and blocking it.
