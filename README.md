@@ -43,6 +43,8 @@ Or open the project in Android Studio (Ladybug or newer), which installs the SDK
 
 Unit tests cover the recurrence arithmetic (including daylight-saving transitions and month clamping) and the text regexes the automation relies on. Everything that touches WhatsApp's UI can only be tested on a phone; the protocol is in `docs/TESTING.md`.
 
+CI (`.github/workflows/ci.yml`) runs the unit tests, lint and a debug build on every pull request and on `main`, and keeps the debug APK as a build artifact.
+
 ## First-time setup on the phone
 
 1. Install the APK and open the app. Open **Settings → Setup checklist** and clear every red item. The Samsung-specific steps are in `docs/SAMSUNG_SETUP.md`.
