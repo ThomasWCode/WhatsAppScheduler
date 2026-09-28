@@ -54,6 +54,7 @@ CI (`.github/workflows/ci.yml`) runs the unit tests, lint and a debug build on e
 - The list puts what needs you first (**Needs attention**: missed, failed, or may have been sent, with Send now, Discard or Mark as sent), then **Upcoming**, **Repeating** (with a Pause switch) and a collapsed **Sent**. Swipe a row away to delete it; **Undo** brings it back with its history. The strip at the top says whether auto-send is ready, and what to fix if not.
 - **Postpone…** (in a row's ⋯ menu, and on missed or failed messages) moves a message to a new time; for a repeating one it moves only the next send, and says which later ones that skips.
 - Sent messages are cleared from the list after 30 days (Settings → Sending → Keep sent messages for); Logs keep their history for 90 days.
+- Long-press a chip for the recipient's details. For a group or a chat found by name, **Check this chat now** looks it up in WhatsApp while you watch (nothing is typed), so a name that doesn't match shows up now rather than at send time. A new name-based chat is offered this once after scheduling.
 - Contacts permission is optional. It lets the type-ahead search your contacts on the phone and mark the ones that are on WhatsApp; without it you can pick one contact at a time or type a number.
 
 ## First-time setup on the phone
