@@ -1,12 +1,13 @@
 package com.thomaswcode.whatsappscheduler.sending.accessibility.steps
 
+import com.thomaswcode.whatsappscheduler.sending.accessibility.JobProgress
 import com.thomaswcode.whatsappscheduler.sending.accessibility.Selectors
 import com.thomaswcode.whatsappscheduler.sending.accessibility.UiDriver
 import com.thomaswcode.whatsappscheduler.util.AutomationLog
 import kotlinx.coroutines.delay
 
 /** Puts the message in the composer (if not already there) and taps Send unless dry-running. */
-class TypeAndSend(private val driver: UiDriver, private val log: AutomationLog) {
+class TypeAndSend(private val driver: UiDriver, private val log: AutomationLog, private val progress: JobProgress) {
 
     private val step = "typeAndSend"
 
@@ -20,6 +21,9 @@ class TypeAndSend(private val driver: UiDriver, private val log: AutomationLog) 
             return
         }
         val (_, send) = driver.waitForAny(step, Selectors.waSend, Selectors.waSendByDesc, timeoutMs = timeoutMs)
+        // Marked before the tap, not after: once the click is dispatched the message may be on its way,
+        // and a failure from here on must never be retried.
+        progress.sendTapped = true
         driver.click(step, send)
         delay(400)
     }

@@ -5,12 +5,14 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.PowerManager
+import com.thomaswcode.whatsappscheduler.sending.accessibility.JobProgress
 import com.thomaswcode.whatsappscheduler.sending.accessibility.UiDriver
 import com.thomaswcode.whatsappscheduler.sending.accessibility.steps.UnlockKeyguard
 import com.thomaswcode.whatsappscheduler.util.AutomationLog
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 
+/** How the phone was before a send touched it, so it can be put back that way afterwards. */
 data class UnlockOutcome(val wasLocked: Boolean, val screenWasOff: Boolean)
 
 /** Turns the screen on and gets past the lock screen before WhatsApp is driven; re-locks afterwards. */
@@ -23,11 +25,17 @@ class WakeUnlockController(
     private val power get() = context.getSystemService(PowerManager::class.java)
     private var wakeLock: PowerManager.WakeLock? = null
 
+    /** Taken before [ensureUnlocked], so the phone is re-locked even when unlocking fails part-way. */
+    fun snapshot(): UnlockOutcome = UnlockOutcome(wasLocked = keyguard.isKeyguardLocked, screenWasOff = !power.isInteractive)
+
+    /** True when the lock screen stands in the way and only the stored PIN gets past it. */
+    fun needsPin(): Boolean = keyguard.isKeyguardLocked && keyguard.isDeviceSecure
+
+    /** [pinBlock] is why the stored PIN must not be typed right now (B04), or null when it may be. */
     @Suppress("DEPRECATION")
-    suspend fun ensureUnlocked(driver: UiDriver, pin: String?, stepTimeoutMs: Long): UnlockOutcome {
-        val screenWasOff = !power.isInteractive
-        val wasLocked = keyguard.isKeyguardLocked
-        if (!screenWasOff && !wasLocked) return UnlockOutcome(false, false)
+    suspend fun ensureUnlocked(driver: UiDriver, before: UnlockOutcome, pin: String?, pinBlock: String?, progress: JobProgress, stepTimeoutMs: Long) {
+        val (wasLocked, screenWasOff) = before
+        if (!screenWasOff && !wasLocked) return
         log.info("wake: screenOff=$screenWasOff locked=$wasLocked secure=${keyguard.isDeviceSecure}")
 
         wakeLock = power.newWakeLock(
@@ -41,9 +49,10 @@ class WakeUnlockController(
 
         if (wasLocked) {
             if (keyguard.isDeviceSecure) {
-                if (pin.isNullOrEmpty()) driver.fail("wake", "Phone is locked and no PIN is stored in the app")
+                if (pin.isNullOrEmpty()) driver.fail("wake", "Phone is locked and no PIN is stored in the app", retryable = false)
+                pinBlock?.let { driver.fail("wake", it, retryable = false) }
                 delay(800)
-                UnlockKeyguard(driver, log, keyguard).run(pin, stepTimeoutMs)
+                UnlockKeyguard(driver, log, keyguard, progress).run(pin, stepTimeoutMs)
             } else {
                 val result = withTimeoutOrNull(stepTimeoutMs) { UnlockBroker.dismissal.await() }
                 if (result == null || !result.first) driver.fail("wake", "Keyguard dismissal failed: ${result?.second ?: "timeout"}")
@@ -51,7 +60,6 @@ class WakeUnlockController(
         }
         if (!driver.waitUntil(3_000) { !keyguard.isKeyguardLocked }) driver.fail("wake", "Keyguard still reported locked")
         notifications.cancel(Notifications.ID_UNLOCK)
-        return UnlockOutcome(wasLocked, screenWasOff)
     }
 
     /** Ends the unlock activity so WhatsApp (or the previous app) is on top. */

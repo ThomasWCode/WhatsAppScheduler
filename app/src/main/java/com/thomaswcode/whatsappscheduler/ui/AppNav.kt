@@ -1,6 +1,9 @@
 package com.thomaswcode.whatsappscheduler.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -13,6 +16,7 @@ import com.thomaswcode.whatsappscheduler.ui.onboarding.SetupScreen
 import com.thomaswcode.whatsappscheduler.ui.schedules.ScheduleEditorScreen
 import com.thomaswcode.whatsappscheduler.ui.schedules.ScheduleListScreen
 import com.thomaswcode.whatsappscheduler.ui.settings.SettingsScreen
+import kotlinx.coroutines.flow.MutableStateFlow
 
 object Routes {
     const val LIST = "list"
@@ -25,9 +29,17 @@ object Routes {
     fun edit(id: Long) = "edit/$id"
 }
 
+/** [destination] is a screen a notification asked for ([MainActivity.DESTINATION_SETTINGS]); it is cleared once opened. */
 @Composable
-fun AppNav(container: AppContainer) {
+fun AppNav(container: AppContainer, destination: MutableStateFlow<String?>) {
     val nav = rememberNavController()
+    val requested by destination.collectAsState()
+    LaunchedEffect(requested) {
+        when (requested ?: return@LaunchedEffect) {
+            MainActivity.DESTINATION_SETTINGS -> nav.navigate(Routes.SETTINGS) { launchSingleTop = true }
+        }
+        destination.value = null
+    }
     NavHost(navController = nav, startDestination = Routes.LIST) {
         composable(Routes.LIST) {
             ScheduleListScreen(
