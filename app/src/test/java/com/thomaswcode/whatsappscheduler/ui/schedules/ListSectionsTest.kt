@@ -62,6 +62,15 @@ class ListSectionsTest {
         )
         assertEquals(listOf(1L), split.attention.single().map { it.id })
         assertEquals(listOf(2L), split.sent.single().map { it.id })
+
+        // Both need attention, for different reasons: two entries, each saying what happened to it.
+        val both = ListSections.of(
+            listOf(
+                mum.copy(nextAtMillis = null, lastRunAtMillis = ran, attention = Attention.FAILED),
+                dad.copy(nextAtMillis = null, lastRunAtMillis = ran, attention = Attention.UNCERTAIN),
+            ),
+        )
+        assertEquals(listOf(listOf(1L), listOf(2L)), both.attention.map { group -> group.map { it.id } })
         assertTrue(ListSections.of(emptyList()).isEmpty)
     }
 
@@ -82,17 +91,21 @@ class ListSectionsTest {
         assertEquals("Weekly on Mon · next Mon 5 Oct 09:00", line(Section.REPEATING, weekly))
         assertEquals("Weekly on Mon · paused", line(Section.REPEATING, weekly.copy(enabled = false)))
 
-        // Due at 09:00 by its latest run's occurrence, although the failure was noticed later.
-        val failed = schedule(6, next = null).copy(lastRunAtMillis = ms("2026-09-28T09:05"), attention = Attention.FAILED)
-        assertEquals("Couldn't send · Today 09:00", line(Section.ATTENTION, failed))
-        assertEquals("May have been sent · Today 09:00: check the chat", line(Section.ATTENTION, failed.copy(attention = Attention.UNCERTAIN)))
+        // Missed: when it was due, by its latest run's occurrence, although that was noticed later.
+        val missed = schedule(6, next = null).copy(lastRunAtMillis = ms("2026-09-28T11:30"), attention = Attention.MISSED)
+        assertEquals("Missed · Today 09:00", line(Section.ATTENTION, missed))
         assertEquals("Missed · Yesterday 09:00", line(Section.ATTENTION, schedule(8, next = null).copy(attention = Attention.MISSED)))
+        // Failed or uncertain: when it was tried, which after Send now is earlier than it was due.
+        val failed = schedule(6, next = null).copy(lastRunAtMillis = ms("2026-09-28T08:40"), attention = Attention.FAILED)
+        assertEquals("Couldn't send · Today 08:40", line(Section.ATTENTION, failed))
+        assertEquals("May have been sent · Today 08:40: check the chat", line(Section.ATTENTION, failed.copy(attention = Attention.UNCERTAIN)))
 
         val sent = schedule(5, next = null).copy(lastRunAtMillis = ms("2026-09-27T09:00"), lastStatus = SendStatus.SENT)
         assertEquals("Sent Yesterday 09:00", line(Section.SENT, sent))
         assertEquals("Sent Yesterday 09:00 (dry run)", line(Section.SENT, sent.copy(lastStatus = SendStatus.DRY_RUN)))
         // From before schema v2: only the result text says it was sent.
         assertEquals("Sent Yesterday 09:00", line(Section.SENT, sent.copy(lastStatus = null, lastResult = "SENT: verified")))
+        assertEquals("Sent Yesterday 09:00 (dry run)", line(Section.SENT, sent.copy(lastStatus = null, lastResult = "manual DRY_RUN: composer filled")))
         assertEquals("Not sent · was due Yesterday 09:00", line(Section.SENT, schedule(9, next = null)))
     }
 
