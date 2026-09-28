@@ -114,7 +114,7 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
         // bring it back whenever the next occurrence is recomputed, e.g. on switching it back on.
         val firstAt = if (usedUp && current.rule == Recurrence.Once) minOf(current.firstAtMillis, ranAt.toEpochMilli()) else current.firstAtMillis
         val result = status.name + (detail?.let { ": $it" } ?: "")
-        val attention = attentionAfter(status)
+        val attention = attentionAfter(status, current.attention)
         schedules.updateRun(id, firstAt, next, ranAt.toEpochMilli(), result, status, attention)
         current.copy(firstAtMillis = firstAt, nextAtMillis = next, lastRunAtMillis = ranAt.toEpochMilli(), lastResult = result, lastStatus = status, attention = attention)
     }
@@ -140,9 +140,13 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
         /** At most this many recipients per message, so one mistake can't turn into a flood (§10). */
         const val MAX_BATCH = 10
 
-        /** What an occurrence's outcome leaves the schedule waiting on the user for (T5). A success clears it. */
-        fun attentionAfter(status: SendStatus): Attention? = when (status) {
-            SendStatus.SENT, SendStatus.DRY_RUN -> null
+        /**
+         * What an occurrence's outcome leaves the schedule waiting on the user for (T5). A real send
+         * clears it; a dry run sent nothing, so it leaves whatever was already waiting.
+         */
+        fun attentionAfter(status: SendStatus, previous: Attention?): Attention? = when (status) {
+            SendStatus.SENT -> null
+            SendStatus.DRY_RUN -> previous
             SendStatus.FAILED -> Attention.FAILED
             SendStatus.UNCERTAIN -> Attention.UNCERTAIN
             SendStatus.SKIPPED, SendStatus.MISSED -> Attention.MISSED
