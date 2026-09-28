@@ -55,7 +55,9 @@ fun AppNav(container: AppContainer, destination: MutableStateFlow<String?>) {
             ScheduleEditorScreen(
                 container = container,
                 scheduleId = entry.arguments?.getLong("id") ?: 0L,
-                onDone = { nav.popBackStack() },
+                // Pops the editor only while it is still there, so a save finishing after Back was
+                // pressed can't pop the list as well and leave a blank screen (B05).
+                onDone = { nav.popBackStack(Routes.EDIT, inclusive = true) },
             )
         }
         composable(Routes.SETTINGS) {
