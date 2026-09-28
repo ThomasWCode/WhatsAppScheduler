@@ -178,7 +178,9 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
 
     /**
      * A manual run doesn't decide whether the schedule needs attention, except that a real send by
-     * hand resolves whatever it was waiting on: the message has now gone out.
+     * hand resolves whatever it was waiting on: the message has now gone out. Only a run that may have
+     * sent something becomes the schedule's last run; a test, or a failure that sent nothing, is
+     * logged and noted for diagnosis without changing when the list says the message went.
      */
     override suspend fun recordManual(id: Long, status: SendStatus, detail: String?, sentTo: String, ranAt: Instant): Schedule? =
         db.withTransaction {
@@ -186,6 +188,10 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
             logs.insert(SendLog(scheduleId = current?.id, atMillis = ranAt.toEpochMilli(), status = status, targetName = sentTo, detail = "(manual) " + (detail ?: "")))
             if (current == null) return@withTransaction null
             val result = "manual ${status.name}" + (detail?.let { ": $it" } ?: "")
+            if (status != SendStatus.SENT && status != SendStatus.UNCERTAIN) {
+                schedules.setLastResult(id, result)
+                return@withTransaction current.copy(lastResult = result)
+            }
             val attention = if (status == SendStatus.SENT) null else current.attention
             schedules.updateLastRun(id, ranAt.toEpochMilli(), result, status, attention)
             current.copy(lastRunAtMillis = ranAt.toEpochMilli(), lastResult = result, lastStatus = status, attention = attention)
