@@ -19,8 +19,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -51,8 +49,8 @@ import com.thomaswcode.whatsappscheduler.domain.FriendlyTime
 import com.thomaswcode.whatsappscheduler.domain.PhoneNormaliser
 import com.thomaswcode.whatsappscheduler.domain.PinCircuitBreaker
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
-import com.thomaswcode.whatsappscheduler.ui.health.HealthCheck
-import com.thomaswcode.whatsappscheduler.ui.health.HealthProblem
+import com.thomaswcode.whatsappscheduler.ui.health.HealthStrip
+import com.thomaswcode.whatsappscheduler.ui.health.rememberHealth
 import java.time.Duration
 
 /**
@@ -111,7 +109,7 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
 
     val chips = vm.chips(now, timeFormat)
     val at = vm.resolvedTime(now)
-    val health = HealthCheck.evaluate(context, serviceConnected, hasPin, PinCircuitBreaker.block(pinFailures, now.toInstant().toEpochMilli()), settings.dryRun)
+    val health = rememberHealth(serviceConnected, hasPin, PinCircuitBreaker.block(pinFailures, now.toInstant().toEpochMilli()), settings.dryRun)
 
     Column(
         modifier = Modifier
@@ -130,29 +128,8 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
                 TextButton(onClick = vm::discard) { Text("Discard") }
             }
         }
-        // One warning at most: the most serious thing that would stop or change the send.
-        (health.firstOrNull { it.problem.blocksSending } ?: health.firstOrNull { it.problem == HealthProblem.DRY_RUN })?.let { item ->
-            // Red only for what stops the send; dry run still types the message, so it is a notice.
-            val blocking = item.problem.blocksSending
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = if (blocking) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.tertiaryContainer,
-                ),
-                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 12.dp, end = 4.dp)) {
-                    Text(
-                        item.message,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (blocking) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onTertiaryContainer,
-                        modifier = Modifier.weight(1f).padding(vertical = 10.dp),
-                    )
-                    item.fix?.let { intent ->
-                        TextButton(onClick = { runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }) { Text(item.fixLabel ?: "Fix") }
-                    }
-                }
-            }
-        }
+        // One warning at most: the most serious thing that would stop the send, or dry run.
+        HealthStrip(health, showReady = false, minorToo = false, onOpenSettings = null, modifier = Modifier.padding(vertical = 6.dp))
         Spacer(Modifier.height(4.dp))
         RecipientField(
             chosen = draft.recipients,
