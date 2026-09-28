@@ -46,6 +46,8 @@ class MainActivity : ComponentActivity() {
                         container.settings.markRecipientsLinked()
                     }
                 }.onFailure { container.log.error("Linking recipients failed", it) }
+                // Failures from before schema v2 show under Needs attention too.
+                runCatching { container.repository.typeLegacyOutcomes() }.onFailure { container.log.error("Typing old outcomes failed", it) }
             }
         }
     }

@@ -74,6 +74,21 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
         rows
     }
 
+    /**
+     * Rows from before schema v2 know their last outcome only as text, so a failure then wouldn't show
+     * under Needs attention. The outcome of such a row's last scheduled run becomes its typed status
+     * and, when it failed or was missed, what it waits on. Each row is done once (it then has a typed
+     * status); runs by hand are left alone, as they never decide attention. Returns how many.
+     */
+    suspend fun typeLegacyOutcomes(): Int = db.withTransaction {
+        schedules.untypedOutcomes().count { row ->
+            val result = row.lastResult ?: return@count false
+            val status = statusFromResult(result) ?: return@count false
+            schedules.setOutcome(row.id, status, result, attentionAfter(status, null))
+            true
+        }
+    }
+
     /** Sets or clears what the schedule is waiting on the user for, e.g. Discard on a missed occurrence. */
     suspend fun setAttention(id: Long, attention: Attention?) = schedules.setAttention(id, attention)
 
@@ -178,7 +193,7 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
 
     /**
      * A manual run doesn't decide whether the schedule needs attention, except that a real send by
-     * hand resolves whatever it was waiting on: the message has now gone out. Only a run that may have
+     * hand resolves whatever it was waiting on, and one that may have gone out needs checking. Only a run that may have
      * sent something becomes the schedule's last run; a test, or a failure that sent nothing, is
      * logged and noted for diagnosis without changing when the list says the message went.
      */
@@ -192,7 +207,9 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
                 schedules.setLastResult(id, result)
                 return@withTransaction current.copy(lastResult = result)
             }
-            val attention = if (status == SendStatus.SENT) null else current.attention
+            // Sent resolves whatever it waited on; may-have-been-sent needs the chat checked, whatever it
+            // waited on before, or the list would still offer to send it again.
+            val attention = if (status == SendStatus.SENT) null else Attention.UNCERTAIN
             schedules.updateLastRun(id, ranAt.toEpochMilli(), result, status, attention)
             current.copy(lastRunAtMillis = ranAt.toEpochMilli(), lastResult = result, lastStatus = status, attention = attention)
         }
@@ -200,6 +217,11 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
     suspend fun pruneLogs(olderThan: Instant) = logs.prune(olderThan.toEpochMilli())
 
     companion object {
+        /** The status a result text starts with ("FAILED: search: …"), after "manual " for a run by hand. */
+        fun statusFromResult(result: String?): SendStatus? = result?.removePrefix("manual ")?.let { text ->
+            SendStatus.entries.firstOrNull { text == it.name || text.startsWith(it.name + ":") }
+        }
+
         /** At most this many recipients per message, so one mistake can't turn into a flood (§10). */
         const val MAX_BATCH = 10
 

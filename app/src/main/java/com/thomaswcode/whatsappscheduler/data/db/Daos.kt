@@ -45,6 +45,10 @@ interface ScheduleDao {
     @Query("UPDATE schedules SET lastRunAtMillis = :ranAtMillis, lastResult = :result, lastStatus = :status, attention = :attention WHERE id = :id")
     suspend fun updateLastRun(id: Long, ranAtMillis: Long, result: String, status: SendStatus, attention: Attention?)
 
+    /** Rows from before schema v2 whose last scheduled run is known only as text. */
+    @Query("SELECT * FROM schedules WHERE lastStatus IS NULL AND lastResult IS NOT NULL AND lastResult NOT LIKE 'manual %'")
+    suspend fun untypedOutcomes(): List<Schedule>
+
     @Query("UPDATE schedules SET lastResult = :result WHERE id = :id")
     suspend fun setLastResult(id: Long, result: String)
 
