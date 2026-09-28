@@ -3,6 +3,7 @@ package com.thomaswcode.whatsappscheduler.sending
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import com.thomaswcode.whatsappscheduler.data.db.Attention
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.ui.MainActivity
 import java.time.Instant
@@ -50,6 +51,23 @@ class FallbackNotifier(private val context: Context, private val notifications: 
     }
 
     fun cancelPinPaused() = notifications.cancel(Notifications.ID_PIN_PAUSED)
+
+    /** Whether the schedule's prompt is showing, e.g. to put it back if a delete is undone. */
+    fun isShowing(scheduleId: Long): Boolean = notifications.isShowing(Notifications.ID_FALLBACK_BASE + scheduleId.toInt())
+
+    /**
+     * Posts again the prompt for what [schedule] waits on, e.g. after Undo on the list put it back.
+     * The reason is the detail its last run recorded ("FAILED: search: …" gives "search: …").
+     */
+    fun notifyAttention(schedule: Schedule, occurrenceAtMillis: Long?) {
+        val reason = schedule.lastResult?.let { it.substringAfter(": ", missingDelimiterValue = it) } ?: "unknown"
+        when (schedule.attention) {
+            Attention.FAILED -> notifyFailed(schedule, occurrenceAtMillis, reason)
+            Attention.UNCERTAIN -> notifyUncertain(schedule, occurrenceAtMillis, reason)
+            Attention.MISSED -> notifyMissed(schedule, occurrenceAtMillis ?: schedule.firstAtMillis)
+            Attention.HELD, null -> Unit
+        }
+    }
 
     /** Removes the schedule's prompt, which is stale once it has been sent, edited or deleted (B10). */
     fun cancel(scheduleId: Long) = notifications.cancel(Notifications.ID_FALLBACK_BASE + scheduleId.toInt())
