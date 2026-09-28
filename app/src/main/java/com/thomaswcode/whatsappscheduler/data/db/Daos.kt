@@ -5,6 +5,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Update
+import com.thomaswcode.whatsappscheduler.domain.TargetKind
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -39,6 +40,60 @@ interface ScheduleDao {
 
     @Query("UPDATE schedules SET lastRunAtMillis = :ranAtMillis, lastResult = :result, lastStatus = :status, attention = :attention WHERE id = :id")
     suspend fun updateLastRun(id: Long, ranAtMillis: Long, result: String, status: SendStatus, attention: Attention?)
+
+    @Query("SELECT * FROM schedules WHERE batchId = :batchId ORDER BY id")
+    suspend fun getBatch(batchId: String): List<Schedule>
+
+    @Query("SELECT * FROM schedules WHERE recipientId IS NULL")
+    suspend fun getUnlinked(): List<Schedule>
+
+    @Query("UPDATE schedules SET recipientId = :recipientId WHERE id = :id")
+    suspend fun setRecipient(id: Long, recipientId: Long)
+
+    /**
+     * Copies a recipient's edited details into its schedules that haven't gone out yet. Sent ones
+     * keep the details they were sent with.
+     */
+    @Query(
+        "UPDATE schedules SET targetKind = :kind, targetName = :chatName, phoneE164 = :phoneE164, isLocked = :isLocked " +
+            "WHERE recipientId = :recipientId AND nextAtMillis IS NOT NULL"
+    )
+    suspend fun updatePendingTarget(recipientId: Long, kind: TargetKind, chatName: String, phoneE164: String?, isLocked: Boolean)
+}
+
+@Dao
+interface RecipientDao {
+    /** Most recently used first; never-used ones (lastUsedAtMillis = 0) are left out. */
+    @Query("SELECT * FROM recipients WHERE lastUsedAtMillis > 0 ORDER BY lastUsedAtMillis DESC LIMIT :limit")
+    fun observeRecent(limit: Int): Flow<List<Recipient>>
+
+    @Query(
+        "SELECT * FROM recipients WHERE displayName LIKE '%' || :query || '%' OR whatsappName LIKE '%' || :query || '%' " +
+            "OR phoneE164 LIKE '%' || :query || '%' ORDER BY lastUsedAtMillis DESC LIMIT :limit"
+    )
+    suspend fun search(query: String, limit: Int): List<Recipient>
+
+    @Query("SELECT * FROM recipients WHERE id = :id")
+    suspend fun get(id: Long): Recipient?
+
+    @Query("SELECT * FROM recipients WHERE phoneE164 = :phoneE164 LIMIT 1")
+    suspend fun byPhone(phoneE164: String): Recipient?
+
+    /** A recipient found by chat name (groups, and contacts without a number). */
+    @Query("SELECT * FROM recipients WHERE phoneE164 IS NULL AND kind = :kind AND COALESCE(whatsappName, displayName) = :chatName LIMIT 1")
+    suspend fun byChatName(kind: TargetKind, chatName: String): Recipient?
+
+    @Insert
+    suspend fun insert(recipient: Recipient): Long
+
+    @Update
+    suspend fun update(recipient: Recipient)
+
+    @Delete
+    suspend fun delete(recipient: Recipient)
+
+    @Query("UPDATE recipients SET lastUsedAtMillis = :atMillis, useCount = useCount + 1 WHERE id = :id")
+    suspend fun markUsed(id: Long, atMillis: Long)
 }
 
 @Dao
