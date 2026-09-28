@@ -2,16 +2,19 @@ package com.thomaswcode.whatsappscheduler.sending.accessibility.steps
 
 import com.thomaswcode.whatsappscheduler.sending.accessibility.Selectors
 import com.thomaswcode.whatsappscheduler.sending.accessibility.UiDriver
+import com.thomaswcode.whatsappscheduler.sending.accessibility.sameVisibleText
+import com.thomaswcode.whatsappscheduler.sending.accessibility.visibleText
 import com.thomaswcode.whatsappscheduler.util.AutomationLog
 
 /**
  * True once the composer no longer holds [message] (B03): it is empty, it is showing its hint, or
  * it holds other text, which covers the hint in any language when the field does not flag it. The
  * text is never compared with the hint's wording, so a message that starts with "Message" still
- * counts as unsent while it sits in the composer.
+ * counts as unsent while it sits in the composer. Invisible characters don't count, so an unsent
+ * message with a zero-width space in front of it is not mistaken for other text.
  */
 internal fun composerCleared(text: String?, showingHint: Boolean, message: String): Boolean =
-    text.isNullOrEmpty() || showingHint || text.trim() != message.trim()
+    showingHint || visibleText(text).isEmpty() || !sameVisibleText(text, message)
 
 /**
  * Confirms the send: WhatsApp only clears the composer once the message is queued. Seeing the

@@ -32,6 +32,13 @@ class ComposerClearedTest {
     }
 
     @Test
+    fun invisibleCharactersDoNotMakeAnUnsentMessageLookCleared() {
+        assertFalse(composerCleared("​See you at 6", showingHint = false, message = "See you at 6"))
+        assertFalse(composerCleared("See you at 6‎", showingHint = false, message = "See you at 6"))
+        assertTrue(composerCleared("​", showingHint = false, message = "See you at 6"))
+    }
+
+    @Test
     fun messageThatIsTheHintWordIsOnlyClearedWhenTheFieldSaysSo() {
         assertFalse(composerCleared("Message", showingHint = false, message = "Message"))
         assertTrue(composerCleared("Message", showingHint = true, message = "Message"))

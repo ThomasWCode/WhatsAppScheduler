@@ -183,9 +183,10 @@ class UiDriver(
         node.refresh()
         val now = node.text?.toString() ?: ""
         // An empty field reports its hint ("Message") as its text, and WhatsApp's composer does not
-        // flag that reliably, so clearing a field is not verified.
-        if (!secret && text.isNotEmpty() && now != text && !node.isPassword) {
-            fail(step, "Text did not stick on ${describe(node)}: got '${now.take(40)}'")
+        // flag that reliably, so clearing a field is not verified. Invisible characters are ignored:
+        // WhatsApp's search box puts a zero-width space in front of whatever is typed into it.
+        if (!secret && text.isNotEmpty() && !sameVisibleText(now, text) && !node.isPassword) {
+            fail(step, "Text did not stick on ${describe(node)}: got '${showInvisible(now.take(40))}'")
         }
         log.info("$step: set text on ${describe(node)}" + if (secret) " (secret)" else " (${text.length} chars)")
     }

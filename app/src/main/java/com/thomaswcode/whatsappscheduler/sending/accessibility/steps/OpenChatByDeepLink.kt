@@ -25,6 +25,10 @@ class OpenChatByDeepLink(private val context: Context, private val driver: UiDri
         context.startActivity(intent)
     }
 
+    /** The chat is open and in front, so no Chat Lock prompt is coming (a prompt would have taken focus). */
+    fun composerInFront(): Boolean =
+        driver.find(Selectors.waEntry) != null && driver.foregroundPackage()?.startsWith(Selectors.WHATSAPP) == true
+
     suspend fun awaitComposer(timeoutMs: Long) {
         val (which, node) = driver.waitForAny(step, Selectors.waEntry, Selectors.waInvalidNumberDialog, timeoutMs = timeoutMs)
         if (which === Selectors.waInvalidNumberDialog) {
