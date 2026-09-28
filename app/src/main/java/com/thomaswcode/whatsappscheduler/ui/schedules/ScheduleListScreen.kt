@@ -154,8 +154,8 @@ fun ScheduleListScreen(
     LaunchedEffect(vm) {
         vm.eventFlow.collect { event ->
             when (event) {
-                is ListEvent.Deleted -> announce(event.summary, "Undo") { vm.undoDelete(event.removed) }
-                is ListEvent.Dismissed -> announce(event.summary, "Undo") { vm.undoDismiss(event.previous) }
+                is ListEvent.Deleted -> announce(event.summary, "Undo") { vm.undoDelete(event.removed, event.prompted) }
+                is ListEvent.Dismissed -> announce(event.summary, "Undo") { vm.undoDismiss(event.previous, event.prompted) }
                 is ListEvent.Failed -> announce(event.message)
             }
         }
