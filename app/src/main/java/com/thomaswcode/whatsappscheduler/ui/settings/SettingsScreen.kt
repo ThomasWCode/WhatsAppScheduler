@@ -122,10 +122,11 @@ fun SettingsScreen(
             TextRow("Default country for phone numbers (ISO)", settings.defaultCountryIso) { v -> update { it.copy(defaultCountryIso = v.uppercase().take(2)) } }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
-            Text("Tools", style = MaterialTheme.typography.titleMedium)
+            // Logs moved here from the list's top bar (R7): Needs attention now brings failures to you.
+            Text("Diagnostics", style = MaterialTheme.typography.titleMedium)
             Button(onClick = onSetup, modifier = Modifier.fillMaxWidth()) { Text("Setup checklist") }
+            OutlinedButton(onClick = onLogs, modifier = Modifier.fillMaxWidth()) { Text("Logs: sends and automation trace") }
             OutlinedButton(onClick = onInspector, modifier = Modifier.fillMaxWidth()) { Text("UI inspector (capture WhatsApp view ids)") }
-            OutlinedButton(onClick = onLogs, modifier = Modifier.fillMaxWidth()) { Text("Automation log") }
             OutlinedButton(
                 onClick = vm::rearmAlarms,
                 modifier = Modifier.fillMaxWidth(),
