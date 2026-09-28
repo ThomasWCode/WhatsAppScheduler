@@ -19,6 +19,7 @@ import com.thomaswcode.whatsappscheduler.data.contacts.ContactHit
 import com.thomaswcode.whatsappscheduler.data.db.Recipient
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.data.settings.Settings
+import com.thomaswcode.whatsappscheduler.domain.ChatCheck
 import com.thomaswcode.whatsappscheduler.domain.FriendlyTime
 import com.thomaswcode.whatsappscheduler.domain.PinFailures
 import com.thomaswcode.whatsappscheduler.domain.QuickTimes
@@ -50,8 +51,14 @@ import kotlinx.coroutines.withContext
 
 /** Something the screen hosting the sheet should show or do once. */
 sealed interface QuickEvent {
-    /** [createdIds] is set for a new message, which can be undone by deleting them. */
-    data class Scheduled(val summary: String, val createdIds: List<Long>?) : QuickEvent
+    /**
+     * [createdIds] is set for a new message, which can be undone by deleting them. [checkOffer] is a
+     * chat found by name that was new just now, offered "Check this chat now" once (features F4).
+     */
+    data class Scheduled(val summary: String, val createdIds: List<Long>?, val checkOffer: RecipientDraft? = null) : QuickEvent
+
+    /** What "Check this chat now" found. */
+    data class Checked(val message: String) : QuickEvent
     data class Deleted(val summary: String) : QuickEvent
 
     /** "Repeat…": continue in the full editor with this recipient, message and time. */
@@ -335,6 +342,23 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         }
     }
 
+    /**
+     * "Check this chat now" (features F4) for a chat found by name: WhatsApp's search is run for it
+     * while the user watches, nothing typed. It outlives this screen, which WhatsApp covers meanwhile.
+     */
+    fun checkChat(recipient: RecipientDraft) {
+        val name = recipient.chatName
+        container.appScope.launch {
+            val message = when (val result = container.chatChecker.check(name, recipient.recipientId)) {
+                ChatCheck.Found -> "Found “$name” in WhatsApp."
+                // The step's own reason is in the automation log; here, what to do about it.
+                is ChatCheck.NotFound -> "Couldn't find “$name” in WhatsApp's search. Check the name is exactly as WhatsApp shows it."
+                is ChatCheck.NotChecked -> "Didn't check “$name”: ${result.reason}."
+            }
+            events.trySend(QuickEvent.Checked(message))
+        }
+    }
+
     /** Recent chips toggle the recipient in or out of the To field. */
     fun toggle(recipient: Recipient) {
         if (saving) return
@@ -358,6 +382,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         saving = true
         viewModelScope.launch {
             var committed = false
+            var checkOffer: RecipientDraft? = null
             // Not cancelled if the sheet or screen goes away mid-save, which would strand rows without alarms.
             val outcome = withContext(NonCancellable) {
                 runCatching {
@@ -369,6 +394,8 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
                         firstAtMillis = at.toInstant().toEpochMilli(), zoneId = ZoneId.systemDefault().id,
                         recurrence = RecurrenceCodec.encode(Recurrence.Once), nextAtMillis = null,
                     )
+                    // Before markUsed below: a named chat never used before is one to offer checking.
+                    checkOffer = resolved.firstOrNull { it.phoneE164 == null && !it.isLocked && it.lastUsedAtMillis == 0L && it.verifiedAtMillis == null }?.toDraft()
                     val change = container.repository.saveBatch(template, resolved, members)
                     // The rows exist from here on: if arming them fails, Save again must update these rows
                     // rather than add a second batch, which would send the message twice.
@@ -390,7 +417,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
             outcome
                 .onSuccess { change ->
                     val summary = (if (d.isEditing) "Saved: " else "Scheduled: ") + names(d.recipients) + " · " + FriendlyTime.dayAndTime(at, now)
-                    events.trySend(QuickEvent.Scheduled(summary, change.saved.map { it.id }.takeUnless { d.isEditing }))
+                    events.trySend(QuickEvent.Scheduled(summary, change.saved.map { it.id }.takeUnless { d.isEditing }, checkOffer))
                     draft = QuickDraft()
                     query = ""
                     visible = false

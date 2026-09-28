@@ -77,8 +77,14 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
      */
     val snackbar = SnackbarHostState()
 
-    /** Shows [message], replacing one that is showing so its Undo isn't queued behind it; [onAction] if tapped. */
-    fun announce(message: String, action: String? = null, onAction: () -> Unit = {}) {
+    /** A second snackbar, shown after the first unless its action was taken, e.g. a one-time offer. */
+    data class FollowUp(val message: String, val action: String, val run: () -> Unit)
+
+    /**
+     * Shows [message], replacing one that is showing so its Undo isn't queued behind it; [onAction] if
+     * tapped, otherwise [followUp] next.
+     */
+    fun announce(message: String, action: String? = null, followUp: FollowUp? = null, onAction: () -> Unit = {}) {
         viewModelScope.launch {
             snackbar.currentSnackbarData?.dismiss()
             val result = snackbar.showSnackbar(
@@ -87,7 +93,11 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
                 withDismissAction = action == null,
                 duration = if (action != null) SnackbarDuration.Long else SnackbarDuration.Short,
             )
-            if (result == SnackbarResult.ActionPerformed) onAction()
+            when {
+                result == SnackbarResult.ActionPerformed -> onAction()
+                followUp != null ->
+                    if (snackbar.showSnackbar(followUp.message, actionLabel = followUp.action, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) followUp.run()
+            }
         }
     }
 
