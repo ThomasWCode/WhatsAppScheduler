@@ -134,6 +134,17 @@ class RecipientsAndBatchesTest {
     }
 
     @Test
+    fun anEditThatWouldMakeTwoIdentitiesForOneChatIsCaught() = runTest {
+        val (m, d, c) = listOf(mum, dad, crew).map { recipients.resolve(it) }
+        assertNull(recipients.sameChatElsewhere(m))
+        // Dad's number edited to Mum's: Mum is already that chat.
+        assertEquals(m.id, recipients.sameChatElsewhere(d.copy(phoneE164 = m.phoneE164))?.id)
+        // A group renamed to another saved group's name.
+        val club = recipients.resolve(RecipientDraft(TargetKind.GROUP, "Book club"))
+        assertEquals(c.id, recipients.sameChatElsewhere(club.copy(displayName = "Work crew"))?.id)
+    }
+
+    @Test
     fun anEditKeepsARunThatFinishedWhileTheSheetWasOpen() = runTest {
         val m = recipients.resolve(mum)
         val readBeforeTheRun = schedules.saveBatch(template(), listOf(m), now = now).saved.single()
