@@ -60,6 +60,13 @@ class QuickDraftTest {
     }
 
     @Test
+    fun aChatChosenTwiceIsKeptOnce() {
+        // Details edited so that Sam now has Dad's number: the message must not go to that chat twice.
+        val chosen = listOf(dad.toDraft(), RecipientDraft(TargetKind.CONTACT, "Sam", phoneE164 = "+447400123456", recipientId = 9), crew.toDraft())
+        assertEquals(listOf(dad.toDraft(), crew.toDraft()), chosen.distinctChats())
+    }
+
+    @Test
     fun recentsLeaveOutWhoIsChosenAndTheChatMeStandsFor() {
         val recents = listOf(dad, crew, self)
         assertEquals(recents, availableRecents(recents, chosen = emptyList(), me = null))

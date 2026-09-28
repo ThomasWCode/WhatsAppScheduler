@@ -221,9 +221,15 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
                 runCatching {
                     // Linked to a recipient so it shows in the quick sheet's recents; Chat Lock switched here is
                     // remembered for that chat (quick-schedule.md §3).
-                    val recipient = container.recipients.resolve(RecipientDraft(f.kind, f.name.trim(), phoneE164 = phoneE164, isLocked = f.locked))
-                    if (f.lockedTouched && recipient.isLocked != f.locked) container.recipients.updateDetails(recipient.copy(isLocked = f.locked))
-                    val saved = container.repository.save(schedule.copy(recipientId = recipient.id, isLocked = lockFor(f, recipient, existing)))
+                    val resolved = container.recipients.resolve(RecipientDraft(f.kind, f.name.trim(), phoneE164 = phoneE164, isLocked = f.locked))
+                    var recipient = resolved
+                    typedChatName(f, recipient)?.let { name -> recipient = recipient.copy(whatsappName = name.takeIf { it != recipient.displayName }) }
+                    if (f.lockedTouched) recipient = recipient.copy(isLocked = f.locked)
+                    if (recipient != resolved) container.recipients.updateDetails(recipient)
+                    // The chat's own name, as the quick sheet uses: what WhatsApp shows, which the search needs.
+                    val saved = container.repository.save(
+                        schedule.copy(recipientId = recipient.id, targetName = recipient.chatName, isLocked = lockFor(f, recipient, existing)),
+                    )
                     // If a later step fails, Save again updates this row rather than inserting another.
                     existing = saved
                     container.recipients.markUsed(listOf(recipient.id))
@@ -281,6 +287,17 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
             form.lockedTouched -> form.locked
             existing != null && existing.recipientId == recipient.id -> form.locked
             else -> recipient.isLocked
+        }
+
+        /**
+         * The chat's name belongs to the chat too. One the contact picker filled in is the address book's,
+         * so a chat already known by that number keeps the WhatsApp name remembered for it. One typed
+         * here is what the user says WhatsApp shows (the field asks for that), so it is remembered for
+         * the chat. Returns the name to remember, or null when the stored one stands.
+         */
+        fun typedChatName(form: EditorForm, recipient: Recipient): String? {
+            val typed = form.name.trim()
+            return typed.takeIf { it.isNotEmpty() && it != form.pickedName?.trim() && it != recipient.chatName }
         }
 
         fun validate(form: EditorForm, phoneE164: String?, rule: Recurrence, firstAt: Instant, now: Instant = Instant.now()): String? = when {
