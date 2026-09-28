@@ -55,6 +55,8 @@ class QuickDraftTest {
         assertTrue(RecipientDraft(TargetKind.CONTACT, "Dad (mobile)", phoneE164 = "+447400123456").sameChatAs(dad.toDraft()))
         assertTrue(RecipientDraft(TargetKind.GROUP, "Work crew").sameChatAs(crew.toDraft()))
         assertFalse(RecipientDraft(TargetKind.CONTACT, "Work crew").sameChatAs(crew.toDraft()))
+        // Typed in another case: WhatsApp's search would still open the same group.
+        assertTrue(RecipientDraft(TargetKind.GROUP, " work Crew").sameChatAs(crew.toDraft()))
         // By number and by name are different ways to reach a chat, so they are not assumed equal.
         assertFalse(RecipientDraft(TargetKind.CONTACT, "Dad").sameChatAs(dad.toDraft()))
     }
