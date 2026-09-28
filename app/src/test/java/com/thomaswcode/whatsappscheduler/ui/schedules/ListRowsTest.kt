@@ -1,11 +1,13 @@
 package com.thomaswcode.whatsappscheduler.ui.schedules
 
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
-import com.thomaswcode.whatsappscheduler.data.db.SendStatus
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
 import com.thomaswcode.whatsappscheduler.sending.SendKind
+import com.thomaswcode.whatsappscheduler.sending.SendPhase
 import com.thomaswcode.whatsappscheduler.sending.SendRequest
+import com.thomaswcode.whatsappscheduler.sending.SendState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -34,12 +36,12 @@ class ListRowsTest {
     }
 
     @Test
-    fun batchRowShowsEachOutcomeWhenTheyDiffer() {
-        val mum = schedule(1).copy(lastStatus = SendStatus.SENT, lastResult = "SENT")
-        val dad = schedule(2, "Dad").copy(lastStatus = SendStatus.FAILED, lastResult = "FAILED: search: Timed out")
-        assertEquals(listOf("Mum: SENT", "Dad: FAILED: search: Timed out"), outcomeLines(listOf(mum, dad)))
-        assertEquals(listOf("Mum: SENT", "Sam: not sent yet"), outcomeLines(listOf(mum, schedule(3, "Sam"))))
-        assertEquals(listOf("Last: SENT"), outcomeLines(listOf(mum, mum.copy(id = 4, targetName = "Sam"))))
-        assertEquals(emptyList<String>(), outcomeLines(listOf(schedule(5))))
+    fun rowsBeingSentSaySo() {
+        val mum = schedule(1)
+        val dad = schedule(2, "Dad")
+        assertEquals("Sending…", busyText(listOf(mum, dad), SendState(currentId = 2, phase = SendPhase.SENDING)))
+        assertEquals("Waiting to try again…", busyText(listOf(mum), SendState(currentId = 1, phase = SendPhase.WAITING_TO_RETRY)))
+        assertEquals("Queued to send", busyText(listOf(mum), SendState(queuedIds = listOf(1))))
+        assertNull(busyText(listOf(mum), SendState(currentId = 5, queuedIds = listOf(6))))
     }
 }

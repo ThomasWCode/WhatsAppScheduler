@@ -57,23 +57,9 @@ class FallbackNotifier(private val context: Context, private val notifications: 
     private fun show(schedule: Schedule, title: String, text: String, tap: PendingIntent) =
         notifications.show(Notifications.ID_FALLBACK_BASE + schedule.id.toInt(), notifications.fallback(title, text, tap))
 
-    // The two differ in action as well as extras, because extras alone don't tell PendingIntents apart.
-    private fun manualSend(schedule: Schedule): PendingIntent = activity(
-        schedule,
-        Intent(context, FallbackActivity::class.java)
-            .setAction(FallbackActivity.ACTION_SEND)
-            .putExtra(FallbackActivity.EXTRA_MESSAGE, schedule.message)
-            .putExtra(FallbackActivity.EXTRA_PHONE, schedule.phoneE164)
-            .putExtra(FallbackActivity.EXTRA_NAME, schedule.targetName),
-    )
+    private fun manualSend(schedule: Schedule): PendingIntent = activity(schedule, FallbackActivity.manualSend(context, schedule))
 
-    private fun checkChat(schedule: Schedule): PendingIntent = activity(
-        schedule,
-        Intent(context, FallbackActivity::class.java)
-            .setAction(FallbackActivity.ACTION_CHECK)
-            .putExtra(FallbackActivity.EXTRA_PHONE, schedule.phoneE164)
-            .putExtra(FallbackActivity.EXTRA_NAME, schedule.targetName),
-    )
+    private fun checkChat(schedule: Schedule): PendingIntent = activity(schedule, FallbackActivity.checkChat(context, schedule))
 
     private fun activity(schedule: Schedule, intent: Intent): PendingIntent = PendingIntent.getActivity(
         context, schedule.id.toInt(), intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
