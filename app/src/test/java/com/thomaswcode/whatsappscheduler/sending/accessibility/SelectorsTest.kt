@@ -59,6 +59,6 @@ class SelectorsTest {
     fun withTextEscapesRegexCharacters() {
         val s = Selectors.waConversationRowTitle.withText("Family (UK) [2026]")
         assertTrue(s.text!!.matches("Family (UK) [2026]"))
-        assertFalse(s.text!!.matches("Family UK 2026"))
+        assertFalse(s.text.matches("Family UK 2026"))
     }
 }
