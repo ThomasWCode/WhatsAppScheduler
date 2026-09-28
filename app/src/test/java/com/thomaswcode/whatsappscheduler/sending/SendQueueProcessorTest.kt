@@ -225,6 +225,16 @@ class SendQueueProcessorTest {
         assertEquals(listOf("pinPaused", "failed Mum"), notifier.events)
     }
 
+    @Test
+    fun rejectedPinIsRecordedEvenWhenRecordingTheOutcomeFails() = runTest {
+        store.put(oneOff())
+        store.failWrites = true
+        val sender = FakeSender(SendResult.PinRejected("unlockKeyguard", "Keyguard still locked"))
+        processor(sender).run { enqueue(scheduled()); drain() }
+        assertTrue(PinGuard(pinStore, clock).block() is PinBlock.Rejected)
+        assertTrue(log.lines.any { it.startsWith("E Unhandled error in job 1") })
+    }
+
     // B07
 
     @Test
@@ -241,6 +251,16 @@ class SendQueueProcessorTest {
         queue.enqueue(scheduled(at = later))
         queue.drain()
         assertEquals(1, sender.jobs.size)
+    }
+
+    @Test
+    fun sendNowOnASwitchedOffOneOffUsesUpItsOccurrence() = runTest {
+        val later = due.plus(Duration.ofHours(1))
+        store.put(oneOff(at = later).copy(enabled = false))
+        val sender = FakeSender()
+        processor(sender).run { enqueue(SendRequest(1, SendKind.SEND_NOW, later.toEpochMilli())); drain() }
+        assertEquals(1, sender.jobs.size)
+        assertNull(store.row(1).nextAtMillis)
     }
 
     @Test
@@ -264,6 +284,17 @@ class SendQueueProcessorTest {
         assertEquals(due.toEpochMilli(), store.row(1).nextAtMillis)
     }
 
+    @Test
+    fun globalDryRunNeverOffersAManualSend() = runTest {
+        // Found on the phone: a failed dry run posted "Tap to send", inviting a real message to a group.
+        store.put(oneOff())
+        val sender = FakeSender(failed("search"), failed("search"), failed("search"))
+        processor(sender, Settings(dryRun = true, retryCount = 2)).run { enqueue(scheduled()); drain() }
+        assertTrue(sender.jobs.all { it.dryRun })
+        assertEquals(listOf(SendStatus.FAILED), store.logged)
+        assertTrue(notifier.events.isEmpty())
+    }
+
     private fun failed(step: String) = SendResult.Failed(step, "Timed out")
 
     private class FakeSender(vararg results: SendResult) : MessageSender {
@@ -281,6 +312,7 @@ class SendQueueProcessorTest {
     private class FakeStore : SendStore {
         private val rows = mutableMapOf<Long, Schedule>()
         val logged = mutableListOf<SendStatus>()
+        var failWrites = false
 
         fun put(schedule: Schedule) {
             rows[schedule.id] = schedule
@@ -295,6 +327,7 @@ class SendQueueProcessorTest {
         override suspend fun get(id: Long) = rows[id]
 
         override suspend fun recordRun(id: Long, occurrenceAtMillis: Long, status: SendStatus, detail: String?, sentTo: String, ranAt: Instant): Schedule? {
+            check(!failWrites) { "disk full" }
             val current = rows[id] ?: return null
             logged += status
             val next = if (current.nextAtMillis == occurrenceAtMillis) ScheduleRepository.nextAfterRun(current, occurrenceAtMillis, ranAt) else current.nextAtMillis

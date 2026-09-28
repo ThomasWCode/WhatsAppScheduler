@@ -172,8 +172,10 @@ fun ScheduleListScreen(
  */
 @Composable
 private fun SendNowDialog(schedule: Schedule, onDismiss: () -> Unit, onSend: (SendRequest) -> Unit) {
-    val next = schedule.nextAtMillis?.takeIf { schedule.enabled }
     val recurring = schedule.rule != Recurrence.Once
+    // A switched-off one-off still has its time, and switching it back on would send it then, so
+    // sending it now uses that time up. A paused series only gets extra copies.
+    val next = if (recurring) schedule.nextAtMillis?.takeIf { schedule.enabled } else schedule.nextAtMillis
     val early = next?.let { SendRequest(schedule.id, SendKind.SEND_NOW, it) }
     val copy = SendRequest(schedule.id, SendKind.EXTRA_COPY)
     val explanation = when {
