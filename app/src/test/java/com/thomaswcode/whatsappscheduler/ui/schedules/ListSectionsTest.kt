@@ -63,7 +63,7 @@ class ListSectionsTest {
         assertEquals(listOf(1L), split.attention.single().map { it.id })
         assertEquals(listOf(2L), split.sent.single().map { it.id })
 
-        // Both need attention, for different reasons: two entries, each saying what happened to it.
+        // Both need attention: an entry each, so checking one chat can't mark the other as sent.
         val both = ListSections.of(
             listOf(
                 mum.copy(nextAtMillis = null, lastRunAtMillis = ran, attention = Attention.FAILED),
@@ -71,6 +71,13 @@ class ListSectionsTest {
             ),
         )
         assertEquals(listOf(listOf(1L), listOf(2L)), both.attention.map { group -> group.map { it.id } })
+        val bothUncertain = ListSections.of(
+            listOf(
+                mum.copy(nextAtMillis = null, lastRunAtMillis = ran, attention = Attention.UNCERTAIN),
+                dad.copy(nextAtMillis = null, lastRunAtMillis = ran, attention = Attention.UNCERTAIN),
+            ),
+        )
+        assertEquals(listOf(listOf(1L), listOf(2L)), bothUncertain.attention.map { group -> group.map { it.id } })
         assertTrue(ListSections.of(emptyList()).isEmpty)
     }
 
