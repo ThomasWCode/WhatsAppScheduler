@@ -51,10 +51,10 @@ fun AppNav(container: AppContainer, destination: MutableStateFlow<String?>) {
                 onSetup = { nav.navigate(Routes.SETUP) },
             )
         }
-        composable(Routes.EDIT, arguments = listOf(navArgument("id") { type = NavType.LongType })) { entry ->
+        // The editor's ViewModel reads "id" from its SavedStateHandle, which carries the route's arguments.
+        composable(Routes.EDIT, arguments = listOf(navArgument("id") { type = NavType.LongType })) {
             ScheduleEditorScreen(
                 container = container,
-                scheduleId = entry.arguments?.getLong("id") ?: 0L,
                 // Pops the editor only while it is still there, so a save finishing after Back was
                 // pressed can't pop the list as well and leave a blank screen (B05).
                 onDone = { nav.popBackStack(Routes.EDIT, inclusive = true) },

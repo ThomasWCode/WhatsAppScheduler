@@ -32,13 +32,13 @@ interface ScheduleDao {
 
     /** Writes only the run columns, so edits made while a send was running survive it (B08). */
     @Query(
-        "UPDATE schedules SET firstAtMillis = :firstAtMillis, nextAtMillis = :nextAtMillis, " +
-            "lastRunAtMillis = :ranAtMillis, lastResult = :result WHERE id = :id"
+        "UPDATE schedules SET firstAtMillis = :firstAtMillis, nextAtMillis = :nextAtMillis, lastRunAtMillis = :ranAtMillis, " +
+            "lastResult = :result, lastStatus = :status, attention = :attention WHERE id = :id"
     )
-    suspend fun updateRun(id: Long, firstAtMillis: Long, nextAtMillis: Long?, ranAtMillis: Long, result: String)
+    suspend fun updateRun(id: Long, firstAtMillis: Long, nextAtMillis: Long?, ranAtMillis: Long, result: String, status: SendStatus, attention: Attention?)
 
-    @Query("UPDATE schedules SET lastRunAtMillis = :ranAtMillis, lastResult = :result WHERE id = :id")
-    suspend fun updateLastRun(id: Long, ranAtMillis: Long, result: String)
+    @Query("UPDATE schedules SET lastRunAtMillis = :ranAtMillis, lastResult = :result, lastStatus = :status, attention = :attention WHERE id = :id")
+    suspend fun updateLastRun(id: Long, ranAtMillis: Long, result: String, status: SendStatus, attention: Attention?)
 }
 
 @Dao

@@ -2,9 +2,12 @@ package com.thomaswcode.whatsappscheduler.ui.schedules
 
 import android.content.Intent
 import android.provider.ContactsContract
+import android.text.format.DateFormat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,6 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -38,88 +42,40 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.thomaswcode.whatsappscheduler.AppContainer
-import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.domain.PhoneNormaliser
 import com.thomaswcode.whatsappscheduler.domain.PhoneParse
-import com.thomaswcode.whatsappscheduler.domain.Recurrence
-import com.thomaswcode.whatsappscheduler.domain.RecurrenceCodec
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
 import com.thomaswcode.whatsappscheduler.ui.BackBar
 import java.time.DayOfWeek
 import java.time.Instant
-import java.time.LocalDate
 import java.time.LocalTime
-import java.time.ZoneId
-import java.time.ZonedDateTime
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-
-private enum class RuleKind { ONCE, DAILY, WEEKLY, MONTHLY, HOURS, DAYS }
+import java.time.format.TextStyle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ScheduleEditorScreen(container: AppContainer, scheduleId: Long, onDone: () -> Unit) {
+fun ScheduleEditorScreen(
+    container: AppContainer,
+    onDone: () -> Unit,
+    vm: ScheduleEditorViewModel = viewModel(factory = ScheduleEditorViewModel.factory(container)),
+) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val zone = remember { ZoneId.systemDefault() }
-
-    var loaded by remember { mutableStateOf(scheduleId == 0L) }
-    var existing by remember { mutableStateOf<Schedule?>(null) }
-    var kind by remember { mutableStateOf(TargetKind.CONTACT) }
-    var name by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
-    var locked by remember { mutableStateOf(false) }
-    var message by remember { mutableStateOf("") }
-    var date by remember { mutableStateOf(LocalDate.now(zone)) }
-    var time by remember { mutableStateOf(LocalTime.now(zone).plusMinutes(5).withSecond(0).withNano(0)) }
-    var ruleKind by remember { mutableStateOf(RuleKind.ONCE) }
-    var weekdays by remember { mutableStateOf(setOf(LocalDate.now(zone).dayOfWeek)) }
-    var monthDay by remember { mutableStateOf(LocalDate.now(zone).dayOfMonth.toString()) }
-    var every by remember { mutableStateOf("1") }
-    var error by remember { mutableStateOf<String?>(null) }
-    var showDate by remember { mutableStateOf(false) }
-    var showTime by remember { mutableStateOf(false) }
-    var countryIso by remember { mutableStateOf("GB") }
-    // Set by the first tap on Save, so a second tap can't insert the schedule again (B05).
-    var saving by remember { mutableStateOf(false) }
-    // The name the contact picker last filled in, so picking someone else replaces it (B22).
-    var pickedName by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(scheduleId) {
-        countryIso = container.settings.current().defaultCountryIso
-        if (scheduleId != 0L) {
-            container.repository.get(scheduleId)?.let { s ->
-                existing = s
-                kind = s.targetKind
-                name = s.targetName
-                phone = s.phoneE164 ?: ""
-                locked = s.isLocked
-                message = s.message
-                val first = Instant.ofEpochMilli(s.firstAtMillis).atZone(ZoneId.of(s.zoneId))
-                date = first.toLocalDate()
-                time = first.toLocalTime()
-                when (val r = s.rule) {
-                    Recurrence.Once -> ruleKind = RuleKind.ONCE
-                    Recurrence.Daily -> ruleKind = RuleKind.DAILY
-                    is Recurrence.Weekly -> { ruleKind = RuleKind.WEEKLY; weekdays = r.days }
-                    is Recurrence.Monthly -> { ruleKind = RuleKind.MONTHLY; monthDay = r.dayOfMonth.toString() }
-                    is Recurrence.EveryNHours -> { ruleKind = RuleKind.HOURS; every = r.hours.toString() }
-                    is Recurrence.EveryNDays -> { ruleKind = RuleKind.DAYS; every = r.days.toString() }
-                }
-            }
-            loaded = true
-        }
-    }
+    // Observed, so the weekday names follow a language change without a restart.
+    val locale = LocalConfiguration.current.locales[0]
+    LaunchedEffect(vm) { vm.done.collect { onDone() } }
+    var showDate by rememberSaveable { mutableStateOf(false) }
+    var showTime by rememberSaveable { mutableStateOf(false) }
 
     val pickContact = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val uri = result.data?.data ?: return@rememberLauncherForActivityResult
@@ -128,47 +84,42 @@ fun ScheduleEditorScreen(container: AppContainer, scheduleId: Long, onDone: () -
             arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME),
             null, null, null,
         )?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                val raw = cursor.getString(0) ?: ""
-                val display = cursor.getString(1) ?: ""
-                // Kept as picked when it doesn't parse, so the field shows why it can't be saved.
-                phone = PhoneNormaliser.toE164(raw, countryIso) ?: raw
-                if (name.isBlank() || name == pickedName) name = display
-                pickedName = display
-            }
+            if (cursor.moveToFirst()) vm.contactPicked(cursor.getString(0) ?: "", cursor.getString(1) ?: "")
         }
     }
 
-    if (!loaded) return
+    if (!vm.ready) return
+    val form = vm.form
+    val countryIso = vm.countryIso
 
-    Scaffold(topBar = { BackBar(if (scheduleId == 0L) "New message" else "Edit message", onDone) }) { padding ->
+    Scaffold(topBar = { BackBar(if (vm.scheduleId == 0L) "New message" else "Edit message", onDone) }) { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
         ) {
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                 TargetKind.entries.forEachIndexed { i, k ->
                     SegmentedButton(
-                        selected = kind == k,
-                        onClick = { kind = k },
+                        selected = form.kind == k,
+                        onClick = { vm.update { copy(kind = k) } },
                         shape = SegmentedButtonDefaults.itemShape(i, TargetKind.entries.size),
                     ) { Text(if (k == TargetKind.CONTACT) "Contact" else "Group") }
                 }
             }
             Spacer(Modifier.height(12.dp))
             OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                label = { Text(if (kind == TargetKind.CONTACT) "Contact name (as shown in WhatsApp)" else "Group name (exact, as shown in WhatsApp)") },
+                value = form.name,
+                onValueChange = { vm.update { copy(name = it) } },
+                label = { Text(if (form.kind == TargetKind.CONTACT) "Contact name (as shown in WhatsApp)" else "Group name (exact, as shown in WhatsApp)") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
             )
-            if (kind == TargetKind.CONTACT) {
+            if (form.kind == TargetKind.CONTACT) {
                 Spacer(Modifier.height(8.dp))
-                val parsed = remember(phone, countryIso) { phone.takeIf { it.isNotBlank() }?.let { PhoneNormaliser.parse(it, countryIso) } }
+                val parsed = remember(form.phone, countryIso) { form.phone.takeIf { it.isNotBlank() }?.let { PhoneNormaliser.parse(it, countryIso) } }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(
-                        value = phone,
-                        onValueChange = { phone = it },
+                        value = form.phone,
+                        onValueChange = { vm.update { copy(phone = it) } },
                         label = { Text("Phone") },
                         modifier = Modifier.weight(1f),
                         singleLine = true,
@@ -188,7 +139,7 @@ fun ScheduleEditorScreen(container: AppContainer, scheduleId: Long, onDone: () -
             }
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Switch(checked = locked, onCheckedChange = { locked = it })
+                Switch(checked = form.locked, onCheckedChange = { locked -> vm.update { copy(locked = locked) } })
                 Spacer(Modifier.width(8.dp))
                 Column {
                     Text("This chat is behind WhatsApp Chat Lock")
@@ -197,125 +148,74 @@ fun ScheduleEditorScreen(container: AppContainer, scheduleId: Long, onDone: () -
             }
             Spacer(Modifier.height(12.dp))
             OutlinedTextField(
-                value = message,
-                onValueChange = { message = it },
+                value = form.message,
+                onValueChange = { vm.update { copy(message = it) } },
                 label = { Text("Message") },
                 modifier = Modifier.fillMaxWidth().height(140.dp),
             )
             Spacer(Modifier.height(12.dp))
             Text("First send", style = MaterialTheme.typography.titleSmall)
             Row {
-                OutlinedButton(onClick = { showDate = true }) { Text(date.format(DateTimeFormatter.ofPattern("EEE d MMM yyyy"))) }
+                OutlinedButton(onClick = { showDate = true }) { Text(form.date.format(DateTimeFormatter.ofPattern("EEE d MMM yyyy"))) }
                 Spacer(Modifier.width(8.dp))
-                OutlinedButton(onClick = { showTime = true }) { Text(time.format(DateTimeFormatter.ofPattern("HH:mm"))) }
+                OutlinedButton(onClick = { showTime = true }) { Text(form.time.format(DateTimeFormatter.ofPattern(if (DateFormat.is24HourFormat(context)) "HH:mm" else "h:mm a"))) }
             }
             Spacer(Modifier.height(12.dp))
             Text("Repeat", style = MaterialTheme.typography.titleSmall)
-            Row(modifier = Modifier.fillMaxWidth()) {
+            // Wraps instead of squeezing the last chips to nothing on a normal-width phone (B15).
+            FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 RuleKind.entries.forEach { rk ->
                     FilterChip(
-                        selected = ruleKind == rk,
-                        onClick = { ruleKind = rk },
+                        selected = form.ruleKind == rk,
+                        onClick = { vm.update { copy(ruleKind = rk) } },
                         label = { Text(rk.name.lowercase().replaceFirstChar(Char::uppercase)) },
-                        modifier = Modifier.padding(end = 4.dp),
                     )
                 }
             }
-            when (ruleKind) {
-                RuleKind.WEEKLY -> Row(modifier = Modifier.fillMaxWidth()) {
+            when (form.ruleKind) {
+                RuleKind.WEEKLY -> FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     DayOfWeek.entries.forEach { d ->
                         FilterChip(
-                            selected = d in weekdays,
-                            onClick = { weekdays = if (d in weekdays) weekdays - d else weekdays + d },
-                            label = { Text(d.name.take(2)) },
-                            modifier = Modifier.padding(end = 2.dp),
+                            selected = d in form.weekdays,
+                            onClick = { vm.update { copy(weekdays = if (d in weekdays) weekdays - d else weekdays + d) } },
+                            label = { Text(d.getDisplayName(TextStyle.SHORT, locale)) },
                         )
                     }
                 }
-                RuleKind.MONTHLY -> OutlinedTextField(value = monthDay, onValueChange = { monthDay = it.filter(Char::isDigit) }, label = { Text("Day of month (1–31)") }, singleLine = true)
-                RuleKind.HOURS -> OutlinedTextField(value = every, onValueChange = { every = it.filter(Char::isDigit) }, label = { Text("Every N hours") }, singleLine = true)
-                RuleKind.DAYS -> OutlinedTextField(value = every, onValueChange = { every = it.filter(Char::isDigit) }, label = { Text("Every N days") }, singleLine = true)
+                RuleKind.MONTHLY -> OutlinedTextField(value = form.monthDay, onValueChange = { vm.update { copy(monthDay = it.filter(Char::isDigit)) } }, label = { Text("Day of month (1–31)") }, singleLine = true)
+                RuleKind.HOURS -> OutlinedTextField(value = form.every, onValueChange = { vm.update { copy(every = it.filter(Char::isDigit)) } }, label = { Text("Every N hours") }, singleLine = true)
+                RuleKind.DAYS -> OutlinedTextField(value = form.every, onValueChange = { vm.update { copy(every = it.filter(Char::isDigit)) } }, label = { Text("Every N days") }, singleLine = true)
                 else -> Unit
             }
-            error?.let {
+            vm.error?.let {
                 Spacer(Modifier.height(8.dp))
                 Text(it, color = MaterialTheme.colorScheme.error)
             }
             Spacer(Modifier.height(16.dp))
-            Button(
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !saving,
-                onClick = {
-                    if (saving) return@Button
-                    val rule = when (ruleKind) {
-                        RuleKind.ONCE -> Recurrence.Once
-                        RuleKind.DAILY -> Recurrence.Daily
-                        RuleKind.WEEKLY -> Recurrence.Weekly(weekdays)
-                        RuleKind.MONTHLY -> Recurrence.Monthly(monthDay.toIntOrNull() ?: 0)
-                        RuleKind.HOURS -> Recurrence.EveryNHours(every.toIntOrNull() ?: 0)
-                        RuleKind.DAYS -> Recurrence.EveryNDays(every.toIntOrNull() ?: 0)
-                    }
-                    val firstAt = ZonedDateTime.of(date, time, zone).toInstant()
-                    val phoneE164 = if (kind == TargetKind.CONTACT && phone.isNotBlank()) PhoneNormaliser.toE164(phone, countryIso) else null
-                    error = validate(name, phone, phoneE164, kind, message, rule, firstAt)
-                    if (error != null) return@Button
-                    val schedule = (existing ?: Schedule(
-                        message = "", targetKind = kind, targetName = "", phoneE164 = null, isLocked = false,
-                        firstAtMillis = 0L, zoneId = zone.id, recurrence = "ONCE", nextAtMillis = null,
-                    )).copy(
-                        message = message.trim(),
-                        targetKind = kind,
-                        targetName = name.trim(),
-                        phoneE164 = phoneE164,
-                        isLocked = locked,
-                        firstAtMillis = firstAt.toEpochMilli(),
-                        zoneId = zone.id,
-                        recurrence = RecurrenceCodec.encode(rule),
-                    )
-                    saving = true
-                    scope.launch {
-                        // Not cancelled if the screen closes mid-save, which would leave the row without its alarm.
-                        val outcome = withContext(NonCancellable) {
-                            runCatching {
-                                val saved = container.repository.save(schedule)
-                                // If a later step fails, Save again updates this row rather than inserting another.
-                                existing = saved
-                                container.alarmScheduler.sync(saved)
-                                // A prompt for the old version of the message is stale now (B10).
-                                container.fallbackNotifier.cancel(saved.id)
-                            }
-                        }
-                        outcome
-                            .onSuccess { onDone() }
-                            .onFailure {
-                                container.log.error("Saving schedule failed", it)
-                                error = "Couldn't save (${it.message ?: it.javaClass.simpleName}). Try again."
-                                saving = false
-                            }
-                    }
-                },
-            ) { Text(if (saving) "Saving…" else "Save") }
+            Button(modifier = Modifier.fillMaxWidth(), enabled = !vm.saving, onClick = vm::save) {
+                Text(if (vm.saving) "Saving…" else "Save")
+            }
             Spacer(Modifier.height(32.dp))
         }
     }
 
     if (showDate) {
-        val state = rememberDatePickerState(initialSelectedDateMillis = date.atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli())
+        val state = rememberDatePickerState(initialSelectedDateMillis = form.date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli())
         DatePickerDialog(
             onDismissRequest = { showDate = false },
             confirmButton = {
                 TextButton(onClick = {
-                    state.selectedDateMillis?.let { date = Instant.ofEpochMilli(it).atZone(ZoneId.of("UTC")).toLocalDate() }
+                    state.selectedDateMillis?.let { millis -> vm.update { copy(date = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()) } }
                     showDate = false
                 }) { Text("OK") }
             },
         ) { DatePicker(state = state) }
     }
     if (showTime) {
-        val state = rememberTimePickerState(initialHour = time.hour, initialMinute = time.minute, is24Hour = true)
-        androidx.compose.material3.AlertDialog(
+        val state = rememberTimePickerState(initialHour = form.time.hour, initialMinute = form.time.minute, is24Hour = DateFormat.is24HourFormat(context))
+        AlertDialog(
             onDismissRequest = { showTime = false },
-            confirmButton = { TextButton(onClick = { time = LocalTime.of(state.hour, state.minute); showTime = false }) { Text("OK") } },
+            confirmButton = { TextButton(onClick = { vm.update { copy(time = LocalTime.of(state.hour, state.minute)) }; showTime = false }) { Text("OK") } },
             text = { TimePicker(state = state) },
         )
     }
@@ -326,16 +226,4 @@ private fun phoneHint(parsed: PhoneParse, countryIso: String): String = when (pa
     is PhoneParse.Valid -> "Opens chat with ${PhoneNormaliser.display(parsed.e164, countryIso)}"
     is PhoneParse.Unverified -> "Opens chat with ${parsed.e164}. This phone doesn't recognise the number, so check it."
     PhoneParse.Invalid -> "Not a valid number. Type it as saved in Contacts, or with the country code (+44…)."
-}
-
-private fun validate(name: String, phone: String, phoneE164: String?, kind: TargetKind, message: String, rule: Recurrence, firstAt: Instant): String? = when {
-    name.isBlank() -> "Enter the chat name exactly as WhatsApp shows it."
-    message.isBlank() -> "Enter a message."
-    kind == TargetKind.CONTACT && phone.isNotBlank() && phoneE164 == null -> "That phone number isn't valid. Include the country code, or leave it empty to find the chat by name."
-    rule is Recurrence.Weekly && rule.days.isEmpty() -> "Pick at least one weekday."
-    rule is Recurrence.Monthly && rule.dayOfMonth !in 1..31 -> "Day of month must be 1–31."
-    rule is Recurrence.EveryNHours && rule.hours < 1 -> "Interval must be at least 1 hour."
-    rule is Recurrence.EveryNDays && rule.days < 1 -> "Interval must be at least 1 day."
-    rule == Recurrence.Once && !firstAt.isAfter(Instant.now()) -> "A one-off message must be in the future."
-    else -> null
 }
