@@ -53,6 +53,8 @@ fun RecipientField(
     contactHits: List<ContactHit>,
     savedHits: List<Recipient>,
     contactsAllowed: Boolean,
+    /** False while the sheet is saving: the draft is frozen. */
+    enabled: Boolean,
     searchFocus: FocusRequester,
     onQuery: (String) -> Unit,
     onSearchFocused: () -> Unit,
@@ -85,6 +87,7 @@ fun RecipientField(
             value = query,
             onValueChange = onQuery,
             placeholder = { Text(if (chosen.isEmpty()) "Search contacts or type a group…" else "Add another…") },
+            enabled = enabled,
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { if (query.isNotBlank()) onAddChatName(query) }),
