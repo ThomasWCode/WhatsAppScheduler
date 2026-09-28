@@ -134,6 +134,35 @@ class RecipientsAndBatchesTest {
     }
 
     @Test
+    fun aGroupTypedInAnotherCaseIsTheSavedOne() = runTest {
+        val saved = recipients.resolve(crew)
+        assertEquals(saved.id, recipients.resolve(RecipientDraft(TargetKind.GROUP, "work crew")).id)
+    }
+
+    @Test
+    fun detailEditsReportThePendingMessagesTheyChanged() = runTest {
+        val m = recipients.resolve(mum)
+        val pending = schedules.saveBatch(template(), listOf(m), now = now).saved.single()
+        val sent = schedules.saveBatch(template(), listOf(m), now = now).saved.single()
+        schedules.recordRun(sent.id, sent.nextAtMillis!!, SendStatus.SENT, null, "Mum", tomorrowNine.plusSeconds(30))
+        val changed = recipients.updateDetails(m.copy(phoneE164 = "+447400123459"))
+        assertEquals(listOf(pending.id), changed.map { it.id })
+        assertEquals("+447400123459", changed.single().phoneE164)
+    }
+
+    @Test
+    fun oldSchedulesThatDisagreeGiveTheNewestDetails() = runTest {
+        suspend fun legacy(name: String, locked: Boolean, createdAt: Instant) =
+            schedules.save(template().copy(targetName = name, phoneE164 = "+447400123458", isLocked = locked, createdAtMillis = createdAt.toEpochMilli()), now)
+        legacy("Sam", locked = false, createdAt = now.minus(Duration.ofDays(30)))
+        legacy("Sam (work)", locked = true, createdAt = now.minus(Duration.ofDays(2)))
+        recipients.linkUnlinkedSchedules()
+        val recipient = recipients.observeRecent().first().single()
+        assertEquals("Sam (work)", recipient.chatName)
+        assertTrue(recipient.isLocked)
+    }
+
+    @Test
     fun anEditThatWouldMakeTwoIdentitiesForOneChatIsCaught() = runTest {
         val (m, d, c) = listOf(mum, dad, crew).map { recipients.resolve(it) }
         assertNull(recipients.sameChatElsewhere(m))
@@ -155,6 +184,20 @@ class RecipientsAndBatchesTest {
         assertEquals(SendStatus.FAILED, edited.lastStatus)
         assertEquals(ranAt.toEpochMilli(), edited.lastRunAtMillis)
         assertEquals(later.toEpochMilli(), edited.nextAtMillis)
+    }
+
+    @Test
+    fun partOfABatchEditedOnItsOwnBecomesABatchOfItsOwn() = runTest {
+        val (m, d, c) = listOf(mum, dad, crew).map { recipients.resolve(it) }
+        val members = schedules.saveBatch(template(), listOf(m, d, c), now = now).saved
+        val edited = schedules.saveBatch(template("Lunch at 1?"), listOf(m, d), members.take(2), now).saved
+        assertNotNull(edited[0].batchId)
+        assertEquals(edited[0].batchId, edited[1].batchId)
+        assertTrue("apart from the member left out", edited[0].batchId != members[2].batchId)
+        assertEquals(members[2].batchId, schedules.get(members[2].id)!!.batchId)
+        // Edited as a whole, a batch keeps its id.
+        val whole = schedules.saveBatch(template("Lunch at 2?"), listOf(m, d), schedules.batch(edited[0].batchId!!), now).saved
+        assertEquals(edited[0].batchId, whole[0].batchId)
     }
 
     @Test

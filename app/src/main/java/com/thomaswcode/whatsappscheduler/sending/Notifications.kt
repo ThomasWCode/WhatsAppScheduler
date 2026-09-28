@@ -64,6 +64,8 @@ class Notifications(private val context: Context) {
 
     fun cancel(id: Int) = manager.cancel(id)
 
+    fun isShowing(id: Int): Boolean = runCatching { manager.activeNotifications.any { it.id == id } }.getOrDefault(false)
+
     private fun openApp(): PendingIntent = PendingIntent.getActivity(
         context, 0, Intent(context, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     )
