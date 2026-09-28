@@ -67,7 +67,8 @@ class AlarmScheduler(
             val next = schedule.nextAtMillis
             when {
                 // Read per schedule, not once up front: a send may have started since the list was loaded.
-                sendState.state.value.isBusy(schedule.id) -> log.info("Schedule ${schedule.id} is being sent; not re-arming it")
+                // Only a request that uses up the occurrence holds it; it re-arms the alarm itself when done.
+                sendState.state.value.holdsOccurrence(schedule.id) -> log.info("Schedule ${schedule.id} is being sent; not re-arming it")
                 !schedule.enabled || next == null -> cancel(schedule.id)
                 next > now.toEpochMilli() -> sync(schedule)
                 else -> SendService.enqueue(context, SendRequest(schedule.id, SendKind.SCHEDULED, next))
