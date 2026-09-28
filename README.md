@@ -51,13 +51,14 @@ CI (`.github/workflows/ci.yml`) runs the unit tests, lint and a debug build on e
 - Up to 10 recipients get the same message at the same time. They are kept together as one row, and tapping it reopens the sheet to change or delete them all.
 - **Repeat…** hands the draft to the full editor for daily, weekly, monthly or custom repeats.
 - **Share** text from any app and choose **Schedule on WhatsApp**: the sheet opens over that app and you are back where you were after scheduling.
+- The list puts what needs you first (**Needs attention**: missed, failed, or may have been sent, with Send now, Discard or Mark as sent), then **Upcoming**, **Repeating** (with a Pause switch) and a collapsed **Sent**. Swipe a row away to delete it; **Undo** brings it back with its history. The strip at the top says whether auto-send is ready, and what to fix if not.
 - Contacts permission is optional. It lets the type-ahead search your contacts on the phone and mark the ones that are on WhatsApp; without it you can pick one contact at a time or type a number.
 
 ## First-time setup on the phone
 
 1. Install the APK and open the app. Open **Settings → Setup checklist** and clear every red item. The Samsung-specific steps are in `docs/SAMSUNG_SETUP.md`.
 2. In **Settings**, store your lock-screen PIN. If you hid WhatsApp's Locked chats folder behind a secret code, store that too. Optionally set your own number (for a **Me** chip in the sheet) and the morning and evening times the time chips use.
-3. Turn on **Dry run**, create a message to yourself two minutes ahead, lock the phone and watch it unlock, open the chat, type the text, clear it and re-lock. Check **Logs → Automation trace** if it stops anywhere.
+3. Turn on **Dry run**, create a message to yourself two minutes ahead, lock the phone and watch it unlock, open the chat, type the text, clear it and re-lock. Check **Settings → Diagnostics → Logs** (Automation trace) if it stops anywhere.
 4. Turn Dry run off.
 
 ## Project layout
