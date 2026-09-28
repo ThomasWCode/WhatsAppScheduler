@@ -66,7 +66,7 @@ class PostponeAndHousekeepingTest {
         // Moved again, it is still "moved from" the time it was first due; Undo goes back one step.
         val again = schedules.postpone(saved.id, evening.plus(Duration.ofDays(1)))!!
         assertEquals(tomorrowNine.toEpochMilli(), again.after.postponedFromMillis)
-        assertEquals(moved.after, schedules.restoreTiming(again.before))
+        assertEquals(moved.after, schedules.restoreTiming(again))
         assertEquals(moved.after, schedules.get(saved.id))
     }
 
@@ -125,6 +125,17 @@ class PostponeAndHousekeepingTest {
         val failed = schedules.recordRun(daily.id, daily.nextAtMillis!!, SendStatus.FAILED, "search: Timed out", "Mum", tomorrowNine.plusSeconds(20))!!
         val moved = schedules.postpone(daily.id, Instant.ofEpochMilli(failed.nextAtMillis!!).plus(Duration.ofHours(3)), seen = failed)!!.after
         assertEquals("the earlier occurrence still needs attention", Attention.FAILED, moved.attention)
+    }
+
+    @Test
+    fun undoingAMoveThatHasRunPutsNothingBack() = runTest {
+        val saved = schedules.save(message(), now)
+        val evening = tomorrowNine.plus(Duration.ofHours(9))
+        val moved = schedules.postpone(saved.id, evening)!!
+        // The moved send went out before Undo was tapped: the old time must not come back.
+        schedules.recordRun(saved.id, evening.toEpochMilli(), SendStatus.SENT, null, "Mum", evening.plusSeconds(20))
+        assertNull(schedules.restoreTiming(moved))
+        assertNull(schedules.get(saved.id)!!.nextAtMillis)
     }
 
     @Test

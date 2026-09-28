@@ -105,9 +105,15 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
         Postponed(current, moved)
     }
 
-    /** Undo for [postpone]: the timing, switch and attention as they were; the rest as it is now. */
-    suspend fun restoreTiming(before: Schedule): Schedule? = db.withTransaction {
+    /**
+     * Undo for [postpone]: the timing, switch and attention as they were; the rest as it is now. Only
+     * while the move still stands: once the moved occurrence has run, or the row was changed, putting
+     * the old time back would send it again, so nothing is restored and null is returned.
+     */
+    suspend fun restoreTiming(moved: Postponed): Schedule? = db.withTransaction {
+        val before = moved.before
         val current = schedules.getById(before.id) ?: return@withTransaction null
+        if (current.nextAtMillis != moved.after.nextAtMillis || current.lastRunAtMillis != moved.after.lastRunAtMillis) return@withTransaction null
         val restored = current.copy(
             firstAtMillis = before.firstAtMillis,
             nextAtMillis = before.nextAtMillis,

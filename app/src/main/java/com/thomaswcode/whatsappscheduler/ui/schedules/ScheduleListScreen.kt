@@ -120,7 +120,6 @@ fun ScheduleListScreen(
     // Held by id and saved, so an open dialog survives rotation and always shows the current rows.
     var sendIds by rememberSaveable { mutableStateOf<LongArray?>(null) }
     var sendCopyOnly by rememberSaveable { mutableStateOf(false) }
-    var postponeIds by rememberSaveable { mutableStateOf<LongArray?>(null) }
     var sentOpen by rememberSaveable { mutableStateOf(false) }
 
     // Shown from the ViewModel, so a rotation doesn't lose a snackbar or its Undo.
@@ -143,7 +142,7 @@ fun ScheduleListScreen(
             when (event) {
                 is ListEvent.Deleted -> announce(event.summary, "Undo") { vm.undoDelete(event.removed, event.prompted) }
                 is ListEvent.Dismissed -> announce(event.summary, "Undo") { vm.undoDismiss(event.previous, event.prompted) }
-                is ListEvent.Postponed -> announce(event.summary, "Undo") { vm.undoPostpone(event.before) }
+                is ListEvent.Postponed -> announce(event.summary, "Undo") { vm.undoPostpone(event.moved, event.prompted) }
                 is ListEvent.Failed -> announce(event.message)
             }
         }
@@ -159,7 +158,7 @@ fun ScheduleListScreen(
         val once = first.rule == Recurrence.Once
         val busy = busyText(group, sendState)
         val test = { group.forEach { vm.send(SendRequest(it.id, SendKind.TEST)) } }
-        val postpone = { postponeIds = group.map { it.id }.toLongArray() }
+        val postpone = { vm.askToPostpone(group) }
         // A series moves its next occurrence; one that is paused or finished has none to move.
         val canPostpone = once || (first.enabled && first.nextAtMillis != null)
         ScheduleRow(
@@ -291,15 +290,13 @@ fun ScheduleListScreen(
         )
     }
 
-    postponeIds?.let { ids -> schedules.filter { it.id in ids } }?.takeIf { it.isNotEmpty() }?.let { group ->
+    // The rows as they were when the dialog opened (see ScheduleListViewModel.postponing).
+    vm.postponing?.let { group ->
         PostponeDialog(
             schedule = group.first(),
             now = now,
-            onDismiss = { postponeIds = null },
-            onMove = { at ->
-                postponeIds = null
-                vm.postpone(group, at, "Moved to " + FriendlyTime.dayAndTime(at.atZone(now.zone), now, timeFormat))
-            },
+            onDismiss = vm::cancelPostpone,
+            onMove = { at -> vm.postpone(at, "Moved to " + FriendlyTime.dayAndTime(at.atZone(now.zone), now, timeFormat)) },
         )
     }
 
