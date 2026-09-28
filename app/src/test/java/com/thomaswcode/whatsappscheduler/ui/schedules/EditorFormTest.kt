@@ -62,6 +62,18 @@ class EditorFormTest {
     }
 
     @Test
+    fun theChatsWhatsAppNameStandsUnlessOneIsTypedHere() {
+        val mum = Recipient(id = 7, kind = TargetKind.CONTACT, displayName = "Mum", whatsappName = "Mum (work)", phoneE164 = "+447400123456")
+        val form = EditorForm.blank(ZonedDateTime.of(2026, 9, 28, 12, 0, 0, 0, london)).copy(phone = "+447400123456")
+        // Filled in by the contact picker: the address book's name, not the one WhatsApp shows.
+        assertNull(ScheduleEditorViewModel.typedChatName(form.copy(name = "Mum", pickedName = "Mum"), mum))
+        // As the schedule already had it.
+        assertNull(ScheduleEditorViewModel.typedChatName(form.copy(name = "Mum (work)"), mum))
+        // Typed here: what WhatsApp shows, so it is remembered for the chat.
+        assertEquals("Mummy", ScheduleEditorViewModel.typedChatName(form.copy(name = " Mummy "), mum))
+    }
+
+    @Test
     fun storedScheduleFillsTheForm() {
         val schedule = Schedule(
             message = "Bins!", targetKind = TargetKind.CONTACT, targetName = "Dad", phoneE164 = "+447400123456", isLocked = false,
