@@ -1,5 +1,6 @@
 package com.thomaswcode.whatsappscheduler.ui.schedules
 
+import com.thomaswcode.whatsappscheduler.domain.Postponing
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
@@ -29,5 +30,8 @@ class PostponeHelpersTest {
         assertEquals("Tomorrow 09:00", skippedText(days.take(1), now))
         assertEquals("Tomorrow 09:00 and Wed 7 Oct 09:00", skippedText(days.take(2), now))
         assertEquals("Tomorrow 09:00, Wed 7 Oct 09:00 and 2 more", skippedText(days, now))
+        // A list as long as the limit may be cut short.
+        val many = List(Postponing.LIMIT) { i -> on(6, 9).plusHours(i.toLong()).toInstant() }
+        assertEquals("Tomorrow 09:00, Tomorrow 10:00 and at least ${Postponing.LIMIT - 2} more", skippedText(many, now))
     }
 }
