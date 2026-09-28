@@ -1,6 +1,7 @@
 package com.thomaswcode.whatsappscheduler.ui.schedules
 
 import androidx.compose.runtime.saveable.SaverScope
+import com.thomaswcode.whatsappscheduler.data.db.Recipient
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.domain.Recurrence
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
@@ -10,8 +11,11 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
+import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EditorFormTest {
@@ -34,9 +38,27 @@ class EditorFormTest {
             kind = TargetKind.GROUP, name = "Work crew", phone = "", locked = true, message = "Stand-up in 5",
             date = LocalDate.parse("2026-10-05"), time = LocalTime.parse("09:30"), ruleKind = RuleKind.WEEKLY,
             weekdays = setOf(DayOfWeek.MONDAY, DayOfWeek.THURSDAY), monthDay = "5", every = "3", pickedName = "Work",
+            lockedTouched = true,
         )
         val saved = with(EditorForm.Saver) { SaverScope { true }.save(form) }!!
         assertEquals(form, EditorForm.Saver.restore(saved))
+    }
+
+    @Test
+    fun chatLockComesFromTheChatUnlessSwitchedHere() {
+        val lockedChat = Recipient(id = 7, kind = TargetKind.CONTACT, displayName = "Sam", phoneE164 = "+447400123458", isLocked = true)
+        val form = EditorForm.blank(ZonedDateTime.of(2026, 9, 28, 12, 0, 0, 0, london)).copy(name = "Sam", phone = "+447400123458")
+        val elsewhere = Schedule(
+            message = "Hi", targetKind = TargetKind.CONTACT, targetName = "Dad", phoneE164 = "+447400123457", isLocked = false,
+            firstAtMillis = 0L, zoneId = london.id, recurrence = "DAILY", nextAtMillis = null, recipientId = 3,
+        )
+        // New, or moved to a chat already known to be locked: the untouched switch doesn't unlock it.
+        assertTrue(ScheduleEditorViewModel.lockFor(form, lockedChat, existing = null))
+        assertTrue(ScheduleEditorViewModel.lockFor(form, lockedChat, elsewhere))
+        // Still the schedule's own chat: the schedule's own setting stands.
+        assertFalse(ScheduleEditorViewModel.lockFor(form, lockedChat, elsewhere.copy(recipientId = 7)))
+        // Switched here: that decides.
+        assertFalse(ScheduleEditorViewModel.lockFor(form.copy(lockedTouched = true), lockedChat, null))
     }
 
     @Test
