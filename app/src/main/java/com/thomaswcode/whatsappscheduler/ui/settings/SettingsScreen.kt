@@ -27,11 +27,9 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,28 +37,36 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.thomaswcode.whatsappscheduler.AppContainer
 import com.thomaswcode.whatsappscheduler.data.settings.Settings
 import com.thomaswcode.whatsappscheduler.domain.PinCircuitBreaker
-import com.thomaswcode.whatsappscheduler.domain.PinFailures
 import com.thomaswcode.whatsappscheduler.ui.BackBar
 import com.thomaswcode.whatsappscheduler.ui.authenticateThen
-import kotlinx.coroutines.launch
 
 @Composable
-fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onSetup: () -> Unit, onInspector: () -> Unit, onLogs: () -> Unit) {
+fun SettingsScreen(
+    container: AppContainer,
+    onBack: () -> Unit,
+    onSetup: () -> Unit,
+    onInspector: () -> Unit,
+    onLogs: () -> Unit,
+    vm: SettingsViewModel = viewModel(factory = SettingsViewModel.factory(container)),
+) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val settings by container.settings.settings.collectAsState(initial = Settings())
-    val hasPin by container.secrets.hasPin().collectAsState(initial = false)
-    val hasSecret by container.secrets.hasSecretCode().collectAsState(initial = false)
-    val pinFailures by container.secrets.observePinFailures().collectAsState(initial = PinFailures())
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    val hasPin by vm.hasPin.collectAsStateWithLifecycle()
+    val hasSecret by vm.hasSecretCode.collectAsStateWithLifecycle()
+    val pinFailures by vm.pinFailures.collectAsStateWithLifecycle()
     val pinBlock = remember(pinFailures) { PinCircuitBreaker.block(pinFailures, System.currentTimeMillis()) }
+    // Plain remember on purpose: a rotation closes these, so reopening asks to authenticate again, and
+    // nothing typed into them is written to saved state.
     var pinDialog by remember { mutableStateOf(false) }
     var secretDialog by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf<String?>(null) }
+    val status = vm.status
 
-    fun update(transform: (Settings) -> Settings) = scope.launch { container.settings.update(transform) }
+    fun update(transform: (Settings) -> Settings) = vm.update(transform)
 
     Scaffold(topBar = { BackBar("Settings", onBack) }) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState())) {
@@ -73,14 +79,14 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onSetup: () -> U
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(if (hasPin) "Lock-screen PIN: stored" else "Lock-screen PIN: not stored", modifier = Modifier.weight(1f))
                 OutlinedButton(onClick = {
-                    (context as Activity).authenticateThen("Confirm it's you", onFailure = { status = it }) { pinDialog = true }
+                    (context as Activity).authenticateThen("Confirm it's you", onFailure = vm::showStatus) { pinDialog = true }
                 }) { Text(if (hasPin) "Change" else "Store") }
             }
             pinBlock?.let { Text(it.describe(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(if (hasSecret) "Chat Lock secret code: stored" else "Chat Lock secret code: none", modifier = Modifier.weight(1f))
                 OutlinedButton(onClick = {
-                    (context as Activity).authenticateThen("Confirm it's you", onFailure = { status = it }) { secretDialog = true }
+                    (context as Activity).authenticateThen("Confirm it's you", onFailure = vm::showStatus) { secretDialog = true }
                 }) { Text(if (hasSecret) "Change" else "Store") }
             }
             Text("Only needed if you hid the Locked chats folder behind a secret code.", style = MaterialTheme.typography.bodySmall)
@@ -103,7 +109,7 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onSetup: () -> U
             OutlinedButton(onClick = onInspector, modifier = Modifier.fillMaxWidth()) { Text("UI inspector (capture WhatsApp view ids)") }
             OutlinedButton(onClick = onLogs, modifier = Modifier.fillMaxWidth()) { Text("Automation log") }
             OutlinedButton(
-                onClick = { scope.launch { container.alarmScheduler.rescheduleAll(); status = "Alarms re-armed" } },
+                onClick = vm::rearmAlarms,
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Re-arm all alarms") }
             status?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp)) }
@@ -115,30 +121,8 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onSetup: () -> U
         PinDialog(
             hasPin = hasPin,
             onDismiss = { pinDialog = false },
-            onSave = { value ->
-                scope.launch {
-                    // Clears a rejection (B04). Unlocking may still be paused by the daily limit, in
-                    // which case the paused notice stays, with the new reason.
-                    container.secrets.setPin(value)
-                    val stillBlocked = container.pinGuard.block()
-                    if (stillBlocked == null) {
-                        container.fallbackNotifier.cancelPinPaused()
-                        status = "PIN stored"
-                    } else {
-                        container.fallbackNotifier.notifyPinPaused(stillBlocked.describe())
-                        status = "PIN stored. " + stillBlocked.describe()
-                    }
-                    pinDialog = false
-                }
-            },
-            onRemove = {
-                scope.launch {
-                    container.secrets.setPin(null)
-                    container.fallbackNotifier.cancelPinPaused()
-                    pinDialog = false
-                    status = "PIN removed: sends that need to unlock the phone will fail"
-                }
-            },
+            onSave = { value -> vm.savePin(value) { pinDialog = false } },
+            onRemove = { vm.removePin { pinDialog = false } },
         )
     }
     if (secretDialog) {
@@ -146,7 +130,7 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onSetup: () -> U
             title = "Chat Lock secret code",
             hint = "Leave empty to remove",
             onDismiss = { secretDialog = false },
-            onSave = { value -> scope.launch { container.secrets.setSecretCode(value); secretDialog = false } },
+            onSave = { value -> vm.saveSecretCode(value) { secretDialog = false } },
         )
     }
 }

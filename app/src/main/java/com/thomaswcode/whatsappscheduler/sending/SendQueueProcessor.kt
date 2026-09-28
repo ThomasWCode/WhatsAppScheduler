@@ -132,7 +132,7 @@ class SendQueueProcessor(
      */
     private suspend fun recordMissed(schedule: Schedule, occurrence: Long, late: Duration) {
         log.info("Schedule ${schedule.id}: occurrence ${stamp(occurrence)} is ${late.toMinutes()} min late; not sending it")
-        val stored = store.recordRun(schedule.id, occurrence, SendStatus.SKIPPED, "missed by ${late.toMinutes()} min (phone off?)", schedule.targetName, clock.instant())
+        val stored = store.recordRun(schedule.id, occurrence, SendStatus.MISSED, "missed by ${late.toMinutes()} min (phone off?)", schedule.targetName, clock.instant())
             ?: return
         alarms.sync(stored)
         notifier.missed(stored, occurrence)

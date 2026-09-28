@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.thomaswcode.whatsappscheduler.data.db.AppDatabase
+import com.thomaswcode.whatsappscheduler.data.db.Attention
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.data.db.SendStatus
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
@@ -82,12 +83,39 @@ class ScheduleRepositoryTest {
     }
 
     @Test
-    fun recordingADeletedScheduleIsHarmless() = runTest {
+    fun aScheduleDeletedDuringItsSendIsStillInTheHistory() = runTest {
         val saved = saveDaily()
         repository.delete(saved)
         assertNull(repository.recordRun(saved.id, nine.toEpochMilli(), SendStatus.SENT, null, "Mum", ranAt))
         assertNull(repository.recordManual(saved.id, SendStatus.SENT, null, "Mum", ranAt))
-        assertEquals(emptyList<Any>(), repository.observeLogs().first())
+        val logs = repository.observeLogs().first()
+        assertEquals(2, logs.size)
+        logs.forEach {
+            assertNull(it.scheduleId)
+            assertEquals("Mum", it.targetName)
+        }
+    }
+
+    @Test
+    fun outcomesSetTheTypedStatusAndWhatNeedsAttention() = runTest {
+        val saved = saveDaily()
+        val failed = repository.recordRun(saved.id, nine.toEpochMilli(), SendStatus.FAILED, "search: Timed out", "Mum", ranAt)!!
+        assertEquals(SendStatus.FAILED, failed.lastStatus)
+        assertEquals(Attention.FAILED, failed.attention)
+        assertEquals(nine.toEpochMilli(), repository.observeLogs().first().single().occurrenceAtMillis)
+        // A test run changes nothing it waits on; a copy sent by hand resolves it.
+        assertEquals(Attention.FAILED, repository.recordManual(saved.id, SendStatus.DRY_RUN, null, "Mum", ranAt)!!.attention)
+        val resolved = repository.recordManual(saved.id, SendStatus.SENT, null, "Mum", ranAt)!!
+        assertNull(resolved.attention)
+        assertEquals(resolved, repository.get(saved.id))
+        // The next occurrence's outcome decides again.
+        val next = resolved.nextAtMillis!!
+        val uncertain = repository.recordRun(saved.id, next, SendStatus.UNCERTAIN, null, "Mum", ranAt.plusSeconds(86_400))!!
+        assertEquals(Attention.UNCERTAIN, uncertain.attention)
+        // A scheduled dry run sends nothing, so what was waiting still is.
+        val dryRun = repository.recordRun(saved.id, uncertain.nextAtMillis!!, SendStatus.DRY_RUN, null, "Mum", ranAt.plusSeconds(2 * 86_400))!!
+        assertEquals(Attention.UNCERTAIN, dryRun.attention)
+        assertEquals(SendStatus.DRY_RUN, dryRun.lastStatus)
     }
 
     @Test
@@ -108,6 +136,18 @@ class ScheduleRepositoryTest {
         val off = repository.save(sent.copy(enabled = false), now = later)
         val on = repository.save(off.copy(enabled = true), now = later)
         assertNull("switching it back on must not bring the old time back", on.nextAtMillis)
+    }
+
+    @Test
+    fun switchingOnOrOffStartsFromTheStoredRow() = runTest {
+        val saved = saveDaily()
+        // The list still shows `saved`, but a send has finished since.
+        repository.recordRun(saved.id, nine.toEpochMilli(), SendStatus.SENT, null, "Mum", ranAt)
+        val off = repository.setEnabled(saved.id, false, now = ranAt.plusSeconds(60))!!
+        assertEquals(false, off.enabled)
+        assertEquals("the run is not written back over", SendStatus.SENT, off.lastStatus)
+        assertEquals(ranAt.toEpochMilli(), off.lastRunAtMillis)
+        assertNull(repository.setEnabled(999, true))
     }
 
     @Test
