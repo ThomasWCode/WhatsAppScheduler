@@ -13,9 +13,18 @@ data class SendState(
     val currentId: Long? = null,
     val phase: SendPhase? = null,
     val attempt: Int = 0,
+    /** Schedules whose pending occurrence a queued or running request will use up and re-arm afterwards. */
+    val occurrenceHolderIds: Set<Long> = emptySet(),
 ) {
-    /** True while [scheduleId] is waiting in the queue or being sent. */
+    /** True while [scheduleId] is waiting in the queue or being sent, whatever the kind of request. */
     fun isBusy(scheduleId: Long): Boolean = scheduleId == currentId || scheduleId in queuedIds
+
+    /**
+     * True while a request that uses up [scheduleId]'s occurrence is queued or running: its alarm must
+     * then be left alone, since that request re-arms it when done. A test run or an extra copy doesn't
+     * count, as neither touches the occurrence (B01).
+     */
+    fun holdsOccurrence(scheduleId: Long): Boolean = scheduleId in occurrenceHolderIds
 }
 
 class SendStateHolder {
