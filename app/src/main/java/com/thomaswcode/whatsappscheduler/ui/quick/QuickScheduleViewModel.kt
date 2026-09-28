@@ -296,6 +296,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         if (error != null || at == null) return
         saving = true
         viewModelScope.launch {
+            var committed = false
             // Not cancelled if the sheet or screen goes away mid-save, which would strand rows without alarms.
             val outcome = withContext(NonCancellable) {
                 runCatching {
@@ -307,9 +308,14 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
                         recurrence = RecurrenceCodec.encode(Recurrence.Once), nextAtMillis = null,
                     )
                     val change = container.repository.saveBatch(template, resolved, members)
+                    // The rows exist from here on: if arming them fails, Save again must update these rows
+                    // rather than add a second batch, which would send the message twice.
+                    committed = true
+                    draft = draft.copy(editingIds = change.saved.map { it.id })
                     change.saved.forEach { container.alarmScheduler.sync(it); container.fallbackNotifier.cancel(it.id) }
                     change.deleted.forEach { container.alarmScheduler.cancel(it.id); container.fallbackNotifier.cancel(it.id) }
-                    container.recipients.markUsed(resolved.map { it.id })
+                    // Only orders the recent chips, so it doesn't fail the save.
+                    runCatching { container.recipients.markUsed(resolved.map { it.id }) }.onFailure { container.log.error("Marking recipients used failed", it) }
                     change
                 }
             }
@@ -324,7 +330,8 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
                 }
                 .onFailure {
                     container.log.error("Quick schedule failed", it)
-                    error = "Couldn't save (${it.message ?: it.javaClass.simpleName}). Try again."
+                    val reason = it.message ?: it.javaClass.simpleName
+                    error = if (committed) "Saved, but its alarm couldn't be set ($reason). Tap Save to try again." else "Couldn't save ($reason). Try again."
                 }
         }
     }
