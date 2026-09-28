@@ -290,7 +290,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
             d.recipients.isEmpty() -> "Choose who it's for."
             d.message.isBlank() -> "Enter a message."
             at == null -> "Choose when to send it."
-            !at.isAfter(now.plusSeconds(59)) -> "Pick a time at least a minute from now."
+            !isSendable(at, now) -> "Pick a time at least a minute from now."
             else -> null
         }
         if (error != null || at == null) return
@@ -312,8 +312,13 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
                     // rather than add a second batch, which would send the message twice.
                     committed = true
                     draft = draft.copy(editingIds = change.saved.map { it.id })
+                    // Removed members first, each on its own: their rows are gone, so a retry couldn't find
+                    // them again, and a Tap to send left behind would offer the old message to them.
+                    change.deleted.forEach { removed ->
+                        runCatching { container.alarmScheduler.cancel(removed.id) }.onFailure { container.log.error("Cancelling a removed member's alarm failed", it) }
+                        runCatching { container.fallbackNotifier.cancel(removed.id) }.onFailure { container.log.error("Clearing a removed member's prompt failed", it) }
+                    }
                     change.saved.forEach { container.alarmScheduler.sync(it); container.fallbackNotifier.cancel(it.id) }
-                    change.deleted.forEach { container.alarmScheduler.cancel(it.id); container.fallbackNotifier.cancel(it.id) }
                     // Only orders the recent chips, so it doesn't fail the save.
                     runCatching { container.recipients.markUsed(resolved.map { it.id }) }.onFailure { container.log.error("Marking recipients used failed", it) }
                     change
@@ -392,6 +397,9 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
 
     companion object {
         fun factory(container: AppContainer) = viewModelFactory { initializer { QuickScheduleViewModel(container, createSavedStateHandle()) } }
+
+        /** A time far enough ahead to schedule: at least a minute from now. The sheet's button uses it too. */
+        fun isSendable(at: ZonedDateTime, now: ZonedDateTime): Boolean = at.isAfter(now.plusSeconds(59))
 
         /** "Mum", "Mum and Dad", "Mum, Dad +1". */
         fun names(recipients: List<RecipientDraft>): String = when (recipients.size) {
