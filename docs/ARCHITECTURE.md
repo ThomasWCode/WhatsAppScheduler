@@ -17,10 +17,10 @@ WhatsApp itself has been testing native scheduled messages since early 2026. If 
 ## Components
 
 ```
-AlarmManager.setAlarmClock ──► AlarmReceiver ──► SendService (foreground, one job at a time)
-                                                    │
-                                                    ▼
-                                             AccessibilitySender
+AlarmManager.setAlarmClock ──► AlarmReceiver ──► SendService (foreground) ──► SendQueueProcessor (one job at a time)
+                                                                                     │
+                                                                                     ▼
+                                                                              AccessibilitySender
                                                     │
         ┌──────────────────┬──────────────────┬─────┴──────────┬─────────────────┐
         ▼                  ▼                  ▼                ▼                 ▼
@@ -30,8 +30,12 @@ AlarmManager.setAlarmClock ──► AlarmReceiver ──► SendService (foregr
                                   all through UiDriver over WaAccessibilityService
 ```
 
-- **AlarmScheduler** keeps exactly one alarm per enabled schedule. It uses `setAlarmClock` because Samsung's power management treats it like a user alarm; if the exact-alarm permission is revoked it falls back to `setAndAllowWhileIdle` and the list shows a warning. `BootReceiver` re-arms after reboot, app update and clock changes. Occurrences missed while the phone was off are sent immediately when inside the grace window (default 2 h) and otherwise skipped and logged.
-- **SendService** is a `specialUse` foreground service holding a partial wake lock. It processes a queue of schedule ids, retries a failed send (default twice, 30 s apart), records the outcome, advances recurring schedules and posts the tap-to-send fallback notification on failure. "Send now" and "Dry run now" from the list use the same path without advancing the schedule.
+- **AlarmScheduler** keeps exactly one alarm per enabled schedule. It uses `setAlarmClock` because Samsung's power management treats it like a user alarm; if the exact-alarm permission is revoked it falls back to `setAndAllowWhileIdle` and the list shows a warning. Each alarm carries the occurrence it is for (`occurrence_at`). `BootReceiver` re-arms after reboot, app update and clock changes. An occurrence whose alarm could not fire (phone off, force-stop, clock change) is handed to the send queue as a late alarm. The queue sends it when it is inside the grace window (default 2 h); otherwise it logs SKIPPED and posts a "Missed" notification that offers to send by hand. Deciding lateness only in the queue means a re-arm and an alarm delivered at the same moment can't produce two outcomes. Re-arming leaves alone any schedule that is queued or being sent.
+- **SendService** is a `specialUse` foreground service. It holds a partial wake lock per job, sized to that job's worst case (every attempt timing out, plus the retry delays), and otherwise only hosts **SendQueueProcessor**, a plain class that can be tested on the JVM:
+  - **Once per occurrence.** A request's kind is `SCHEDULED` (an alarm), `SEND_NOW` (the pending occurrence, early), `EXTRA_COPY` or `TEST` (a dry run). The first two carry the occurrence time as an idempotency key. A request is dropped if the same send is already queued or running, and skipped if the schedule has since moved past its occurrence, so opening the app, rotating it or a clock broadcast during a send cannot queue it again. `SEND_NOW` uses up the occurrence, so it isn't sent again at its time.
+  - **Retries only before the tap.** Failures are classified by how far the attempt got (`JobProgress`). `Failed` (before Send was tapped) is retried, by default twice, 30 s apart, unless waiting cannot help (no PIN stored, PIN entry paused). `Uncertain` (anything after the tap, including verification) is never retried and posts "May have been sent: check the chat" instead of Tap to send. `PinRejected` is never retried either (see below).
+  - **Outcomes against the current row.** `recordRun` re-reads the schedule in a transaction and writes only the run columns, and moves the schedule past the occurrence only if the row still shows it, so an edit made during a send is kept.
+- **PIN circuit breaker.** A PIN typed without the phone (or the Chat Lock prompt) accepting it is recorded next to the PIN. From then on nothing types the PIN until it is saved again in Settings, and the app never makes more than two failed entries in 24 hours even across re-saves. This matters because One UI lengthens the lockout after 5 failures and, with *Auto factory reset* on, wipes the phone after 15. On the keypad the first digit decides whether clicks or touch gestures work, before anything is submitted, so the PIN is never submitted twice in one attempt.
 - **WakeUnlockController** records whether the screen was off and the keyguard locked, acquires a screen wake lock, launches `UnlockActivity` (also via a full-screen-intent notification as a second route), and calls `requestDismissKeyguard`. On a secure device the bouncer appears and `UnlockKeyguard` types the stored PIN, handling both a text field and a numeric keypad, with or without an Enter key. After the send it locks the screen again through the accessibility global action when the phone was locked before.
 - **Chat selection**: contacts with a phone number use the official `https://wa.me/<number>?text=` link, which pre-fills the composer. Groups and contacts without a number are found through WhatsApp's own search by exact name. Chats flagged as locked go through the Locked chats folder: reveal it (typing the secret code in search if one is configured), tap it, switch the biometric prompt to the device PIN, enter the PIN, then select the chat by name. None of the lock-related steps run for chats that are not flagged, so ordinary sends are unaffected.
 - **UiDriver** is a small polling layer over `AccessibilityNodeInfo`: wait-for with timeouts, click with clickable-ancestor and tap-gesture fallbacks, `ACTION_SET_TEXT` with verification, and a full window-tree dump saved on every failure.
@@ -41,7 +45,9 @@ AlarmManager.setAlarmClock ──► AlarmReceiver ──► SendService (foregr
 
 ## Failure handling
 
-Every wait has a step timeout (default 8 s) and every job a total timeout (default 90 s). A failure captures the window tree to `files/last_window_dump.txt` (viewable in the UI inspector), the job is retried, and after the last attempt the fallback notification lets the user send with one tap: the message is copied to the clipboard and the chat opened with the text pre-filled when a number is known. Recurring schedules always advance regardless of outcome, so one failure never stalls a series.
+Every wait has a step timeout (default 8 s) and every job a total timeout (default 90 s), which covers everything up to the Send tap; verification after the tap has its own step timeout. A failure captures the window tree to `files/last_window_dump.txt` (viewable in the UI inspector). A failure from before the tap clears the pre-filled message from the composer, so it doesn't wait in WhatsApp as a draft, and is retried; after the last attempt the fallback notification lets the user send with one tap: the message is copied to the clipboard and the chat opened with the text pre-filled when a number is known. The notification names the occurrence, and it is removed when the schedule is later sent, edited or deleted. Recurring schedules always advance regardless of outcome, so one failure never stalls a series.
+
+Verification counts the composer as cleared when it is empty, shows its hint (`isShowingHintText`), or no longer holds the message. It never compares with the hint's wording, which differs by language and could match a message such as "Message me when you land".
 
 ## Known limitations
 
@@ -50,4 +56,5 @@ Every wait has a step timeout (default 8 s) and every job a total timeout (defau
 - Group names must match exactly; two chats with the same name resolve to the first search result (logged as a warning).
 - Attachments, templates and Play Store distribution are out of scope.
 - A send takes over the screen for roughly 15–40 s. If you are using the phone at that moment, WhatsApp will appear in front of you.
+- If the process dies after Send was tapped but before the outcome is recorded, the occurrence is still pending and is sent again when alarms are next re-armed inside the grace window.
 - Samsung's Advanced Protection mode blocks third-party accessibility services entirely.

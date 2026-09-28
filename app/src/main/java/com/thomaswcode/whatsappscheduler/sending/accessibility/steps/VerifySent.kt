@@ -2,12 +2,24 @@ package com.thomaswcode.whatsappscheduler.sending.accessibility.steps
 
 import com.thomaswcode.whatsappscheduler.sending.accessibility.Selectors
 import com.thomaswcode.whatsappscheduler.sending.accessibility.UiDriver
+import com.thomaswcode.whatsappscheduler.sending.accessibility.sameVisibleText
+import com.thomaswcode.whatsappscheduler.sending.accessibility.visibleText
 import com.thomaswcode.whatsappscheduler.util.AutomationLog
+
+/**
+ * True once the composer no longer holds [message] (B03): it is empty, it is showing its hint, or
+ * it holds other text, which covers the hint in any language when the field does not flag it. The
+ * text is never compared with the hint's wording, so a message that starts with "Message" still
+ * counts as unsent while it sits in the composer. Invisible characters don't count, so an unsent
+ * message with a zero-width space in front of it is not mistaken for other text.
+ */
+internal fun composerCleared(text: String?, showingHint: Boolean, message: String): Boolean =
+    showingHint || visibleText(text).isEmpty() || !sameVisibleText(text, message)
 
 /**
  * Confirms the send: WhatsApp only clears the composer once the message is queued. Seeing the
  * text in a bubble is logged as extra confidence but not required, because long messages are
- * truncated in the tree.
+ * truncated in the tree. Runs after Send was tapped, so a failure here means "uncertain", not "unsent".
  */
 class VerifySent(private val driver: UiDriver, private val log: AutomationLog) {
 
@@ -17,7 +29,7 @@ class VerifySent(private val driver: UiDriver, private val log: AutomationLog) {
         val cleared = driver.waitUntil(timeoutMs) {
             val entry = driver.find(Selectors.waEntry) ?: return@waitUntil false
             entry.refresh()
-            entry.text.isNullOrEmpty() || entry.text.toString().startsWith("Message", ignoreCase = true)
+            composerCleared(entry.text?.toString(), entry.isShowingHintText, message)
         }
         if (!cleared) driver.fail(step, "Composer still holds the text after tapping send")
         val head = message.lineSequence().first().take(40)

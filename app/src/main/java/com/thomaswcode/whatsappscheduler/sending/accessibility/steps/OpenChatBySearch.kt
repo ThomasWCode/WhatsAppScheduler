@@ -5,16 +5,23 @@ import android.content.Intent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.thomaswcode.whatsappscheduler.sending.accessibility.Selector
 import com.thomaswcode.whatsappscheduler.sending.accessibility.Selectors
+import com.thomaswcode.whatsappscheduler.sending.accessibility.INVISIBLE_CHARS
 import com.thomaswcode.whatsappscheduler.sending.accessibility.UiDriver
+import com.thomaswcode.whatsappscheduler.sending.accessibility.visibleText
 import com.thomaswcode.whatsappscheduler.util.AutomationLog
 import kotlinx.coroutines.delay
 
 private val youSuffix = Regex("\\s*\\(You\\)$", RegexOption.IGNORE_CASE)
 
-/** True when a row or chat title shows [name]; WhatsApp lists the message-yourself chat as "Name (You)". */
+/**
+ * True when a row or chat title shows [name]; WhatsApp lists the message-yourself chat as "Name (You)".
+ * Invisible characters (direction marks, zero-width spaces) are ignored on both sides.
+ */
 internal fun chatNameMatches(shown: CharSequence?, name: String, ignoreCase: Boolean = false): Boolean {
-    val text = shown?.toString()?.trim() ?: return false
-    return text.equals(name, ignoreCase) || text.replace(youSuffix, "").equals(name, ignoreCase)
+    if (shown == null) return false
+    val text = visibleText(shown)
+    val wanted = visibleText(name)
+    return text.equals(wanted, ignoreCase) || text.replace(youSuffix, "").equals(wanted, ignoreCase)
 }
 
 /** Finds a chat (group or contact) by its exact name using WhatsApp's own search. */
@@ -22,18 +29,24 @@ class OpenChatBySearch(private val context: Context, private val driver: UiDrive
 
     private val step = "search"
 
-    /** Brings WhatsApp's chat list to the front, backing out of any open conversation. */
+    /** Brings WhatsApp's chat list to the front, backing out of any open conversation or search. */
     suspend fun goHome(whatsappPackage: String, timeoutMs: Long) {
         val launch = context.packageManager.getLaunchIntentForPackage(whatsappPackage)
             ?: driver.fail(step, "WhatsApp is not installed")
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
         context.startActivity(launch)
         // The composer is checked first: inside a conversation, message text could pass for a search label.
+        // An open search (left by a failed attempt, which relaunching WhatsApp doesn't close) hides the
+        // entry points, so it is backed out of too.
         var backs = 0
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
-            if (driver.find(Selectors.waEntry) != null && backs < 4) {
+            if (driver.find(Selectors.waEntry) != null && backs < MAX_BACKS) {
                 log.info("$step: a conversation is open, backing out")
+                driver.back()
+                backs++
+            } else if (driver.find(Selectors.waSearchInput) != null && backs < MAX_BACKS) {
+                log.info("$step: a search is open, backing out")
                 driver.back()
                 backs++
             } else if (driver.findAny(*Selectors.waSearchEntryPoints) != null) {
@@ -97,7 +110,15 @@ class OpenChatBySearch(private val context: Context, private val driver: UiDrive
         delay(300)
     }
 
-    /** Fallback when the row-title id is unknown: any WhatsApp node showing exactly [name], except the search box itself. */
+    /**
+     * Fallback when the row-title id is unknown: any WhatsApp node showing exactly [name], except
+     * the search box itself. Invisible characters are allowed around the name.
+     */
     private fun rowByText(name: String) =
-        Selector("wa.rowByText", text = Regex(Regex.escape(name)), pkg = Regex("com\\.whatsapp(\\.w4b)?"), editable = false)
+        Selector("wa.rowByText", text = Regex("$INVISIBLE_CHARS*${Regex.escape(name)}$INVISIBLE_CHARS*"), pkg = Regex("com\\.whatsapp(\\.w4b)?"), editable = false)
+
+    private companion object {
+        /** Presses of Back allowed while leaving conversations and searches. */
+        const val MAX_BACKS = 4
+    }
 }
