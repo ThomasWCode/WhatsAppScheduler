@@ -199,9 +199,10 @@ fun ScheduleListScreen(
  * outcomes differ each recipient gets a line, and one failure isn't hidden behind another's success.
  */
 internal fun outcomeLines(group: List<Schedule>): List<String> {
-    val statuses = group.map { it.lastStatus?.name ?: it.lastResult?.substringBefore(':') }.distinct()
+    // Whole results, not just statuses: two failures for different reasons are both shown.
+    val results = group.map { it.lastResult }.distinct()
     return when {
-        statuses.size == 1 -> listOfNotNull(group.first().lastResult?.let { "Last: $it" })
+        results.size == 1 -> listOfNotNull(results.single()?.let { "Last: $it" })
         else -> group.map { "${it.targetName}: ${it.lastResult ?: "not sent yet"}" }
     }
 }
