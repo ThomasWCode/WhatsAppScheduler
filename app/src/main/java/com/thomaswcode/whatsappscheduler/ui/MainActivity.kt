@@ -9,7 +9,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.lifecycleScope
 import com.thomaswcode.whatsappscheduler.SchedulerApp
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -29,10 +28,13 @@ class MainActivity : ComponentActivity() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        // Only on a fresh start. A recreate (rotation, dark mode switching at sunset) during a send
-        // would otherwise run it again while the occurrence is still pending (B01).
+        // Only on a fresh start: a recreate (rotation, dark mode switching at sunset) doesn't need it
+        // again. It runs in the app's scope, not this activity's, so a recreate while it is still
+        // working doesn't cancel the one recovery pass the fresh start was owed.
         if (savedInstanceState == null) {
-            lifecycleScope.launch { runCatching { container.alarmScheduler.rescheduleAll() } }
+            container.appScope.launch {
+                runCatching { container.alarmScheduler.rescheduleAll() }.onFailure { container.log.error("rescheduleAll failed", it) }
+            }
         }
     }
 

@@ -13,6 +13,9 @@ import com.thomaswcode.whatsappscheduler.sending.PinGuard
 import com.thomaswcode.whatsappscheduler.sending.SendStateHolder
 import com.thomaswcode.whatsappscheduler.util.AutomationLog
 import java.time.Clock
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 /** Hand-wired dependency container; the app is small enough not to need a DI framework. */
 class AppContainer(context: Context) {
@@ -30,5 +33,8 @@ class AppContainer(context: Context) {
     val notifications: Notifications by lazy { Notifications(appContext) }
     val fallbackNotifier: FallbackNotifier by lazy { FallbackNotifier(appContext, notifications) }
     val log: AutomationLog by lazy { AutomationLog(appContext) }
-    val alarmScheduler: AlarmScheduler by lazy { AlarmScheduler(appContext, repository, settings, sendState, fallbackNotifier, log) }
+    val alarmScheduler: AlarmScheduler by lazy { AlarmScheduler(appContext, repository, sendState, log) }
+
+    /** For work that must outlive the screen that started it, e.g. alarm recovery across a rotation. */
+    val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 }

@@ -33,6 +33,9 @@ object PhoneNormaliser {
     private val separators = Regex("[\\s\\-.()/]")
     private val digitsOnly = Regex("\\+?\\d+")
 
+    /** E.164's shape: a country code never starts with 0, and there are at most 15 digits. */
+    private val e164Shape = Regex("\\+[1-9]\\d{7,14}")
+
     fun parse(input: String, defaultCountryIso: String): PhoneParse {
         val compact = input.trim().replace(separators, "")
         if (!compact.matches(digitsOnly)) return PhoneParse.Invalid
@@ -40,8 +43,8 @@ object PhoneNormaliser {
         val valid = runCatching { PhoneNumberUtils.formatNumberToE164(international, defaultCountryIso.uppercase()) }.getOrNull()
         return when {
             valid != null -> PhoneParse.Valid(valid)
-            // E.164 allows at most 15 digits; 8 is the shortest a mobile number with its country code gets.
-            international.startsWith("+") && international.length - 1 in 8..15 -> PhoneParse.Unverified(international)
+            // 8 digits is the shortest a mobile number with its country code gets.
+            international.matches(e164Shape) -> PhoneParse.Unverified(international)
             else -> PhoneParse.Invalid
         }
     }
