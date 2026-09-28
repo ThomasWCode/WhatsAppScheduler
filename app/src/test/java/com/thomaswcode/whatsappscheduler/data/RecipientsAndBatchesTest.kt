@@ -134,6 +134,35 @@ class RecipientsAndBatchesTest {
     }
 
     @Test
+    fun aGroupTypedInAnotherCaseIsTheSavedOne() = runTest {
+        val saved = recipients.resolve(crew)
+        assertEquals(saved.id, recipients.resolve(RecipientDraft(TargetKind.GROUP, "work crew")).id)
+    }
+
+    @Test
+    fun detailEditsReportThePendingMessagesTheyChanged() = runTest {
+        val m = recipients.resolve(mum)
+        val pending = schedules.saveBatch(template(), listOf(m), now = now).saved.single()
+        val sent = schedules.saveBatch(template(), listOf(m), now = now).saved.single()
+        schedules.recordRun(sent.id, sent.nextAtMillis!!, SendStatus.SENT, null, "Mum", tomorrowNine.plusSeconds(30))
+        val changed = recipients.updateDetails(m.copy(phoneE164 = "+447400123459"))
+        assertEquals(listOf(pending.id), changed.map { it.id })
+        assertEquals("+447400123459", changed.single().phoneE164)
+    }
+
+    @Test
+    fun oldSchedulesThatDisagreeGiveTheNewestDetails() = runTest {
+        suspend fun legacy(name: String, locked: Boolean, createdAt: Instant) =
+            schedules.save(template().copy(targetName = name, phoneE164 = "+447400123458", isLocked = locked, createdAtMillis = createdAt.toEpochMilli()), now)
+        legacy("Sam", locked = false, createdAt = now.minus(Duration.ofDays(30)))
+        legacy("Sam (work)", locked = true, createdAt = now.minus(Duration.ofDays(2)))
+        recipients.linkUnlinkedSchedules()
+        val recipient = recipients.observeRecent().first().single()
+        assertEquals("Sam (work)", recipient.chatName)
+        assertTrue(recipient.isLocked)
+    }
+
+    @Test
     fun anEditThatWouldMakeTwoIdentitiesForOneChatIsCaught() = runTest {
         val (m, d, c) = listOf(mum, dad, crew).map { recipients.resolve(it) }
         assertNull(recipients.sameChatElsewhere(m))

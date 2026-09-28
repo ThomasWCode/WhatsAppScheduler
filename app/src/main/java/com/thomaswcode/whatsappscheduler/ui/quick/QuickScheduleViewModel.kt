@@ -286,9 +286,12 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
                     val edited = stored.copy(whatsappName = updated.whatsappName, phoneE164 = updated.phoneE164, isLocked = updated.isLocked, kind = updated.kind)
                     // Refused rather than leaving two stored identities for one chat.
                     container.recipients.sameChatElsewhere(edited)?.let { return@runCatching it }
-                    container.recipients.updateDetails(edited)
-                    // Pending schedules just changed target, so their alarms are re-armed from the stored rows.
-                    container.repository.all().filter { it.recipientId == stored.id && it.nextAtMillis != null }.forEach(container.alarmScheduler::sync)
+                    // Pending schedules just changed target: re-armed from the stored rows, and a Tap to send
+                    // prompt they had would open the chat as it was.
+                    container.recipients.updateDetails(edited).forEach {
+                        container.alarmScheduler.sync(it)
+                        container.fallbackNotifier.cancel(it.id)
+                    }
                     null
                 }
             }
@@ -348,7 +351,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
             val outcome = withContext(NonCancellable) {
                 runCatching {
                     // Once per chat, however the recipients were stored, so one chat can't get the message twice.
-                    val resolved = d.recipients.map { container.recipients.resolve(it) }.distinctBy { it.phoneE164 ?: "${it.kind}:${it.chatName}" }
+                    val resolved = d.recipients.map { container.recipients.resolve(it) }.distinctBy { it.phoneE164 ?: "${it.kind}:${it.chatName.trim().lowercase()}" }
                     val members = d.editingIds.mapNotNull { container.repository.get(it) }
                     val template = Schedule(
                         message = d.message.trim(), targetKind = TargetKind.CONTACT, targetName = "", phoneE164 = null, isLocked = false,
@@ -398,8 +401,10 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
             val outcome = withContext(NonCancellable) {
                 runCatching {
                     d.editingIds.mapNotNull { container.repository.get(it) }.forEach {
-                        container.alarmScheduler.cancel(it.id)
+                        // The row first: if that fails, the alarm must still be there. A stale alarm for a
+                        // deleted row is harmless, as the send queue drops it.
                         container.repository.delete(it)
+                        container.alarmScheduler.cancel(it.id)
                         // Its Tap to send prompt would otherwise outlive it (B10).
                         container.fallbackNotifier.cancel(it.id)
                     }
@@ -425,8 +430,8 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
             withContext(NonCancellable) {
                 runCatching {
                     createdIds.mapNotNull { container.repository.get(it) }.forEach {
-                        container.alarmScheduler.cancel(it.id)
                         container.repository.delete(it)
+                        container.alarmScheduler.cancel(it.id)
                     }
                 }.onFailure { container.log.error("Undo failed", it) }
             }
