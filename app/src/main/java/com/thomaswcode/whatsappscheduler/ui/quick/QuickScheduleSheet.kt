@@ -204,7 +204,8 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
         vm.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp)) }
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (!draft.isEditing) TextButton(onClick = vm::repeat) { Text("Repeat…") }
+            // Off while saving: the draft would otherwise become both this one-off and a series.
+            if (!draft.isEditing) TextButton(onClick = vm::repeat, enabled = !vm.saving) { Text("Repeat…") }
             Spacer(Modifier.weight(1f).width(8.dp))
             Button(
                 onClick = vm::schedule,
