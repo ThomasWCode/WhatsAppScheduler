@@ -110,7 +110,12 @@ class ScheduleRepositoryTest {
         assertEquals(resolved, repository.get(saved.id))
         // The next occurrence's outcome decides again.
         val next = resolved.nextAtMillis!!
-        assertEquals(Attention.UNCERTAIN, repository.recordRun(saved.id, next, SendStatus.UNCERTAIN, null, "Mum", ranAt.plusSeconds(86_400))!!.attention)
+        val uncertain = repository.recordRun(saved.id, next, SendStatus.UNCERTAIN, null, "Mum", ranAt.plusSeconds(86_400))!!
+        assertEquals(Attention.UNCERTAIN, uncertain.attention)
+        // A scheduled dry run sends nothing, so what was waiting still is.
+        val dryRun = repository.recordRun(saved.id, uncertain.nextAtMillis!!, SendStatus.DRY_RUN, null, "Mum", ranAt.plusSeconds(2 * 86_400))!!
+        assertEquals(Attention.UNCERTAIN, dryRun.attention)
+        assertEquals(SendStatus.DRY_RUN, dryRun.lastStatus)
     }
 
     @Test
