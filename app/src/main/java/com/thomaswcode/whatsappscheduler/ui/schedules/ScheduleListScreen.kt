@@ -194,6 +194,36 @@ fun ScheduleListScreen(
     QuickScheduleSheet(quick)
 }
 
+/**
+ * The row's last outcome. Each member of a batch is sent and recorded on its own, so when their
+ * outcomes differ each recipient gets a line, and one failure isn't hidden behind another's success.
+ */
+internal fun outcomeLines(group: List<Schedule>): List<String> {
+    val statuses = group.map { it.lastStatus?.name ?: it.lastResult?.substringBefore(':') }.distinct()
+    return when {
+        statuses.size == 1 -> listOfNotNull(group.first().lastResult?.let { "Last: $it" })
+        else -> group.map { "${it.targetName}: ${it.lastResult ?: "not sent yet"}" }
+    }
+}
+
+/** What Send now… can do for a row: bring pending occurrences forward, or send everyone a copy. */
+internal data class SendNowPlan(val early: List<SendRequest>, val copies: List<SendRequest>)
+
+/**
+ * Decided per member, since a batch can be part-way through: a member that is still pending uses up
+ * its own occurrence (so its alarm doesn't send it again later), and one that has already gone isn't
+ * sent again unless nothing in the row is pending. A switched-off one-off still has its time, and
+ * switching it back on would send it then, so sending it now uses that time up; a paused series only
+ * gets extra copies.
+ */
+internal fun sendNowPlan(group: List<Schedule>): SendNowPlan {
+    val early = group.mapNotNull { member ->
+        val pending = member.nextAtMillis?.takeIf { member.rule == Recurrence.Once || member.enabled }
+        pending?.let { SendRequest(member.id, SendKind.SEND_NOW, it) }
+    }
+    return SendNowPlan(early, group.map { SendRequest(it.id, SendKind.EXTRA_COPY) })
+}
+
 /** "Mum", or "Mum, Dad +1" for a batch. */
 private fun groupTitle(group: List<Schedule>): String = when (group.size) {
     1 -> group[0].targetName
@@ -210,16 +240,15 @@ private fun groupTitle(group: List<Schedule>): String = when (group.size) {
 private fun SendNowDialog(group: List<Schedule>, onDismiss: () -> Unit, onSend: (List<SendRequest>) -> Unit) {
     val schedule = group.first()
     val recurring = schedule.rule != Recurrence.Once
-    // A switched-off one-off still has its time, and switching it back on would send it then, so
-    // sending it now uses that time up. A paused series only gets extra copies.
-    val next = if (recurring) schedule.nextAtMillis?.takeIf { schedule.enabled } else schedule.nextAtMillis
-    // Every member of a batch goes, each using up its own occurrence.
-    val early = next?.let { group.mapNotNull { m -> m.nextAtMillis?.let { at -> SendRequest(m.id, SendKind.SEND_NOW, at) } } }
-    val copy = group.map { SendRequest(it.id, SendKind.EXTRA_COPY) }
+    val plan = sendNowPlan(group)
+    val next = plan.early.minOfOrNull { it.occurrenceAtMillis ?: Long.MAX_VALUE }
+    val early = plan.early.takeIf { it.isNotEmpty() }
+    val copy = plan.copies
     val explanation = when {
         next == null && recurring -> "This sends an extra copy. The schedule itself is not changed."
         next == null -> "It has already been sent or its time has passed, so this sends it again."
         recurring -> "Send the ${formatStamp(next)} message early, or send an extra copy and keep that one as it is."
+        early != null && early.size < group.size -> "It will be sent now instead of at ${formatStamp(next)}, to the recipients it hasn't gone to yet."
         else -> "It will be sent now instead of at ${formatStamp(next)}."
     }
     AlertDialog(
@@ -271,12 +300,13 @@ private fun ScheduleRow(
                 }
                 Text(schedule.message, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(4.dp))
+                val next = group.mapNotNull { it.nextAtMillis }.minOrNull()
                 Text(
-                    (if (schedule.nextAtMillis == null) "Finished" else "Next: " + formatStamp(schedule.nextAtMillis)) + " · " + schedule.rule.label(),
+                    (if (next == null) "Finished" else "Next: " + formatStamp(next)) + " · " + schedule.rule.label(),
                     style = MaterialTheme.typography.labelMedium,
                 )
-                schedule.lastResult?.let {
-                    Text("Last: $it", style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                outcomeLines(group).forEach {
+                    Text(it, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             Switch(checked = schedule.enabled, onCheckedChange = onToggle)
