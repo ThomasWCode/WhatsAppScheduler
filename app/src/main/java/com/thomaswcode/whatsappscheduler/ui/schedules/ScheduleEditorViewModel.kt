@@ -13,6 +13,7 @@ import androidx.lifecycle.viewmodel.compose.saveable
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.thomaswcode.whatsappscheduler.AppContainer
+import com.thomaswcode.whatsappscheduler.data.RecipientDraft
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.domain.PhoneNormaliser
 import com.thomaswcode.whatsappscheduler.domain.Recurrence
@@ -131,7 +132,10 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
     val scheduleId: Long = handle.get<Long>("id") ?: 0L
     private val zone: ZoneId = ZoneId.systemDefault()
 
-    var form: EditorForm by handle.saveable(stateSaver = EditorForm.Saver) { mutableStateOf(EditorForm.blank(ZonedDateTime.now(zone))) }
+    /** What the quick sheet's Repeat… handed over, for a new schedule. */
+    private val prefill: EditorForm? = if (scheduleId != 0L) null else prefillFrom(handle, zone)
+
+    var form: EditorForm by handle.saveable(stateSaver = EditorForm.Saver) { mutableStateOf(prefill ?: EditorForm.blank(ZonedDateTime.now(zone))) }
         private set
 
     /** Whether [form] already holds the stored schedule; saved with it, so a recreate never reloads over edits. */
@@ -208,7 +212,12 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
             // Not cancelled if the screen closes mid-save, which would leave the row without its alarm.
             val outcome = withContext(NonCancellable) {
                 runCatching {
-                    val saved = container.repository.save(schedule)
+                    // Linked to a recipient so it shows in the quick sheet's recents; Chat Lock set here is
+                    // remembered for that chat (quick-schedule.md §3).
+                    val recipient = container.recipients.resolve(RecipientDraft(f.kind, f.name.trim(), phoneE164 = phoneE164, isLocked = f.locked))
+                    if (recipient.isLocked != f.locked) container.recipients.updateDetails(recipient.copy(isLocked = f.locked))
+                    val saved = container.repository.save(schedule.copy(recipientId = recipient.id))
+                    container.recipients.markUsed(listOf(recipient.id))
                     // If a later step fails, Save again updates this row rather than inserting another.
                     existing = saved
                     container.alarmScheduler.sync(saved)
@@ -229,6 +238,31 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
     companion object {
         fun factory(container: AppContainer) = viewModelFactory {
             initializer { ScheduleEditorViewModel(container, createSavedStateHandle()) }
+        }
+
+        /**
+         * The form Repeat… asks for: the sheet's recipient, message and time, repeating daily as a
+         * starting point (the chips offer the rest). Null when nothing was handed over.
+         */
+        fun prefillFrom(handle: SavedStateHandle, zone: ZoneId, now: ZonedDateTime = ZonedDateTime.now(zone)): EditorForm? {
+            val name = handle.get<String>("name")
+            val message = handle.get<String>("message")
+            val at = handle.get<Long>("at")?.takeIf { it > 0 }
+            if (name == null && message == null && at == null) return null
+            val blank = EditorForm.blank(now)
+            val first = at?.let { Instant.ofEpochMilli(it).atZone(zone) }
+            return blank.copy(
+                kind = handle.get<String>("kind")?.let { k -> TargetKind.entries.firstOrNull { it.name == k } } ?: TargetKind.CONTACT,
+                name = name ?: "",
+                phone = handle.get<String>("phone") ?: "",
+                locked = handle.get<Boolean>("locked") ?: false,
+                message = message ?: "",
+                date = first?.toLocalDate() ?: blank.date,
+                time = first?.toLocalTime() ?: blank.time,
+                ruleKind = RuleKind.DAILY,
+                weekdays = setOf((first ?: now).dayOfWeek),
+                monthDay = (first ?: now).dayOfMonth.toString(),
+            )
         }
 
         fun validate(form: EditorForm, phoneE164: String?, rule: Recurrence, firstAt: Instant, now: Instant = Instant.now()): String? = when {
