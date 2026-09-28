@@ -71,9 +71,12 @@ class SendService : LifecycleService() {
     private suspend fun drainAndStop() {
         while (true) {
             processor.drain()
+            // The newest start so far. One arriving during housekeeping queues a request this loop must
+            // still drain: stopping with this id then fails, as it is no longer the newest.
+            val startId = lastStartId
             // With the queue empty: clear old sent messages and history (B28).
             runCatching { container.housekeeping.run() }.onFailure { container.log.error("Housekeeping failed", it) }
-            if (stopSelfResult(lastStartId)) return
+            if (stopSelfResult(startId)) return
             // A start is on its way (the system has issued it, onStartCommand hasn't run yet). Yield the
             // main thread so it can be delivered, instead of spinning here and blocking it.
             delay(START_POLL_MS)
