@@ -1,7 +1,9 @@
 package com.thomaswcode.whatsappscheduler
 
 import android.content.Context
+import com.thomaswcode.whatsappscheduler.data.RecipientRepository
 import com.thomaswcode.whatsappscheduler.data.ScheduleRepository
+import com.thomaswcode.whatsappscheduler.data.contacts.ContactSearch
 import com.thomaswcode.whatsappscheduler.data.db.AppDatabase
 import com.thomaswcode.whatsappscheduler.data.settings.CryptoBox
 import com.thomaswcode.whatsappscheduler.data.settings.SecretStore
@@ -26,6 +28,8 @@ class AppContainer(context: Context) {
 
     val database: AppDatabase by lazy { AppDatabase.build(appContext) }
     val repository: ScheduleRepository by lazy { ScheduleRepository(database) }
+    val recipients: RecipientRepository by lazy { RecipientRepository(database) }
+    val contactSearch: ContactSearch by lazy { ContactSearch(appContext) }
     val settings: SettingsStore by lazy { SettingsStore(appContext) }
     val secrets: SecretStore by lazy { SecretStore(appContext, CryptoBox()) }
     val pinGuard: PinGuard by lazy { PinGuard(secrets, Clock.systemUTC()) }

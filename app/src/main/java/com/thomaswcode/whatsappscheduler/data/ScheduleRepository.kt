@@ -3,6 +3,7 @@ package com.thomaswcode.whatsappscheduler.data
 import androidx.room.withTransaction
 import com.thomaswcode.whatsappscheduler.data.db.AppDatabase
 import com.thomaswcode.whatsappscheduler.data.db.Attention
+import com.thomaswcode.whatsappscheduler.data.db.Recipient
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.data.db.SendLog
 import com.thomaswcode.whatsappscheduler.data.db.SendStatus
@@ -10,7 +11,11 @@ import com.thomaswcode.whatsappscheduler.domain.Recurrence
 import com.thomaswcode.whatsappscheduler.domain.RecurrenceCalculator
 import java.time.Instant
 import java.time.ZoneId
+import java.util.UUID
 import kotlinx.coroutines.flow.Flow
+
+/** What [ScheduleRepository.saveBatch] did: the members as saved (to arm) and the ones deleted (to disarm). */
+data class BatchChange(val saved: List<Schedule>, val deleted: List<Schedule>)
 
 class ScheduleRepository(private val db: AppDatabase) : SendStore {
 
@@ -38,7 +43,44 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
 
     suspend fun delete(schedule: Schedule) = schedules.delete(schedule)
 
-    suspend fun setEnabled(schedule: Schedule, enabled: Boolean): Schedule = save(schedule.copy(enabled = enabled))
+    suspend fun batch(batchId: String): List<Schedule> = schedules.getBatch(batchId)
+
+    /**
+     * Saves one message for several recipients (quick-schedule.md §10): one ordinary schedule each,
+     * so retries, failures and history stay per recipient. Members share a batchId so the list shows
+     * them as one row and edits apply to all. [members] are the batch as it was (empty when new):
+     * [template]'s message and time go to every member, a member whose recipient was removed is
+     * deleted, and an added recipient gets a new member.
+     */
+    suspend fun saveBatch(template: Schedule, recipients: List<Recipient>, members: List<Schedule> = emptyList(), now: Instant = Instant.now()): BatchChange =
+        db.withTransaction {
+            require(recipients.isNotEmpty() && recipients.size <= MAX_BATCH) { "A message goes to 1–$MAX_BATCH recipients" }
+            val batchId = if (recipients.size > 1) members.firstNotNullOfOrNull { it.batchId } ?: UUID.randomUUID().toString() else null
+            val byRecipient = members.filter { it.recipientId != null }.associateBy { it.recipientId }
+            val saved = recipients.map { recipient ->
+                val base = byRecipient[recipient.id] ?: members.singleOrNull { it.recipientId == null && recipients.size == 1 } ?: template.copy(id = 0)
+                save(
+                    base.copy(
+                        message = template.message,
+                        firstAtMillis = template.firstAtMillis,
+                        zoneId = template.zoneId,
+                        recurrence = template.recurrence,
+                        batchId = batchId,
+                        recipientId = recipient.id,
+                        targetKind = recipient.kind,
+                        targetName = recipient.chatName,
+                        phoneE164 = recipient.phoneE164,
+                        isLocked = recipient.isLocked,
+                        // Edited by the user, so whatever it was waiting on has been dealt with.
+                        attention = null,
+                    ),
+                    now,
+                )
+            }
+            val removed = members.filter { member -> saved.none { it.id == member.id } }
+            removed.forEach { schedules.delete(it) }
+            BatchChange(saved, removed)
+        }
 
     /**
      * Switches a schedule on or off starting from the row as stored, not a copy the UI may have
@@ -95,6 +137,9 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
     suspend fun pruneLogs(olderThan: Instant) = logs.prune(olderThan.toEpochMilli())
 
     companion object {
+        /** At most this many recipients per message, so one mistake can't turn into a flood (§10). */
+        const val MAX_BATCH = 10
+
         /** What an occurrence's outcome leaves the schedule waiting on the user for (T5). A success clears it. */
         fun attentionAfter(status: SendStatus): Attention? = when (status) {
             SendStatus.SENT, SendStatus.DRY_RUN -> null
