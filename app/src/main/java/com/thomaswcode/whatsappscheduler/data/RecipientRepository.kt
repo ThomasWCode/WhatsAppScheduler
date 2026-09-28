@@ -36,6 +36,8 @@ class RecipientRepository(private val db: AppDatabase) {
 
     suspend fun get(id: Long): Recipient? = recipients.get(id)
 
+    suspend fun byPhone(phoneE164: String): Recipient? = recipients.byPhone(phoneE164)
+
     /**
      * The stored recipient for [draft]: the one it was picked from, else the one with the same number,
      * else (for chats without a number) the same kind and chat name, else a new one. Picking someone
