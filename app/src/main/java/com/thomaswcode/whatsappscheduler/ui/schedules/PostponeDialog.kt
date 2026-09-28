@@ -137,13 +137,17 @@ internal fun postponeStart(due: ZonedDateTime, now: ZonedDateTime): ZonedDateTim
     return if (today.isAfter(now.plusMinutes(1))) today else today.plusDays(1)
 }
 
-/** "Tue 09:00", "Tue 09:00 and Wed 09:00", or "Tue 09:00, Wed 09:00 and 3 more". */
+/**
+ * "Tue 09:00", "Tue 09:00 and Wed 09:00", or "Tue 09:00, Wed 09:00 and 3 more"; "at least" when the
+ * list reached [Postponing.LIMIT] and may have been cut short.
+ */
 internal fun skippedText(skipped: List<Instant>, now: ZonedDateTime, time: (LocalTime) -> String = { it.toString() }): String {
     fun day(at: Instant) = FriendlyTime.dayAndTime(at.atZone(now.zone), now, time)
+    val atLeast = if (skipped.size >= Postponing.LIMIT) "at least " else ""
     return when (skipped.size) {
         0 -> ""
         1 -> day(skipped[0])
         2 -> "${day(skipped[0])} and ${day(skipped[1])}"
-        else -> "${day(skipped[0])}, ${day(skipped[1])} and ${skipped.size - 2} more"
+        else -> "${day(skipped[0])}, ${day(skipped[1])} and $atLeast${skipped.size - 2} more"
     }
 }
