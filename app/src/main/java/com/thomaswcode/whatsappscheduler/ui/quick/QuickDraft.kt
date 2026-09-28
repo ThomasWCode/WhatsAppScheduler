@@ -89,9 +89,12 @@ fun availableRecents(recents: List<Recipient>, chosen: List<RecipientDraft>, me:
 fun List<RecipientDraft>.distinctChats(): List<RecipientDraft> =
     fold(emptyList()) { kept, recipient -> if (kept.any { it.sameChatAs(recipient) }) kept else kept + recipient }
 
-/** True when [other] would be the same chat as this draft: same stored recipient, same number, or same named chat. */
+/**
+ * True when [other] would be the same chat as this draft: same stored recipient, same number, or same
+ * named chat whatever the case, since WhatsApp's search falls back to a case-insensitive match.
+ */
 fun RecipientDraft.sameChatAs(other: RecipientDraft): Boolean = when {
     recipientId != null && recipientId == other.recipientId -> true
     phoneE164 != null -> phoneE164 == other.phoneE164
-    else -> other.phoneE164 == null && kind == other.kind && chatName == other.chatName
+    else -> other.phoneE164 == null && kind == other.kind && chatName.trim().equals(other.chatName.trim(), ignoreCase = true)
 }

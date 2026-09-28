@@ -3,6 +3,7 @@ package com.thomaswcode.whatsappscheduler.data
 import androidx.room.withTransaction
 import com.thomaswcode.whatsappscheduler.data.db.AppDatabase
 import com.thomaswcode.whatsappscheduler.data.db.Recipient
+import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
 import java.time.Instant
 import kotlinx.coroutines.flow.Flow
@@ -71,11 +72,13 @@ class RecipientRepository(private val db: AppDatabase) {
 
     /**
      * Saves edited details and copies them into the recipient's schedules that are still to be
-     * sent. Sent history keeps the details it was actually sent with.
+     * sent; sent history keeps the details it was actually sent with. Returns those pending schedules
+     * as they are now: their alarms and any Tap to send prompts still carry the old target.
      */
-    suspend fun updateDetails(recipient: Recipient) = db.withTransaction {
+    suspend fun updateDetails(recipient: Recipient): List<Schedule> = db.withTransaction {
         recipients.update(recipient)
         schedules.updatePendingTarget(recipient.id, recipient.kind, recipient.chatName, recipient.phoneE164, recipient.isLocked)
+        schedules.pendingFor(recipient.id)
     }
 
     /** "Remove from recents": forgets the recipient. Its schedules keep their own copy of the details. */

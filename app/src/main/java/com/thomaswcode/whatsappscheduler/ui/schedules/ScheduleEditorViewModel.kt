@@ -225,7 +225,13 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
                     var recipient = resolved
                     typedChatName(f, recipient)?.let { name -> recipient = recipient.copy(whatsappName = name.takeIf { it != recipient.displayName }) }
                     if (f.lockedTouched) recipient = recipient.copy(isLocked = f.locked)
-                    if (recipient != resolved) container.recipients.updateDetails(recipient)
+                    // Its other pending messages change target too: re-armed, and stale Tap to send prompts cleared.
+                    if (recipient != resolved) {
+                        container.recipients.updateDetails(recipient).forEach {
+                            container.alarmScheduler.sync(it)
+                            container.fallbackNotifier.cancel(it.id)
+                        }
+                    }
                     // The chat's own name, as the quick sheet uses: what WhatsApp shows, which the search needs.
                     val saved = container.repository.save(
                         schedule.copy(recipientId = recipient.id, targetName = recipient.chatName, isLocked = lockFor(f, recipient, existing)),
