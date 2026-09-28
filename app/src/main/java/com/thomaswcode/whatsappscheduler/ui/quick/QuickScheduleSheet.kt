@@ -32,6 +32,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -44,6 +45,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.thomaswcode.whatsappscheduler.data.RecipientDraft
 import com.thomaswcode.whatsappscheduler.data.contacts.ContactHit
@@ -110,7 +113,13 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
 
     val chips = vm.chips(now, timeFormat)
     val at = vm.resolvedTime(now)
-    val health = HealthCheck.evaluate(context, serviceConnected, hasPin, PinCircuitBreaker.block(pinFailures, now.toInstant().toEpochMilli()), settings.dryRun)
+    // Checked again on every return, e.g. from the settings page a Fix opened: those settings aren't observed.
+    var resumes by remember { mutableIntStateOf(0) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { resumes++ }
+    val pinBlock = PinCircuitBreaker.block(pinFailures, now.toInstant().toEpochMilli())
+    val health = remember(resumes, serviceConnected, hasPin, pinBlock, settings.dryRun) {
+        HealthCheck.evaluate(context, serviceConnected, hasPin, pinBlock, settings.dryRun)
+    }
 
     Column(
         modifier = Modifier
