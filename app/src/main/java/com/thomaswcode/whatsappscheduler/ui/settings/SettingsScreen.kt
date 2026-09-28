@@ -14,11 +14,15 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,6 +41,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.thomaswcode.whatsappscheduler.AppContainer
 import com.thomaswcode.whatsappscheduler.data.settings.Settings
+import com.thomaswcode.whatsappscheduler.domain.PinCircuitBreaker
+import com.thomaswcode.whatsappscheduler.domain.PinFailures
 import com.thomaswcode.whatsappscheduler.ui.BackBar
 import com.thomaswcode.whatsappscheduler.ui.authenticateThen
 import kotlinx.coroutines.launch
@@ -48,6 +54,8 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onSetup: () -> U
     val settings by container.settings.settings.collectAsState(initial = Settings())
     val hasPin by container.secrets.hasPin().collectAsState(initial = false)
     val hasSecret by container.secrets.hasSecretCode().collectAsState(initial = false)
+    val pinFailures by container.secrets.observePinFailures().collectAsState(initial = PinFailures())
+    val pinBlock = remember(pinFailures) { PinCircuitBreaker.block(pinFailures, System.currentTimeMillis()) }
     var pinDialog by remember { mutableStateOf(false) }
     var secretDialog by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
@@ -68,6 +76,7 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onSetup: () -> U
                     (context as Activity).authenticateThen("Confirm it's you", onFailure = { status = it }) { pinDialog = true }
                 }) { Text(if (hasPin) "Change" else "Store") }
             }
+            pinBlock?.let { Text(it.describe(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(if (hasSecret) "Chat Lock secret code: stored" else "Chat Lock secret code: none", modifier = Modifier.weight(1f))
                 OutlinedButton(onClick = {
@@ -103,27 +112,116 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onSetup: () -> U
     }
 
     if (pinDialog) {
-        SecretDialog(
-            title = "Lock-screen PIN or password",
-            hint = "Exactly what you type on the lock screen",
-            numeric = true,
+        PinDialog(
+            hasPin = hasPin,
             onDismiss = { pinDialog = false },
-            onSave = { value -> scope.launch { container.secrets.setPin(value); pinDialog = false } },
+            onSave = { value ->
+                scope.launch {
+                    // Clears a rejection (B04). Unlocking may still be paused by the daily limit, in
+                    // which case the paused notice stays, with the new reason.
+                    container.secrets.setPin(value)
+                    val stillBlocked = container.pinGuard.block()
+                    if (stillBlocked == null) {
+                        container.fallbackNotifier.cancelPinPaused()
+                        status = "PIN stored"
+                    } else {
+                        container.fallbackNotifier.notifyPinPaused(stillBlocked.describe())
+                        status = "PIN stored. " + stillBlocked.describe()
+                    }
+                    pinDialog = false
+                }
+            },
+            onRemove = {
+                scope.launch {
+                    container.secrets.setPin(null)
+                    container.fallbackNotifier.cancelPinPaused()
+                    pinDialog = false
+                    status = "PIN removed: sends that need to unlock the phone will fail"
+                }
+            },
         )
     }
     if (secretDialog) {
         SecretDialog(
             title = "Chat Lock secret code",
             hint = "Leave empty to remove",
-            numeric = false,
             onDismiss = { secretDialog = false },
             onSave = { value -> scope.launch { container.secrets.setSecretCode(value); secretDialog = false } },
         )
     }
 }
 
+/**
+ * Stores the lock-screen PIN or password (B14). It is entered twice, because a typo here is a
+ * wrong PIN typed on the lock screen later, and removing it is its own button rather than saving
+ * an empty field.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SecretDialog(title: String, hint: String, numeric: Boolean, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+private fun PinDialog(hasPin: Boolean, onDismiss: () -> Unit, onSave: (String) -> Unit, onRemove: () -> Unit) {
+    var password by remember { mutableStateOf(false) }
+    var first by remember { mutableStateOf("") }
+    var second by remember { mutableStateOf("") }
+    val noun = if (password) "password" else "PIN"
+    val tooShort = first.isNotEmpty() && first.length < MIN_LOCK_LENGTH
+    val mismatch = second.isNotEmpty() && second != first
+    val valid = first.length >= MIN_LOCK_LENGTH && second == first
+    val keyboard = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else KeyboardType.NumberPassword)
+    fun accept(text: String) = if (password) text else text.filter(Char::isDigit)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (hasPin) "Change lock-screen $noun" else "Store lock-screen $noun") },
+        text = {
+            Column {
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    listOf(false, true).forEachIndexed { i, isPassword ->
+                        SegmentedButton(
+                            selected = password == isPassword,
+                            onClick = { if (password != isPassword) { password = isPassword; first = ""; second = "" } },
+                            shape = SegmentedButtonDefaults.itemShape(i, 2),
+                        ) { Text(if (isPassword) "Password" else "PIN") }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = first,
+                    onValueChange = { first = accept(it) },
+                    label = { Text(noun.replaceFirstChar(Char::uppercase)) },
+                    singleLine = true,
+                    isError = tooShort,
+                    supportingText = { Text(if (tooShort) "At least $MIN_LOCK_LENGTH characters" else "Exactly what you type on the lock screen") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = keyboard,
+                )
+                OutlinedTextField(
+                    value = second,
+                    onValueChange = { second = accept(it) },
+                    label = { Text("Enter it again") },
+                    singleLine = true,
+                    isError = mismatch,
+                    supportingText = if (mismatch) ({ Text("Doesn't match") }) else null,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = keyboard,
+                )
+                Text(
+                    "If the phone rejects it, automatic unlocking pauses until you store it again, so a wrong $noun is never typed twice.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                if (hasPin) {
+                    TextButton(onClick = onRemove) { Text("Remove stored PIN", color = MaterialTheme.colorScheme.error) }
+                }
+            }
+        },
+        confirmButton = { TextButton(enabled = valid, onClick = { onSave(first) }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** Android's minimum length for a PIN or password. */
+private const val MIN_LOCK_LENGTH = 4
+
+@Composable
+private fun SecretDialog(title: String, hint: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
     var value by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -135,7 +233,7 @@ private fun SecretDialog(title: String, hint: String, numeric: Boolean, onDismis
                 label = { Text(hint) },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = if (numeric) KeyboardType.NumberPassword else KeyboardType.Password),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             )
         },
         confirmButton = { TextButton(onClick = { onSave(value) }) { Text("Save") } },

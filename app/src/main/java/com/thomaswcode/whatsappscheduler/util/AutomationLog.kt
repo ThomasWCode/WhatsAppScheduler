@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
  * Step-by-step trace of automation runs, kept in a bounded file and mirrored to an in-memory
  * flow for the log screen. Never receives the PIN or secret code.
  */
-class AutomationLog(context: Context) {
+class AutomationLog(context: Context) : TraceLog {
 
     private val file = File(context.filesDir, "automation.log")
     private val dumpFile = File(context.filesDir, "last_window_dump.txt")
@@ -23,11 +23,11 @@ class AutomationLog(context: Context) {
     val lines: StateFlow<List<String>> = _lines
 
     /** Appends one line with a timestamp. */
-    fun info(message: String) = append("I", message)
+    override fun info(message: String) = append("I", message)
 
-    fun warn(message: String) = append("W", message)
+    override fun warn(message: String) = append("W", message)
 
-    fun error(message: String, throwable: Throwable? = null) =
+    override fun error(message: String, throwable: Throwable?) =
         append("E", if (throwable != null) "$message: ${throwable.javaClass.simpleName}: ${throwable.message}" else message)
 
     private fun append(level: String, message: String) {

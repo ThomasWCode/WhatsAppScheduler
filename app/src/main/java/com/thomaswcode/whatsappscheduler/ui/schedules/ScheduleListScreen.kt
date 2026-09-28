@@ -47,6 +47,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.thomaswcode.whatsappscheduler.AppContainer
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
+import com.thomaswcode.whatsappscheduler.domain.Recurrence
+import com.thomaswcode.whatsappscheduler.sending.SendKind
+import com.thomaswcode.whatsappscheduler.sending.SendRequest
 import com.thomaswcode.whatsappscheduler.sending.SendService
 import com.thomaswcode.whatsappscheduler.ui.formatStamp
 import com.thomaswcode.whatsappscheduler.ui.onboarding.PermissionChecks
@@ -69,6 +72,7 @@ fun ScheduleListScreen(
     val settings by container.settings.settings.collectAsState(initial = null)
     val setupOk = remember(hasPin, schedules) { PermissionChecks.allRequiredOk(PermissionChecks.evaluate(context, hasPin)) }
     var pendingDelete by remember { mutableStateOf<Schedule?>(null) }
+    var pendingSend by remember { mutableStateOf<Schedule?>(null) }
 
     Scaffold(
         topBar = {
@@ -119,8 +123,8 @@ fun ScheduleListScreen(
                                 }
                             },
                             onEdit = { onEdit(schedule.id) },
-                            onSendNow = { SendService.enqueue(context, schedule.id, advance = false) },
-                            onDryRun = { SendService.enqueue(context, schedule.id, advance = false, forceDryRun = true) },
+                            onSendNow = { pendingSend = schedule },
+                            onDryRun = { SendService.enqueue(context, SendRequest(schedule.id, SendKind.TEST)) },
                             onDelete = { pendingDelete = schedule },
                         )
                     }
@@ -140,6 +144,7 @@ fun ScheduleListScreen(
                     scope.launch {
                         container.alarmScheduler.cancel(schedule.id)
                         container.repository.delete(schedule)
+                        container.fallbackNotifier.cancel(schedule.id)
                     }
                     pendingDelete = null
                 }) { Text("Delete") }
@@ -147,6 +152,62 @@ fun ScheduleListScreen(
             dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Cancel") } },
         )
     }
+
+    pendingSend?.let { schedule ->
+        SendNowDialog(
+            schedule = schedule,
+            onDismiss = { pendingSend = null },
+            onSend = { request ->
+                pendingSend = null
+                SendService.enqueue(context, request)
+            },
+        )
+    }
+}
+
+/**
+ * Confirms a manual send and says what it does to the schedule (B07). Sending a pending one-off
+ * early uses up its occurrence, so it isn't sent again at its time; a recurring schedule can
+ * either bring its next occurrence forward or send an extra copy that leaves the series alone.
+ */
+@Composable
+private fun SendNowDialog(schedule: Schedule, onDismiss: () -> Unit, onSend: (SendRequest) -> Unit) {
+    val recurring = schedule.rule != Recurrence.Once
+    // A switched-off one-off still has its time, and switching it back on would send it then, so
+    // sending it now uses that time up. A paused series only gets extra copies.
+    val next = if (recurring) schedule.nextAtMillis?.takeIf { schedule.enabled } else schedule.nextAtMillis
+    val early = next?.let { SendRequest(schedule.id, SendKind.SEND_NOW, it) }
+    val copy = SendRequest(schedule.id, SendKind.EXTRA_COPY)
+    val explanation = when {
+        next == null && recurring -> "This sends an extra copy. The schedule itself is not changed."
+        next == null -> "It has already been sent or its time has passed, so this sends it again."
+        recurring -> "Send the ${formatStamp(next)} message early, or send an extra copy and keep that one as it is."
+        else -> "It will be sent now instead of at ${formatStamp(next)}."
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Send to ${schedule.targetName} now?") },
+        text = {
+            Column {
+                Text("\"${schedule.message.take(120)}${if (schedule.message.length > 120) "…" else ""}\"", style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(8.dp))
+                Text(explanation, style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = {
+            when {
+                early != null && recurring -> TextButton(onClick = { onSend(early) }) { Text("Send early") }
+                early != null -> TextButton(onClick = { onSend(early) }) { Text("Send now") }
+                else -> TextButton(onClick = { onSend(copy) }) { Text(if (recurring) "Send a copy" else "Send again") }
+            }
+        },
+        dismissButton = {
+            Row {
+                if (early != null && recurring) TextButton(onClick = { onSend(copy) }) { Text("Send a copy") }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        },
+    )
 }
 
 @Composable
@@ -183,7 +244,7 @@ private fun ScheduleRow(
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "More") }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text("Send now") }, onClick = { menu = false; onSendNow() })
+                    DropdownMenuItem(text = { Text("Send now…") }, onClick = { menu = false; onSendNow() })
                     DropdownMenuItem(text = { Text("Dry run now") }, onClick = { menu = false; onDryRun() })
                     DropdownMenuItem(text = { Text("Edit") }, onClick = { menu = false; onEdit() })
                     DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() })

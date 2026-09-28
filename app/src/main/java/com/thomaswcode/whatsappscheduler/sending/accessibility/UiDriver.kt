@@ -11,8 +11,11 @@ import kotlin.coroutines.resume
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 
-/** Thrown when a step cannot make progress; carries the window dump for diagnosis. */
-class StepFailure(val step: String, message: String, val dump: String? = null) : Exception(message)
+/**
+ * Thrown when a step cannot make progress; carries the window dump for diagnosis. [retryable] is
+ * false when another attempt cannot help, e.g. the phone is locked and no PIN is stored.
+ */
+class StepFailure(val step: String, message: String, val dump: String? = null, val retryable: Boolean = true) : Exception(message)
 
 /**
  * Thin, polling wrapper over the accessibility APIs. Every wait has a timeout and every failure
@@ -41,7 +44,6 @@ class UiDriver(
         return out
     }
 
-    /** The active window is also in the window list, so without this every tree would be walked twice. */
     /** The active window is also in the window list, so without this every tree would be walked twice. */
     private fun roots(): List<AccessibilityNodeInfo> = service.allRoots().distinct()
 
@@ -181,9 +183,10 @@ class UiDriver(
         node.refresh()
         val now = node.text?.toString() ?: ""
         // An empty field reports its hint ("Message") as its text, and WhatsApp's composer does not
-        // flag that reliably, so clearing a field is not verified.
-        if (!secret && text.isNotEmpty() && now != text && !node.isPassword) {
-            fail(step, "Text did not stick on ${describe(node)}: got '${now.take(40)}'")
+        // flag that reliably, so clearing a field is not verified. Invisible characters are ignored:
+        // WhatsApp's search box puts a zero-width space in front of whatever is typed into it.
+        if (!secret && text.isNotEmpty() && !sameVisibleText(now, text) && !node.isPassword) {
+            fail(step, "Text did not stick on ${describe(node)}: got '${showInvisible(now.take(40))}'")
         }
         log.info("$step: set text on ${describe(node)}" + if (secret) " (secret)" else " (${text.length} chars)")
     }
@@ -240,10 +243,10 @@ class UiDriver(
             (node.text?.toString()?.takeUnless { node.isEditable }?.take(20)?.let { " '$it'" } ?: "") +
             (node.contentDescription?.toString()?.take(20)?.let { " desc='$it'" } ?: "")
 
-    fun fail(step: String, reason: String): Nothing {
+    fun fail(step: String, reason: String, retryable: Boolean = true): Nothing {
         val dump = runCatching { dump() }.getOrDefault("(dump failed)")
         log.error("$step: $reason")
         log.saveDump("$step: $reason", dump)
-        throw StepFailure(step, reason, dump)
+        throw StepFailure(step, reason, dump, retryable)
     }
 }

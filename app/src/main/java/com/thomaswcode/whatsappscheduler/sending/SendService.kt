@@ -10,31 +10,40 @@ import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import com.thomaswcode.whatsappscheduler.SchedulerApp
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
-import com.thomaswcode.whatsappscheduler.data.db.SendStatus
-import com.thomaswcode.whatsappscheduler.domain.SendJob
-import com.thomaswcode.whatsappscheduler.domain.SendResult
 import com.thomaswcode.whatsappscheduler.sending.accessibility.AccessibilitySender
-import java.util.concurrent.ConcurrentLinkedQueue
+import java.time.Clock
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Foreground service that works through due schedules one at a time, with retries, and records
- * the outcome. Started by alarms, by boot recovery, and by "send now" from the UI.
+ * Foreground service that keeps the process alive and the CPU awake while [SendQueueProcessor]
+ * works through due schedules. Started by alarms, by boot recovery, and by the list's send actions.
  */
 class SendService : LifecycleService() {
 
-    private data class Request(val scheduleId: Long, val advance: Boolean, val forceDryRun: Boolean)
-
-    private val queue = ConcurrentLinkedQueue<Request>()
     private var worker: Job? = null
     private var lastStartId = 0
-    private var wakeLock: PowerManager.WakeLock? = null
+
+    /** Covers the gap between being started and the first job taking its own wake lock. */
+    private var startupLock: PowerManager.WakeLock? = null
 
     private val container get() = SchedulerApp.container(this)
-    private val sender: MessageSender by lazy {
-        AccessibilitySender(this, container.settings, container.secrets, container.log, container.notifications)
+
+    private val processor: SendQueueProcessor by lazy {
+        val c = container
+        SendQueueProcessor(
+            store = c.repository,
+            sender = AccessibilitySender(this, c.settings, c.secrets, c.pinGuard, c.log, c.notifications),
+            alarms = c.alarmScheduler,
+            notifier = ServiceNotifier(c.notifications, c.fallbackNotifier),
+            pinGuard = c.pinGuard,
+            state = c.sendState,
+            log = c.log,
+            settings = { c.settings.current() },
+            clock = Clock.systemDefaultZone(),
+            jobGuard = WakeLockGuard(getSystemService(PowerManager::class.java)),
+        )
     }
 
     override fun onCreate() {
@@ -45,96 +54,83 @@ class SendService : LifecycleService() {
         } else {
             startForeground(Notifications.ID_SENDING, notification)
         }
-        wakeLock = getSystemService(PowerManager::class.java)
-            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "WaScheduler:send")
-            .apply { acquire(10 * 60 * 1000L) }
+        startupLock = getSystemService(PowerManager::class.java)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "WaScheduler:start")
+            .apply { setReferenceCounted(false) }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         lastStartId = startId
-        val id = intent?.getLongExtra(EXTRA_SCHEDULE_ID, -1L) ?: -1L
-        if (intent != null && id >= 0) {
-            queue.add(Request(id, intent.getBooleanExtra(EXTRA_ADVANCE, true), intent.getBooleanExtra(EXTRA_FORCE_DRY_RUN, false)))
-        }
-        if (worker?.isActive != true) worker = lifecycleScope.launch { drain() }
+        startupLock?.acquire(STARTUP_LOCK_MS)
+        intent?.let(::requestFrom)?.let(processor::enqueue)
+        if (worker?.isActive != true) worker = lifecycleScope.launch { drainAndStop() }
         return START_NOT_STICKY
     }
 
-    private suspend fun drain() {
+    private suspend fun drainAndStop() {
         while (true) {
-            val request = queue.poll()
-            if (request == null) {
-                if (stopSelfResult(lastStartId)) return else continue
-            }
-            runCatching { process(request) }.onFailure { container.log.error("Unhandled error in job ${request.scheduleId}", it) }
+            processor.drain()
+            if (stopSelfResult(lastStartId)) return
+            // A start is on its way (the system has issued it, onStartCommand hasn't run yet). Yield the
+            // main thread so it can be delivered, instead of spinning here and blocking it.
+            delay(START_POLL_MS)
         }
     }
-
-    private suspend fun process(request: Request) {
-        val log = container.log
-        val schedule = container.repository.get(request.scheduleId)
-        if (schedule == null) {
-            log.warn("Schedule ${request.scheduleId} no longer exists")
-            return
-        }
-        if (!schedule.enabled && request.advance) {
-            log.info("Schedule ${schedule.id} is disabled; skipping")
-            return
-        }
-        val settings = container.settings.current()
-        val dryRun = settings.dryRun || request.forceDryRun
-        updateNotification("Sending to ${schedule.targetName}…")
-
-        var result: SendResult = SendResult.Failed("init", "not attempted")
-        for (attempt in 1..(settings.retryCount + 1)) {
-            result = sender.send(SendJob(schedule.id, schedule.target, schedule.message, dryRun, attempt))
-            if (result !is SendResult.Failed) break
-            log.warn("Attempt $attempt failed at ${result.step}: ${result.reason}")
-            if (attempt <= settings.retryCount) {
-                updateNotification("Retrying ${schedule.targetName} in ${settings.retryDelaySeconds}s…")
-                delay(settings.retryDelaySeconds * 1000L)
-            }
-        }
-        finish(schedule, result, request.advance)
-    }
-
-    private suspend fun finish(schedule: Schedule, result: SendResult, advance: Boolean) {
-        val (status, detail) = when (result) {
-            SendResult.Sent -> SendStatus.SENT to null
-            SendResult.DryRun -> SendStatus.DRY_RUN to "composer filled, send not tapped"
-            is SendResult.Failed -> SendStatus.FAILED to "${result.step}: ${result.reason}"
-        }
-        if (advance) {
-            val updated = container.repository.recordRun(schedule, status, detail)
-            container.alarmScheduler.sync(updated)
-        } else {
-            container.repository.recordManual(schedule, status, detail)
-        }
-        if (result is SendResult.Failed && !(result.step == "precheck" && !advance)) {
-            container.fallbackNotifier.notify(schedule, result.reason)
-        }
-    }
-
-    private fun updateNotification(text: String) =
-        container.notifications.show(Notifications.ID_SENDING, container.notifications.sending(text))
 
     override fun onDestroy() {
-        wakeLock?.let { if (it.isHeld) it.release() }
+        startupLock?.let { if (it.isHeld) it.release() }
+        container.sendState.reset()
         super.onDestroy()
     }
 
-    companion object {
-        const val EXTRA_SCHEDULE_ID = "schedule_id"
-        const val EXTRA_ADVANCE = "advance"
-        const val EXTRA_FORCE_DRY_RUN = "force_dry_run"
+    private fun requestFrom(intent: Intent): SendRequest? {
+        val id = intent.getLongExtra(EXTRA_SCHEDULE_ID, -1L).takeIf { it >= 0 } ?: return null
+        val kind = intent.getStringExtra(EXTRA_KIND)?.let { name -> SendKind.entries.firstOrNull { it.name == name } } ?: SendKind.SCHEDULED
+        val occurrence = intent.getLongExtra(EXTRA_OCCURRENCE_AT, -1L).takeIf { it >= 0 }
+        return SendRequest(id, kind, occurrence)
+    }
 
-        /** Queues a schedule for sending; the service is started in the foreground if needed. */
-        fun enqueue(context: Context, scheduleId: Long, advance: Boolean = true, forceDryRun: Boolean = false) {
+    /** A partial wake lock per job, sized to that job's worst case, released when it ends (B12). */
+    private class WakeLockGuard(private val power: PowerManager) : JobGuard {
+        override suspend fun around(budgetMs: Long, block: suspend () -> Unit) {
+            val lock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "WaScheduler:send").apply {
+                setReferenceCounted(false)
+                acquire(budgetMs)
+            }
+            try {
+                block()
+            } finally {
+                if (lock.isHeld) lock.release()
+            }
+        }
+    }
+
+    private class ServiceNotifier(private val notifications: Notifications, private val fallback: FallbackNotifier) : SendNotifier {
+        override fun progress(text: String) = notifications.show(Notifications.ID_SENDING, notifications.sending(text))
+        // Only a real send makes an earlier Tap to send prompt stale; a dry run sent nothing (B10).
+        override fun sent(schedule: Schedule, dryRun: Boolean) {
+            if (!dryRun) fallback.cancel(schedule.id)
+        }
+        override fun failed(schedule: Schedule, occurrenceAtMillis: Long?, reason: String) = fallback.notifyFailed(schedule, occurrenceAtMillis, reason)
+        override fun uncertain(schedule: Schedule, occurrenceAtMillis: Long?, reason: String) = fallback.notifyUncertain(schedule, occurrenceAtMillis, reason)
+        override fun pinPaused(reason: String) = fallback.notifyPinPaused(reason)
+        override fun missed(schedule: Schedule, occurrenceAtMillis: Long) = fallback.notifyMissed(schedule, occurrenceAtMillis)
+    }
+
+    companion object {
+        private const val EXTRA_SCHEDULE_ID = "schedule_id"
+        private const val EXTRA_KIND = "kind"
+        private const val EXTRA_OCCURRENCE_AT = "occurrence_at"
+        private const val STARTUP_LOCK_MS = 60_000L
+        private const val START_POLL_MS = 100L
+
+        /** Queues a send; the service is started in the foreground if needed. */
+        fun enqueue(context: Context, request: SendRequest) {
             val intent = Intent(context, SendService::class.java)
-                .putExtra(EXTRA_SCHEDULE_ID, scheduleId)
-                .putExtra(EXTRA_ADVANCE, advance)
-                .putExtra(EXTRA_FORCE_DRY_RUN, forceDryRun)
+                .putExtra(EXTRA_SCHEDULE_ID, request.scheduleId)
+                .putExtra(EXTRA_KIND, request.kind.name)
+            request.occurrenceAtMillis?.let { intent.putExtra(EXTRA_OCCURRENCE_AT, it) }
             ContextCompat.startForegroundService(context, intent)
         }
     }

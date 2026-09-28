@@ -30,7 +30,8 @@ data class Schedule(
     val rule: Recurrence get() = RecurrenceCodec.decode(recurrence)
 }
 
-enum class SendStatus { SENT, FAILED, SKIPPED, DRY_RUN }
+/** Stored by name as text, so adding a value needs no migration. UNCERTAIN: failed after Send was tapped. */
+enum class SendStatus { SENT, FAILED, SKIPPED, DRY_RUN, UNCERTAIN }
 
 @Entity(
     tableName = "send_log",
