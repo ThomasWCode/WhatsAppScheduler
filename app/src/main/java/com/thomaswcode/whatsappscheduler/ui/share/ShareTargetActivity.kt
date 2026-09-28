@@ -47,6 +47,11 @@ class ShareTargetActivity : ComponentActivity() {
                         when (event) {
                             is QuickEvent.Scheduled -> Toast.makeText(this@ShareTargetActivity, event.summary, Toast.LENGTH_LONG).show()
                             is QuickEvent.Deleted -> Unit
+                            // Shown over whatever is in front; the sheet stays open.
+                            is QuickEvent.Checked -> {
+                                Toast.makeText(this@ShareTargetActivity, event.message, Toast.LENGTH_LONG).show()
+                                return@collect
+                            }
                             // Repeating schedules are made in the app's full editor.
                             is QuickEvent.OpenFullEditor -> startActivity(MainActivity.intent(this@ShareTargetActivity, Routes.repeat(event)))
                         }

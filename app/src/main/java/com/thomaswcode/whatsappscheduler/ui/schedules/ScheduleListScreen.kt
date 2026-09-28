@@ -1,6 +1,7 @@
 package com.thomaswcode.whatsappscheduler.ui.schedules
 
 import android.content.Intent
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -123,15 +124,22 @@ fun ScheduleListScreen(
     var sentOpen by rememberSaveable { mutableStateOf(false) }
 
     // Shown from the ViewModel, so a rotation doesn't lose a snackbar or its Undo.
-    fun announce(message: String, action: String? = null, onAction: () -> Unit = {}) = vm.announce(message, action, onAction)
+    fun announce(message: String, action: String? = null, followUp: ScheduleListViewModel.FollowUp? = null, onAction: () -> Unit = {}) =
+        vm.announce(message, action, followUp, onAction)
 
     LaunchedEffect(quick) {
         quick.eventFlow.collect { event ->
             when (event) {
                 is QuickEvent.Scheduled -> {
                     val undo = event.createdIds
-                    if (undo != null) announce(event.summary, "Undo") { quick.undo(undo) } else announce(event.summary)
+                    // A chat found by name, new just now: offered a check once, after the Undo has gone.
+                    val offer = event.checkOffer?.let { chat ->
+                        ScheduleListViewModel.FollowUp("Check “${chat.chatName}” in WhatsApp now?", "Check") { quick.checkChat(chat) }
+                    }
+                    if (undo != null) announce(event.summary, "Undo", offer) { quick.undo(undo) } else announce(event.summary, followUp = offer)
                 }
+                // A toast, not the snackbar: the result usually arrives with the sheet open, which covers it.
+                is QuickEvent.Checked -> Toast.makeText(context, event.message, Toast.LENGTH_LONG).show()
                 is QuickEvent.Deleted -> announce(event.summary)
                 is QuickEvent.OpenFullEditor -> onRepeat(event)
             }
