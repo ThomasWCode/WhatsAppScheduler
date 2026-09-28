@@ -56,6 +56,15 @@ class RecipientRepository(private val db: AppDatabase) {
             ).let { it.copy(id = recipients.insert(it)) }
     }
 
+    /**
+     * Another stored recipient that already is the chat [recipient] would point to, e.g. after its
+     * number was edited to one saved for someone else; null when there is none. Saving such an edit
+     * would leave two identities for one chat, and lookups by number could then pick either.
+     */
+    suspend fun sameChatElsewhere(recipient: Recipient): Recipient? =
+        recipient.phoneE164?.let { recipients.otherByPhone(it, recipient.id) }
+            ?: if (recipient.phoneE164 == null) recipients.otherByChatName(recipient.kind, recipient.chatName, recipient.id) else null
+
     suspend fun markUsed(ids: Collection<Long>, at: Instant = Instant.now()) = db.withTransaction {
         ids.forEach { recipients.markUsed(it, at.toEpochMilli()) }
     }
