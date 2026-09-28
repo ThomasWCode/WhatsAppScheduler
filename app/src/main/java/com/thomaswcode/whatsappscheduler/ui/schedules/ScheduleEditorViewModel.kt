@@ -227,9 +227,9 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
                     if (f.lockedTouched) recipient = recipient.copy(isLocked = f.locked)
                     // Its other pending messages change target too: re-armed, and stale Tap to send prompts cleared.
                     if (recipient != resolved) {
-                        container.recipients.updateDetails(recipient).forEach {
-                            container.alarmScheduler.sync(it)
-                            container.fallbackNotifier.cancel(it.id)
+                        container.recipients.updateDetails(recipient).forEach { changed ->
+                            runCatching { container.fallbackNotifier.cancel(changed.id) }.onFailure { container.log.error("Clearing a stale prompt failed", it) }
+                            runCatching { container.alarmScheduler.sync(changed) }.onFailure { container.log.error("Re-arming after a details edit failed", it) }
                         }
                     }
                     // The chat's own name, as the quick sheet uses: what WhatsApp shows, which the search needs.
