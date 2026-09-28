@@ -2,6 +2,7 @@ package com.thomaswcode.whatsappscheduler.data
 
 import androidx.room.withTransaction
 import com.thomaswcode.whatsappscheduler.data.db.AppDatabase
+import com.thomaswcode.whatsappscheduler.data.db.Attention
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.data.db.SendLog
 import com.thomaswcode.whatsappscheduler.data.db.SendStatus
@@ -53,30 +54,47 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
         sentTo: String,
         ranAt: Instant,
     ): Schedule? = db.withTransaction {
-        val current = schedules.getById(id) ?: return@withTransaction null
-        logs.insert(SendLog(scheduleId = id, atMillis = ranAt.toEpochMilli(), status = status, targetName = sentTo, detail = detail))
+        val current = schedules.getById(id)
+        // Logged even when the schedule was deleted during the send: history outlives the schedule.
+        logs.insert(SendLog(scheduleId = current?.id, atMillis = ranAt.toEpochMilli(), status = status, targetName = sentTo, detail = detail, occurrenceAtMillis = occurrenceAtMillis))
+        if (current == null) return@withTransaction null
         val usedUp = current.nextAtMillis == occurrenceAtMillis
         val next = if (usedUp) nextAfterRun(current, occurrenceAtMillis, ranAt) else current.nextAtMillis
         // A one-off sent early is dated to when it went out. Its old, still-future time would otherwise
         // bring it back whenever the next occurrence is recomputed, e.g. on switching it back on.
         val firstAt = if (usedUp && current.rule == Recurrence.Once) minOf(current.firstAtMillis, ranAt.toEpochMilli()) else current.firstAtMillis
         val result = status.name + (detail?.let { ": $it" } ?: "")
-        schedules.updateRun(id, firstAt, next, ranAt.toEpochMilli(), result)
-        current.copy(firstAtMillis = firstAt, nextAtMillis = next, lastRunAtMillis = ranAt.toEpochMilli(), lastResult = result)
+        val attention = attentionAfter(status)
+        schedules.updateRun(id, firstAt, next, ranAt.toEpochMilli(), result, status, attention)
+        current.copy(firstAtMillis = firstAt, nextAtMillis = next, lastRunAtMillis = ranAt.toEpochMilli(), lastResult = result, lastStatus = status, attention = attention)
     }
 
+    /**
+     * A manual run doesn't decide whether the schedule needs attention, except that a real send by
+     * hand resolves whatever it was waiting on: the message has now gone out.
+     */
     override suspend fun recordManual(id: Long, status: SendStatus, detail: String?, sentTo: String, ranAt: Instant): Schedule? =
         db.withTransaction {
-            val current = schedules.getById(id) ?: return@withTransaction null
-            logs.insert(SendLog(scheduleId = id, atMillis = ranAt.toEpochMilli(), status = status, targetName = sentTo, detail = "(manual) " + (detail ?: "")))
+            val current = schedules.getById(id)
+            logs.insert(SendLog(scheduleId = current?.id, atMillis = ranAt.toEpochMilli(), status = status, targetName = sentTo, detail = "(manual) " + (detail ?: "")))
+            if (current == null) return@withTransaction null
             val result = "manual ${status.name}" + (detail?.let { ": $it" } ?: "")
-            schedules.updateLastRun(id, ranAt.toEpochMilli(), result)
-            current.copy(lastRunAtMillis = ranAt.toEpochMilli(), lastResult = result)
+            val attention = if (status == SendStatus.SENT) null else current.attention
+            schedules.updateLastRun(id, ranAt.toEpochMilli(), result, status, attention)
+            current.copy(lastRunAtMillis = ranAt.toEpochMilli(), lastResult = result, lastStatus = status, attention = attention)
         }
 
     suspend fun pruneLogs(olderThan: Instant) = logs.prune(olderThan.toEpochMilli())
 
     companion object {
+        /** What an occurrence's outcome leaves the schedule waiting on the user for (T5). A success clears it. */
+        fun attentionAfter(status: SendStatus): Attention? = when (status) {
+            SendStatus.SENT, SendStatus.DRY_RUN -> null
+            SendStatus.FAILED -> Attention.FAILED
+            SendStatus.UNCERTAIN -> Attention.UNCERTAIN
+            SendStatus.SKIPPED, SendStatus.MISSED -> Attention.MISSED
+        }
+
         /** The occurrence after the one due at [occurrenceAtMillis], or null when the rule has no more. */
         fun nextAfterRun(schedule: Schedule, occurrenceAtMillis: Long, ranAt: Instant): Long? =
             RecurrenceCalculator.nextOccurrence(

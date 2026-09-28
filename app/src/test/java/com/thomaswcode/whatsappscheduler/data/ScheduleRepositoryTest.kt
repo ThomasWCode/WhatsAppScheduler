@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.thomaswcode.whatsappscheduler.data.db.AppDatabase
+import com.thomaswcode.whatsappscheduler.data.db.Attention
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.data.db.SendStatus
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
@@ -82,12 +83,34 @@ class ScheduleRepositoryTest {
     }
 
     @Test
-    fun recordingADeletedScheduleIsHarmless() = runTest {
+    fun aScheduleDeletedDuringItsSendIsStillInTheHistory() = runTest {
         val saved = saveDaily()
         repository.delete(saved)
         assertNull(repository.recordRun(saved.id, nine.toEpochMilli(), SendStatus.SENT, null, "Mum", ranAt))
         assertNull(repository.recordManual(saved.id, SendStatus.SENT, null, "Mum", ranAt))
-        assertEquals(emptyList<Any>(), repository.observeLogs().first())
+        val logs = repository.observeLogs().first()
+        assertEquals(2, logs.size)
+        logs.forEach {
+            assertNull(it.scheduleId)
+            assertEquals("Mum", it.targetName)
+        }
+    }
+
+    @Test
+    fun outcomesSetTheTypedStatusAndWhatNeedsAttention() = runTest {
+        val saved = saveDaily()
+        val failed = repository.recordRun(saved.id, nine.toEpochMilli(), SendStatus.FAILED, "search: Timed out", "Mum", ranAt)!!
+        assertEquals(SendStatus.FAILED, failed.lastStatus)
+        assertEquals(Attention.FAILED, failed.attention)
+        assertEquals(nine.toEpochMilli(), repository.observeLogs().first().single().occurrenceAtMillis)
+        // A test run changes nothing it waits on; a copy sent by hand resolves it.
+        assertEquals(Attention.FAILED, repository.recordManual(saved.id, SendStatus.DRY_RUN, null, "Mum", ranAt)!!.attention)
+        val resolved = repository.recordManual(saved.id, SendStatus.SENT, null, "Mum", ranAt)!!
+        assertNull(resolved.attention)
+        assertEquals(resolved, repository.get(saved.id))
+        // The next occurrence's outcome decides again.
+        val next = resolved.nextAtMillis!!
+        assertEquals(Attention.UNCERTAIN, repository.recordRun(saved.id, next, SendStatus.UNCERTAIN, null, "Mum", ranAt.plusSeconds(86_400))!!.attention)
     }
 
     @Test

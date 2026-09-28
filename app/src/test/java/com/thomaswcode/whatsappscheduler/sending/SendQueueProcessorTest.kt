@@ -159,7 +159,7 @@ class SendQueueProcessorTest {
         val sender = FakeSender()
         processor(sender, Settings(missedGraceMinutes = 120)).run { enqueue(scheduled()); drain() }
         assertTrue(sender.jobs.isEmpty())
-        assertEquals(listOf(SendStatus.SKIPPED), store.logged)
+        assertEquals(listOf(SendStatus.MISSED), store.logged)
         assertEquals(listOf("missed Mum"), notifier.events)
         assertEquals(due.plus(Duration.ofDays(1)).toEpochMilli(), store.row(1).nextAtMillis)
     }

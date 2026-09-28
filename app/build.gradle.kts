@@ -39,6 +39,12 @@ android {
         unitTests.isIncludeAndroidResources = true
     }
 
+    // MigrationTestHelper reads the exported schemas from assets, and Robolectric's assets are the
+    // debug variant's, so the schemas go there: a few KB in debug builds only, never in release.
+    sourceSets {
+        getByName("debug").assets.directories.add("$projectDir/schemas")
+    }
+
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
@@ -71,4 +77,5 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.room.testing)
 }
