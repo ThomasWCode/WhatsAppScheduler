@@ -156,10 +156,14 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         visible = true
     }
 
-    /** Opens the one-off (or batch) in edit mode: the same sheet, titled "Edit message". */
-    fun openEdit(schedule: Schedule) {
+    /**
+     * Opens a one-off in edit mode: the same sheet, titled "Edit message". [members] are exactly the
+     * schedules the row shows. A batch can be split across the list's sections, and editing members
+     * that have already gone would schedule them again.
+     */
+    fun openEdit(members: List<Schedule>) {
+        val schedule = members.firstOrNull() ?: return
         viewModelScope.launch {
-            val members = schedule.batchId?.let { container.repository.batch(it) }?.ifEmpty { null } ?: listOf(schedule)
             show(
                 QuickDraft(
                     recipients = members.map { recipientOf(it) },
