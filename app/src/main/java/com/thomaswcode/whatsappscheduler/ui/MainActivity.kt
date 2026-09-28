@@ -44,6 +44,7 @@ class MainActivity : ComponentActivity() {
                         container.settings.markRecipientsLinked()
                     }
                 }.onFailure { container.log.error("Linking recipients failed", it) }
+                runCatching { container.housekeeping.run() }.onFailure { container.log.error("Housekeeping failed", it) }
             }
         }
     }

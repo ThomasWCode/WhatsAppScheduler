@@ -1,6 +1,7 @@
 package com.thomaswcode.whatsappscheduler
 
 import android.content.Context
+import com.thomaswcode.whatsappscheduler.data.Housekeeping
 import com.thomaswcode.whatsappscheduler.data.RecipientRepository
 import com.thomaswcode.whatsappscheduler.data.ScheduleRepository
 import com.thomaswcode.whatsappscheduler.data.contacts.ContactSearch
@@ -40,6 +41,7 @@ class AppContainer(context: Context) {
     val fallbackNotifier: FallbackNotifier by lazy { FallbackNotifier(appContext, notifications) }
     val log: AutomationLog by lazy { AutomationLog(appContext) }
     val alarmScheduler: AlarmScheduler by lazy { AlarmScheduler(appContext, repository, sendState, log) }
+    val housekeeping: Housekeeping by lazy { Housekeeping(repository, { settings.current().keepSentDays }, log) }
 
     /** For work that must outlive the screen that started it, e.g. alarm recovery across a rotation. */
     val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
