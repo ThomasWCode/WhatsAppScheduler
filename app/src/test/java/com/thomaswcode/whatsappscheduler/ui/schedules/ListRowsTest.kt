@@ -40,6 +40,9 @@ class ListRowsTest {
         assertEquals(listOf("Mum: SENT", "Dad: FAILED: search: Timed out"), outcomeLines(listOf(mum, dad)))
         assertEquals(listOf("Mum: SENT", "Sam: not sent yet"), outcomeLines(listOf(mum, schedule(3, "Sam"))))
         assertEquals(listOf("Last: SENT"), outcomeLines(listOf(mum, mum.copy(id = 4, targetName = "Sam"))))
+        // Both failed, for different reasons: both reasons show.
+        val sam = dad.copy(id = 6, targetName = "Sam", lastResult = "FAILED: type: Timed out")
+        assertEquals(listOf("Dad: FAILED: search: Timed out", "Sam: FAILED: type: Timed out"), outcomeLines(listOf(dad, sam)))
         assertEquals(emptyList<String>(), outcomeLines(listOf(schedule(5))))
     }
 }
