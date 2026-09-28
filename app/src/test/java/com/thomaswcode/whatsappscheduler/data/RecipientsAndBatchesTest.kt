@@ -134,6 +134,19 @@ class RecipientsAndBatchesTest {
     }
 
     @Test
+    fun anEditKeepsARunThatFinishedWhileTheSheetWasOpen() = runTest {
+        val m = recipients.resolve(mum)
+        val readBeforeTheRun = schedules.saveBatch(template(), listOf(m), now = now).saved.single()
+        val ranAt = tomorrowNine.plusSeconds(30)
+        schedules.recordRun(readBeforeTheRun.id, readBeforeTheRun.nextAtMillis!!, SendStatus.FAILED, "search: Timed out", "Mum", ranAt)
+        val later = tomorrowNine.plus(Duration.ofDays(1))
+        val edited = schedules.saveBatch(template("Lunch at 1?", later), listOf(m), listOf(readBeforeTheRun), now).saved.single()
+        assertEquals(SendStatus.FAILED, edited.lastStatus)
+        assertEquals(ranAt.toEpochMilli(), edited.lastRunAtMillis)
+        assertEquals(later.toEpochMilli(), edited.nextAtMillis)
+    }
+
+    @Test
     fun savingThroughTheSheetSchedulesEveryMember() = runTest {
         val (m, d) = listOf(mum, dad).map { recipients.resolve(it) }
         val paused = schedules.saveBatch(template(), listOf(m), now = now).saved.single()
