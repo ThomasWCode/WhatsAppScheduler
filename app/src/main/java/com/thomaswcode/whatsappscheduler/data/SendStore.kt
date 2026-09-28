@@ -12,7 +12,7 @@ interface SendStore {
     /**
      * Logs the outcome of sending the occurrence due at [occurrenceAtMillis] and moves the schedule
      * past it, if the row still shows that occurrence. Returns the row as stored, or null when the
-     * schedule has been deleted.
+     * schedule has been deleted (the outcome is still logged).
      */
     suspend fun recordRun(id: Long, occurrenceAtMillis: Long, status: SendStatus, detail: String?, sentTo: String, ranAt: Instant): Schedule?
 
