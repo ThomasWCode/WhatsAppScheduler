@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.ContactsContract.CommonDataKinds.Phone
+import android.provider.ContactsContract.Data
 import android.provider.ContactsContract.RawContacts
 import androidx.core.content.ContextCompat
 import com.thomaswcode.whatsappscheduler.domain.PhoneNormaliser
@@ -47,28 +48,49 @@ class ContactSearch(private val context: Context) {
                 }
             }
         }
-        val onWhatsApp = whatsAppContactIds(hits.values.mapTo(mutableSetOf()) { it.contactId })
+        val onWhatsApp = whatsAppNumbers(hits.values.mapTo(mutableSetOf()) { it.contactId })
         // A stable sort: within each group the provider's own ranking is kept.
-        hits.values.map { it.copy(onWhatsApp = it.contactId in onWhatsApp) }.sortedByDescending { it.onWhatsApp }.take(limit)
+        hits.values.map { it.copy(onWhatsApp = it.e164 != null && it.e164 in onWhatsApp) }.sortedByDescending { it.onWhatsApp }.take(limit)
     }
 
-    private fun whatsAppContactIds(ids: Set<Long>): Set<Long> {
-        if (ids.isEmpty()) return emptySet()
-        val found = mutableSetOf<Long>()
+    /**
+     * The numbers WhatsApp itself lists for these contacts, in E.164. Its raw contacts carry data rows
+     * whose DATA1 is the chat id, "447400123456@s.whatsapp.net". Per number, not per contact: someone
+     * with two numbers may be on WhatsApp with only one of them.
+     */
+    private fun whatsAppNumbers(contactIds: Set<Long>): Set<String> {
+        if (contactIds.isEmpty()) return emptySet()
+        val rawIds = mutableListOf<Long>()
+        val numbers = mutableSetOf<String>()
         runCatching {
             context.contentResolver.query(
                 RawContacts.CONTENT_URI,
-                arrayOf(RawContacts.CONTACT_ID),
-                "${RawContacts.ACCOUNT_TYPE} IN (?, ?) AND ${RawContacts.CONTACT_ID} IN (${ids.joinToString(",")})",
+                arrayOf(RawContacts._ID),
+                "${RawContacts.ACCOUNT_TYPE} IN (?, ?) AND ${RawContacts.CONTACT_ID} IN (${contactIds.joinToString(",")})",
                 arrayOf(WHATSAPP_ACCOUNT, WHATSAPP_BUSINESS_ACCOUNT),
                 null,
-            )?.use { c -> while (c.moveToNext()) found += c.getLong(0) }
+            )?.use { c -> while (c.moveToNext()) rawIds += c.getLong(0) }
+            if (rawIds.isEmpty()) return@runCatching
+            context.contentResolver.query(
+                Data.CONTENT_URI,
+                arrayOf(Data.DATA1),
+                "${Data.RAW_CONTACT_ID} IN (${rawIds.joinToString(",")}) AND ${Data.MIMETYPE} LIKE ?",
+                arrayOf("$WHATSAPP_MIMETYPE_PREFIX%"),
+                null,
+            )?.use { c -> while (c.moveToNext()) whatsAppChatNumber(c.getString(0))?.let(numbers::add) }
         }
-        return found
+        return numbers
     }
 
-    private companion object {
-        const val WHATSAPP_ACCOUNT = "com.whatsapp"
-        const val WHATSAPP_BUSINESS_ACCOUNT = "com.whatsapp.w4b"
+    companion object {
+        private const val WHATSAPP_ACCOUNT = "com.whatsapp"
+        private const val WHATSAPP_BUSINESS_ACCOUNT = "com.whatsapp.w4b"
+        private const val WHATSAPP_MIMETYPE_PREFIX = "vnd.android.cursor.item/vnd.com.whatsapp"
+
+        /** "447400123456@s.whatsapp.net" gives "+447400123456"; a group or anything else, null. */
+        fun whatsAppChatNumber(chatId: String?): String? {
+            val digits = chatId?.takeIf { it.endsWith("@s.whatsapp.net") }?.substringBefore('@') ?: return null
+            return digits.takeIf { it.isNotEmpty() && it.all(Char::isDigit) }?.let { "+$it" }
+        }
     }
 }

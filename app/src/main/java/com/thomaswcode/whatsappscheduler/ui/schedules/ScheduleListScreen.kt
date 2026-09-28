@@ -39,10 +39,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxDefaults
@@ -119,27 +116,15 @@ fun ScheduleListScreen(
     val serviceConnected by vm.serviceConnected.collectAsStateWithLifecycle()
     val health = rememberHealth(serviceConnected, hasPin, PinCircuitBreaker.block(pinFailures, now.toInstant().toEpochMilli()), settings?.dryRun == true)
     val timeFormat = rememberTimeFormat()
-    val snackbar = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
+    val snackbar = vm.snackbar
     // Held by id and saved, so an open dialog survives rotation and always shows the current rows.
     var sendIds by rememberSaveable { mutableStateOf<LongArray?>(null) }
     var sendCopyOnly by rememberSaveable { mutableStateOf(false) }
     var postponeIds by rememberSaveable { mutableStateOf<LongArray?>(null) }
     var sentOpen by rememberSaveable { mutableStateOf(false) }
 
-    fun announce(message: String, action: String? = null, onAction: () -> Unit = {}) {
-        scope.launch {
-            // A newer message replaces the one showing, so its Undo isn't queued behind the old one.
-            snackbar.currentSnackbarData?.dismiss()
-            val result = snackbar.showSnackbar(
-                message,
-                actionLabel = action,
-                withDismissAction = action == null,
-                duration = if (action != null) SnackbarDuration.Long else SnackbarDuration.Short,
-            )
-            if (result == SnackbarResult.ActionPerformed) onAction()
-        }
-    }
+    // Shown from the ViewModel, so a rotation doesn't lose a snackbar or its Undo.
+    fun announce(message: String, action: String? = null, onAction: () -> Unit = {}) = vm.announce(message, action, onAction)
 
     LaunchedEffect(quick) {
         quick.eventFlow.collect { event ->
@@ -368,6 +353,8 @@ private fun ScheduleRow(
     // Not saveable: a row brought back by Undo must come back in place, not swiped away.
     val swipe = remember { SwipeToDismissBoxState(SwipeToDismissBoxValue.Settled, threshold) }
     var menuOpen by remember { mutableStateOf(false) }
+    // A menu left open when the row starts sending closes: nothing may change under a send (B08).
+    LaunchedEffect(busy) { if (busy) menuOpen = false }
     SwipeToDismissBox(
         state = swipe,
         modifier = modifier.padding(vertical = 4.dp),
@@ -416,7 +403,7 @@ private fun ScheduleRow(
                         IconButton(onClick = { menuOpen = true }, enabled = !busy) { Icon(Icons.Default.MoreVert, contentDescription = "More") }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                             menu.forEach { (label, action) ->
-                                DropdownMenuItem(text = { Text(label) }, onClick = { menuOpen = false; action() })
+                                DropdownMenuItem(text = { Text(label) }, onClick = { menuOpen = false; action() }, enabled = !busy)
                             }
                         }
                     }
