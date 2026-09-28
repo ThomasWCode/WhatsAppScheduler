@@ -27,6 +27,7 @@ import com.thomaswcode.whatsappscheduler.domain.RecurrenceCodec
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
 import com.thomaswcode.whatsappscheduler.domain.TimeChip
 import com.thomaswcode.whatsappscheduler.sending.accessibility.WaAccessibilityService
+import com.thomaswcode.whatsappscheduler.ui.minuteClock
 import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
@@ -35,13 +36,11 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -110,13 +109,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
     val pinFailures: StateFlow<PinFailures> = container.secrets.observePinFailures().stateIn(viewModelScope, whileShown, PinFailures())
 
     /** The time, moving on each minute, so the chips and "in 18 h 52 min" stay right while the sheet is open. */
-    val now: StateFlow<ZonedDateTime> = flow {
-        while (true) {
-            val now = ZonedDateTime.now()
-            emit(now)
-            delay(60_000L - now.second * 1_000L - now.nano / 1_000_000)
-        }
-    }.stateIn(viewModelScope, whileShown, ZonedDateTime.now())
+    val now: StateFlow<ZonedDateTime> = minuteClock().stateIn(viewModelScope, whileShown, ZonedDateTime.now())
 
     private val events = Channel<QuickEvent>(Channel.BUFFERED)
     val eventFlow: Flow<QuickEvent> = events.receiveAsFlow()
@@ -167,20 +160,38 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
     fun openEdit(schedule: Schedule) {
         viewModelScope.launch {
             val members = schedule.batchId?.let { container.repository.batch(it) }?.ifEmpty { null } ?: listOf(schedule)
-            draft = QuickDraft(
-                recipients = members.map { m ->
-                    m.recipientId?.let { container.recipients.get(it) }?.toDraft()
-                        ?: RecipientDraft(m.targetKind, m.targetName, phoneE164 = m.phoneE164, isLocked = m.isLocked)
-                },
-                message = schedule.message,
-                time = schedule.nextAtMillis?.let(TimeChoice::Exact),
-                editingIds = members.map { it.id },
+            show(
+                QuickDraft(
+                    recipients = members.map { recipientOf(it) },
+                    message = schedule.message,
+                    time = schedule.nextAtMillis?.let(TimeChoice::Exact),
+                    editingIds = members.map { it.id },
+                ),
             )
-            query = ""
-            error = null
-            visible = true
         }
     }
+
+    /**
+     * "Send again…" on a sent message (quick-schedule.md §8): a new message to the same people with
+     * the same text, and no time chosen yet.
+     */
+    fun openSendAgain(group: List<Schedule>) {
+        viewModelScope.launch {
+            show(QuickDraft(recipients = group.map { recipientOf(it) }, message = group.first().message))
+        }
+    }
+
+    private fun show(newDraft: QuickDraft) {
+        draft = newDraft
+        query = ""
+        error = null
+        visible = true
+    }
+
+    /** The stored recipient a schedule went to, or its own copy of the target when it isn't linked. */
+    private suspend fun recipientOf(schedule: Schedule): RecipientDraft =
+        schedule.recipientId?.let { container.recipients.get(it) }?.toDraft()
+            ?: RecipientDraft(schedule.targetKind, schedule.targetName, phoneE164 = schedule.phoneE164, isLocked = schedule.isLocked)
 
     /** Swiping the sheet away keeps the draft for the next time it opens. */
     fun hide() {

@@ -15,7 +15,11 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import java.time.Instant
 import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -28,6 +32,18 @@ fun BackBar(title: String, onBack: () -> Unit, actions: @Composable RowScope.() 
 }
 
 private val stampFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE d MMM yyyy, HH:mm")
+
+/**
+ * The time now, then again at the start of every minute, so relative times ("in 18 h 52 min") and
+ * time chips stay right while a screen is open.
+ */
+fun minuteClock(): Flow<ZonedDateTime> = flow {
+    while (true) {
+        val now = ZonedDateTime.now()
+        emit(now)
+        delay(60_000L - now.second * 1_000L - now.nano / 1_000_000)
+    }
+}
 
 /** Formats epoch millis in the device zone for display. */
 fun formatStamp(millis: Long?, zone: ZoneId = ZoneId.systemDefault()): String =
