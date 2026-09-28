@@ -30,18 +30,22 @@ data class ListSections(
         fun of(schedules: List<Schedule>): ListSections {
             val oneOffs = schedules.filter { it.rule == Recurrence.Once && it.attention == null }
             return ListSections(
-                attention = batches(schedules.filter { it.attention != null }).sortedByDescending { group -> group.maxOf { it.shownAtMillis } },
+                attention = batches(schedules.filter { it.attention != null }) { it.attention }.sortedByDescending { group -> group.maxOf { it.shownAtMillis } },
                 upcoming = batches(oneOffs.filter { it.nextAtMillis != null }).sortedBy { group -> group.minOf { it.nextAtMillis ?: Long.MAX_VALUE } },
                 // Running series first, soonest first; paused and finished ones after them.
                 repeating = batches(schedules.filter { it.rule != Recurrence.Once })
                     .sortedWith(compareBy({ it.first().let { s -> !s.enabled || s.nextAtMillis == null } }, { it.first().nextAtMillis ?: Long.MAX_VALUE })),
-                sent = batches(oneOffs.filter { it.nextAtMillis == null }).sortedByDescending { group -> group.maxOf { it.shownAtMillis } },
+                sent = batches(oneOffs.filter { it.nextAtMillis == null }) { it.shownStatus }.sortedByDescending { group -> group.maxOf { it.shownAtMillis } },
             )
         }
 
-        /** Members of one batch together, in the order they were added; a schedule without a batch alone. */
-        private fun batches(schedules: List<Schedule>): List<List<Schedule>> =
-            schedules.groupBy { it.batchId ?: "#${it.id}" }.values.map { group -> group.sortedBy { it.id } }
+        /**
+         * Members of one batch together, in the order they were added; a schedule without a batch alone.
+         * Members with a different [outcome] get their own entry, so one row never speaks for recipients
+         * whose messages ended differently.
+         */
+        private fun batches(schedules: List<Schedule>, outcome: (Schedule) -> Any? = { null }): List<List<Schedule>> =
+            schedules.groupBy { (it.batchId ?: "#${it.id}") to outcome(it) }.values.map { group -> group.sortedBy { it.id } }
 
         private val Schedule.shownAtMillis: Long get() = lastRunAtMillis ?: firstAtMillis
     }
@@ -49,15 +53,17 @@ data class ListSections(
 
 /**
  * The last run's outcome. Rows from before schema v2 have only the text of [Schedule.lastResult],
- * which starts with the status name.
+ * which starts with the status name, after "manual " for a run from the app.
  */
 val Schedule.shownStatus: SendStatus?
-    get() = lastStatus ?: SendStatus.entries.firstOrNull { lastResult == it.name || lastResult?.startsWith(it.name + ":") == true }
+    get() = lastStatus ?: lastResult?.removePrefix("manual ")?.let { text ->
+        SendStatus.entries.firstOrNull { text == it.name || text.startsWith(it.name + ":") }
+    }
 
 /**
  * The line under a row's recipients: when it goes, when it went, or why it needs you. [dueAt] maps a
- * schedule to the occurrence its latest scheduled run was for, which is when a missed or failed
- * message was due.
+ * schedule to the occurrence its latest scheduled run was for: a missed message says when it was
+ * due, while a failed one says when it was tried, which differs after Send now.
  */
 fun statusLine(
     section: Section,
@@ -71,10 +77,11 @@ fun statusLine(
     return when (section) {
         Section.ATTENTION -> {
             val due = dueAt[schedule.id] ?: if (schedule.rule == Recurrence.Once) schedule.firstAtMillis else schedule.lastRunAtMillis ?: schedule.firstAtMillis
+            val tried = schedule.lastRunAtMillis ?: due
             when (schedule.attention) {
                 Attention.MISSED -> "Missed · ${day(due)}"
-                Attention.FAILED -> "Couldn't send · ${day(due)}"
-                Attention.UNCERTAIN -> "May have been sent · ${day(due)}: check the chat"
+                Attention.FAILED -> "Couldn't send · ${day(tried)}"
+                Attention.UNCERTAIN -> "May have been sent · ${day(tried)}: check the chat"
                 Attention.HELD -> "Not sent: choose a new time"
                 null -> day(due)
             }

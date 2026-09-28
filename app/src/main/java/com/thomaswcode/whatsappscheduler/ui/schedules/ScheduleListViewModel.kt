@@ -68,7 +68,7 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     /** Swipe or Delete: the schedules go, with their history, and Undo can bring them back. */
-    fun delete(group: List<Schedule>) {
+    fun delete(group: List<Schedule>, verb: String = "Deleted") {
         viewModelScope.launch {
             val ids = group.map { it.id }
             runCatching {
@@ -82,7 +82,7 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
                 }
             }
                 .onSuccess { removed ->
-                    if (removed.schedules.isNotEmpty()) events.trySend(ListEvent.Deleted("Deleted: " + groupTitle(removed.schedules), removed))
+                    if (removed.schedules.isNotEmpty()) events.trySend(ListEvent.Deleted("$verb: " + groupTitle(removed.schedules), removed))
                 }
                 .onFailure { fail("Couldn't delete", it) }
         }
@@ -101,7 +101,7 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
      */
     fun discard(group: List<Schedule>) {
         if (group.first().rule == Recurrence.Once) {
-            delete(group)
+            delete(group, verb = "Discarded")
             return
         }
         viewModelScope.launch {
