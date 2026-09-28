@@ -187,6 +187,20 @@ class RecipientsAndBatchesTest {
     }
 
     @Test
+    fun partOfABatchEditedOnItsOwnBecomesABatchOfItsOwn() = runTest {
+        val (m, d, c) = listOf(mum, dad, crew).map { recipients.resolve(it) }
+        val members = schedules.saveBatch(template(), listOf(m, d, c), now = now).saved
+        val edited = schedules.saveBatch(template("Lunch at 1?"), listOf(m, d), members.take(2), now).saved
+        assertNotNull(edited[0].batchId)
+        assertEquals(edited[0].batchId, edited[1].batchId)
+        assertTrue("apart from the member left out", edited[0].batchId != members[2].batchId)
+        assertEquals(members[2].batchId, schedules.get(members[2].id)!!.batchId)
+        // Edited as a whole, a batch keeps its id.
+        val whole = schedules.saveBatch(template("Lunch at 2?"), listOf(m, d), schedules.batch(edited[0].batchId!!), now).saved
+        assertEquals(edited[0].batchId, whole[0].batchId)
+    }
+
+    @Test
     fun savingThroughTheSheetSchedulesEveryMember() = runTest {
         val (m, d) = listOf(mum, dad).map { recipients.resolve(it) }
         val paused = schedules.saveBatch(template(), listOf(m), now = now).saved.single()

@@ -124,7 +124,11 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
             // The rows as they are now: a member may have finished sending since the caller read it, and
             // saving that stale copy would overwrite the run it just recorded (B08).
             val current = members.mapNotNull { schedules.getById(it.id) }
-            val batchId = if (recipients.size > 1) current.firstNotNullOfOrNull { it.batchId } ?: UUID.randomUUID().toString() else null
+            // Part of a batch edited on its own (the list shows a batch split by outcome) gets a batch of
+            // its own; keeping the old id would show it again with members it no longer matches.
+            val original = current.firstNotNullOfOrNull { it.batchId }
+            val wholeBatch = original != null && schedules.getBatch(original).all { member -> current.any { it.id == member.id } }
+            val batchId = if (recipients.size > 1) original?.takeIf { wholeBatch } ?: UUID.randomUUID().toString() else null
             val byRecipient = current.filter { it.recipientId != null }.associateBy { it.recipientId }
             val saved = recipients.map { recipient ->
                 val base = byRecipient[recipient.id] ?: current.singleOrNull { it.recipientId == null && recipients.size == 1 } ?: template.copy(id = 0)
