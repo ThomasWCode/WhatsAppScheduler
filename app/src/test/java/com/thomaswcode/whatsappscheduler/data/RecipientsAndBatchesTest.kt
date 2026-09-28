@@ -134,6 +134,17 @@ class RecipientsAndBatchesTest {
     }
 
     @Test
+    fun savingThroughTheSheetSchedulesEveryMember() = runTest {
+        val (m, d) = listOf(mum, dad).map { recipients.resolve(it) }
+        val paused = schedules.saveBatch(template(), listOf(m), now = now).saved.single()
+        schedules.setEnabled(paused.id, false, now)
+        // Adding Dad to the switched-off one-off: no member may be armed while another stays off.
+        val change = schedules.saveBatch(template(), listOf(m, d), listOf(schedules.get(paused.id)!!), now)
+        assertEquals(2, change.saved.size)
+        assertTrue(change.saved.all { it.enabled })
+    }
+
+    @Test
     fun schedulesFromBeforeRecipientsGetLinkedOnce() = runTest {
         val legacy = schedules.save(
             template().copy(targetName = "Sam", phoneE164 = "+447400123458", isLocked = true, createdAtMillis = now.toEpochMilli()),
