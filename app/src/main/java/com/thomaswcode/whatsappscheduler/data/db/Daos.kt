@@ -48,19 +48,21 @@ interface ScheduleDao {
     @Query("SELECT * FROM schedules WHERE recipientId IS NULL ORDER BY createdAtMillis DESC, id DESC")
     suspend fun getUnlinked(): List<Schedule>
 
-    @Query("SELECT * FROM schedules WHERE recipientId = :recipientId AND nextAtMillis IS NOT NULL")
+    /** Still to go out: pending, or failed or missed and waiting to be sent by hand (see [updatePendingTarget]). */
+    @Query("SELECT * FROM schedules WHERE recipientId = :recipientId AND (nextAtMillis IS NOT NULL OR attention IN ('FAILED', 'MISSED', 'HELD'))")
     suspend fun pendingFor(recipientId: Long): List<Schedule>
 
     @Query("UPDATE schedules SET recipientId = :recipientId WHERE id = :id")
     suspend fun setRecipient(id: Long, recipientId: Long)
 
     /**
-     * Copies a recipient's edited details into its schedules that haven't gone out yet. Sent ones
-     * keep the details they were sent with.
+     * Copies a recipient's edited details into its schedules that haven't gone out yet: pending ones,
+     * and failed or missed ones still waiting to be sent by hand. Sent ones keep the details they
+     * were sent with, and so does one that may have been sent, whose chat is the one to check.
      */
     @Query(
         "UPDATE schedules SET targetKind = :kind, targetName = :chatName, phoneE164 = :phoneE164, isLocked = :isLocked " +
-            "WHERE recipientId = :recipientId AND nextAtMillis IS NOT NULL"
+            "WHERE recipientId = :recipientId AND (nextAtMillis IS NOT NULL OR attention IN ('FAILED', 'MISSED', 'HELD'))"
     )
     suspend fun updatePendingTarget(recipientId: Long, kind: TargetKind, chatName: String, phoneE164: String?, isLocked: Boolean)
 }
