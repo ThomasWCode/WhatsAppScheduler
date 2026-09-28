@@ -5,6 +5,8 @@ import com.thomaswcode.whatsappscheduler.data.RecipientDraft
 import com.thomaswcode.whatsappscheduler.data.db.Recipient
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
 import com.thomaswcode.whatsappscheduler.domain.TimeChip
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -35,6 +37,15 @@ class QuickDraftTest {
         val exact = QuickDraft(message = "Hi", time = TimeChoice.Exact(1_790_000_000_000L))
         assertEquals(exact, roundTrip(exact))
         assertEquals(QuickDraft(), roundTrip(QuickDraft()))
+    }
+
+    @Test
+    fun onlyTimesAtLeastAMinuteAheadCanBeScheduled() {
+        val now = ZonedDateTime.of(2026, 9, 28, 17, 0, 30, 0, ZoneId.of("Europe/London"))
+        // A time picked earlier today: the button stays off rather than failing on tap.
+        assertFalse(QuickScheduleViewModel.isSendable(now.minusMinutes(5), now))
+        assertFalse(QuickScheduleViewModel.isSendable(now.plusSeconds(59), now))
+        assertTrue(QuickScheduleViewModel.isSendable(now.plusSeconds(60), now))
     }
 
     @Test
