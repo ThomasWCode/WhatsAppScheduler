@@ -43,6 +43,9 @@ class AccessibilitySender(
         val whatsapp = installedWhatsApp() ?: return SendResult.Failed(PRECHECK, "WhatsApp is not installed", retryable = false)
         val settings = settingsStore.current()
         val pinBlock = pinGuard.block()?.describe()
+        // Checked on every send, including ones that won't need the PIN: a daily limit expires by
+        // itself, and its "paused" notice must not outlive it just because the phone was unlocked.
+        if (pinBlock == null) notifications.cancel(Notifications.ID_PIN_PAUSED)
         // Checked before the screen is woken: the lock screen needs the PIN, and PIN entry is paused (B04).
         if (pinBlock != null && wake.needsPin()) return SendResult.Failed(PRECHECK, pinBlock, retryable = false)
         val pin = secrets.pin()
