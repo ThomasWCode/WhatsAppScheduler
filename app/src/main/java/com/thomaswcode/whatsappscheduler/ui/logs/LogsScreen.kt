@@ -10,7 +10,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,7 +34,7 @@ fun LogsScreen(container: AppContainer, onBack: () -> Unit) {
 
     Scaffold(topBar = { BackBar("Logs", onBack) { TextButton(onClick = { container.log.clear() }) { Text("Clear trace") } } }) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            TabRow(selectedTabIndex = tab) {
+            PrimaryTabRow(selectedTabIndex = tab) {
                 Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Sends") })
                 Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Automation trace") })
             }
