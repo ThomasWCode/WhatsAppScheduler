@@ -117,11 +117,18 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onSetup: () -> U
             onDismiss = { pinDialog = false },
             onSave = { value ->
                 scope.launch {
-                    // Also clears a rejection, which lets automatic unlocking resume (B04).
+                    // Clears a rejection (B04). Unlocking may still be paused by the daily limit, in
+                    // which case the paused notice stays, with the new reason.
                     container.secrets.setPin(value)
-                    container.fallbackNotifier.cancelPinPaused()
+                    val stillBlocked = container.pinGuard.block()
+                    if (stillBlocked == null) {
+                        container.fallbackNotifier.cancelPinPaused()
+                        status = "PIN stored"
+                    } else {
+                        container.fallbackNotifier.notifyPinPaused(stillBlocked.describe())
+                        status = "PIN stored. " + stillBlocked.describe()
+                    }
                     pinDialog = false
-                    status = "PIN stored"
                 }
             },
             onRemove = {

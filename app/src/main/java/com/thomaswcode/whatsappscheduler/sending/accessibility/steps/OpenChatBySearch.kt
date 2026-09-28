@@ -5,6 +5,7 @@ import android.content.Intent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.thomaswcode.whatsappscheduler.sending.accessibility.Selector
 import com.thomaswcode.whatsappscheduler.sending.accessibility.Selectors
+import com.thomaswcode.whatsappscheduler.sending.accessibility.INVISIBLE_CHARS
 import com.thomaswcode.whatsappscheduler.sending.accessibility.UiDriver
 import com.thomaswcode.whatsappscheduler.sending.accessibility.visibleText
 import com.thomaswcode.whatsappscheduler.util.AutomationLog
@@ -114,11 +115,10 @@ class OpenChatBySearch(private val context: Context, private val driver: UiDrive
      * the search box itself. Invisible characters are allowed around the name.
      */
     private fun rowByText(name: String) =
-        Selector("wa.rowByText", text = Regex("$INVISIBLE*${Regex.escape(name)}$INVISIBLE*"), pkg = Regex("com\\.whatsapp(\\.w4b)?"), editable = false)
+        Selector("wa.rowByText", text = Regex("$INVISIBLE_CHARS*${Regex.escape(name)}$INVISIBLE_CHARS*"), pkg = Regex("com\\.whatsapp(\\.w4b)?"), editable = false)
 
     private companion object {
         /** Presses of Back allowed while leaving conversations and searches. */
         const val MAX_BACKS = 4
-        const val INVISIBLE = "[\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2064\\uFEFF]"
     }
 }

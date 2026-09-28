@@ -44,7 +44,8 @@ class PhoneNormaliserTest {
 
     @Test
     fun anythingElseIsRejected() {
-        listOf("", "   ", "12345", "+44 123", "call me", "+44 7400 123456 ext 4", "0740O 123456", "+1234567890123456").forEach {
+        // A country code never starts with 0, however many digits follow.
+        listOf("", "   ", "12345", "+44 123", "call me", "+44 7400 123456 ext 4", "0740O 123456", "+1234567890123456", "+00000000", "0000000000").forEach {
             assertEquals(it, PhoneParse.Invalid, parse(it))
         }
     }

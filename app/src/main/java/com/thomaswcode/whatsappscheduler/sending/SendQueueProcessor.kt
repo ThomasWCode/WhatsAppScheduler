@@ -9,6 +9,7 @@ import com.thomaswcode.whatsappscheduler.domain.SendResult
 import com.thomaswcode.whatsappscheduler.scheduling.ScheduleAlarms
 import com.thomaswcode.whatsappscheduler.util.TraceLog
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -85,6 +86,15 @@ class SendQueueProcessor(
         } else {
             null
         }
+        if (request.kind == SendKind.SCHEDULED && occurrence != null) {
+            // Decided here, in the queue, rather than where alarms are re-armed: an alarm delivered at
+            // the same moment as a re-arm then can't turn into both a send and a "missed" (B09 interim).
+            val late = Duration.ofMillis(clock.millis() - occurrence)
+            if (late > Duration.ofMinutes(settings.missedGraceMinutes.toLong())) {
+                recordMissed(schedule, occurrence, late)
+                return
+            }
+        }
         val dryRun = settings.dryRun || request.kind == SendKind.TEST
         val attempts = settings.retryCount + 1
         var result: SendResult = SendResult.Failed("init", "not attempted")
@@ -114,6 +124,18 @@ class SendQueueProcessor(
             return null
         }
         return wanted
+    }
+
+    /**
+     * An occurrence whose alarm could not fire in time (phone off, app force-stopped, clock changed)
+     * and is now past the grace window: it is not sent, but logged as skipped and the user is told.
+     */
+    private suspend fun recordMissed(schedule: Schedule, occurrence: Long, late: Duration) {
+        log.info("Schedule ${schedule.id}: occurrence ${stamp(occurrence)} is ${late.toMinutes()} min late; not sending it")
+        val stored = store.recordRun(schedule.id, occurrence, SendStatus.SKIPPED, "missed by ${late.toMinutes()} min (phone off?)", schedule.targetName, clock.instant())
+            ?: return
+        alarms.sync(stored)
+        notifier.missed(stored, occurrence)
     }
 
     /** Re-reads the schedule after a retry delay: it may have been deleted, switched off or edited meanwhile. */

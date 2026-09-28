@@ -275,13 +275,23 @@ fun ScheduleEditorScreen(container: AppContainer, scheduleId: Long, onDone: () -
                     saving = true
                     scope.launch {
                         // Not cancelled if the screen closes mid-save, which would leave the row without its alarm.
-                        withContext(NonCancellable) {
-                            val saved = container.repository.save(schedule)
-                            container.alarmScheduler.sync(saved)
-                            // A prompt for the old version of the message is stale now (B10).
-                            container.fallbackNotifier.cancel(saved.id)
+                        val outcome = withContext(NonCancellable) {
+                            runCatching {
+                                val saved = container.repository.save(schedule)
+                                // If a later step fails, Save again updates this row rather than inserting another.
+                                existing = saved
+                                container.alarmScheduler.sync(saved)
+                                // A prompt for the old version of the message is stale now (B10).
+                                container.fallbackNotifier.cancel(saved.id)
+                            }
                         }
-                        onDone()
+                        outcome
+                            .onSuccess { onDone() }
+                            .onFailure {
+                                container.log.error("Saving schedule failed", it)
+                                error = "Couldn't save (${it.message ?: it.javaClass.simpleName}). Try again."
+                                saving = false
+                            }
                     }
                 },
             ) { Text(if (saving) "Saving…" else "Save") }

@@ -22,6 +22,9 @@ interface SendNotifier {
 
     /** The stored PIN did not unlock the phone, so PIN entry is paused until it is saved again (B04). */
     fun pinPaused(reason: String)
+
+    /** An occurrence came due too late to send (the alarm could not fire in time); offer the manual send. */
+    fun missed(schedule: Schedule, occurrenceAtMillis: Long)
 }
 
 /** Runs around each job. The service holds a partial wake lock sized to the job's worst case (B12). */
