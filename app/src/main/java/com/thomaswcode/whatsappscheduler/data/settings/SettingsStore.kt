@@ -54,6 +54,9 @@ class SettingsStore(private val context: Context) {
         val morning = intPreferencesKey("morning_minutes")
         val evening = intPreferencesKey("evening_minutes")
         val ownNumber = stringPreferencesKey("own_number_e164")
+
+        /** Set once schedules from before recipients existed have been linked to recipients. */
+        val recipientsLinked = booleanPreferencesKey("recipients_linked")
     }
 
     val settings: Flow<Settings> = context.settingsDataStore.data.map(::read)
@@ -64,6 +67,17 @@ class SettingsStore(private val context: Context) {
      * Applies [transform] to the settings as stored at the moment of writing, inside DataStore's
      * transaction, so two quick changes can't read the same old values and undo each other (B20).
      */
+    /** Whether schema-v1 schedules have been linked to recipients; see [markRecipientsLinked]. */
+    suspend fun recipientsLinked(): Boolean = context.settingsDataStore.data.first()[Keys.recipientsLinked] ?: false
+
+    /**
+     * Linking happens once per install. After it, an unlinked schedule is one whose recipient was
+     * removed from recents on purpose, and linking it again would bring the chip back.
+     */
+    suspend fun markRecipientsLinked() {
+        context.settingsDataStore.edit { it[Keys.recipientsLinked] = true }
+    }
+
     suspend fun update(transform: (Settings) -> Settings) {
         context.settingsDataStore.edit { p -> write(p, transform(read(p))) }
     }
