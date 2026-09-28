@@ -1,6 +1,6 @@
 # Device test protocol
 
-Unit tests (`./gradlew test`) cover recurrence arithmetic, selector regexes, the send queue (de-duplication, occurrence keys, which failures are retried), the PIN circuit breaker, composer verification, phone-number parsing and the repository's run updates. Everything else needs the phone. Run these in order after every selector change or WhatsApp update. Use **Dry run** first for steps 1–5, then repeat 1, 2 and 5 with Dry run off.
+Unit tests (`./gradlew test`) cover recurrence arithmetic, selector regexes, the send queue (de-duplication, occurrence keys, which failures are retried), the PIN circuit breaker, composer verification, phone-number parsing, the repository's run updates, the database migrations (against the exported schemas) and the editor's saved form. Everything else needs the phone. Run these in order after every selector change or WhatsApp update. Use **Dry run** first for steps 1–5, then repeat 1, 2 and 5 with Dry run off.
 
 | # | Scenario | Expected |
 |---|---|---|
@@ -19,6 +19,8 @@ Unit tests (`./gradlew test`) cover recurrence arithmetic, selector regexes, the
 | 13 | Send now… on a one-off due in 10 min | The dialog names the recipient and the time. The message is sent once now and not again at its time; the row shows it finished. |
 | 14 | Send now… on a daily schedule: once with "Send early", once with "Send a copy" | "Send early" moves the next occurrence to tomorrow; "Send a copy" leaves it as it was. |
 | 15 | Editor: type a local number (`07…`), then one with a typo | The first shows "Opens chat with +44 …"; the second is flagged and Save explains why. Double-tapping Save creates one schedule. |
+| 16 | Install a build with a newer database schema over the installed app (`adb install -r`) | Schedules and Logs → Sends are unchanged. Pull `databases/scheduler.db` with its `-wal` file: `PRAGMA user_version` is the new version. |
+| 17 | Half-fill the editor, then rotate the phone and switch dark mode on and off | Everything typed is still there, and an existing schedule is not reloaded over the edits. |
 
 Useful commands:
 
