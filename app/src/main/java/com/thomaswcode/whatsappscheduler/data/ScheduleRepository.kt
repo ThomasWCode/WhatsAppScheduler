@@ -13,14 +13,19 @@ import java.time.Instant
 import java.time.ZoneId
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 /** What [ScheduleRepository.saveBatch] did: the members as saved (to arm) and the ones deleted (to disarm). */
 data class BatchChange(val saved: List<Schedule>, val deleted: List<Schedule>)
+
+/** What [ScheduleRepository.deleteWithHistory] removed, kept so Undo can put it back. */
+data class DeletedSchedules(val schedules: List<Schedule>, val logs: List<SendLog>)
 
 class ScheduleRepository(private val db: AppDatabase) : SendStore {
 
     private val schedules = db.scheduleDao()
     private val logs = db.sendLogDao()
+    private val recipients = db.recipientDao()
 
     fun observeSchedules(): Flow<List<Schedule>> = schedules.observeAll()
     fun observeSchedule(id: Long): Flow<Schedule?> = schedules.observeById(id)
@@ -42,6 +47,52 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
     }
 
     suspend fun delete(schedule: Schedule) = schedules.delete(schedule)
+
+    /**
+     * A delete the user makes on the list: the schedules go together with their send history, since
+     * you'd expect it gone (quick-schedule.md §7). What was removed is returned, for Undo.
+     */
+    suspend fun deleteWithHistory(ids: List<Long>): DeletedSchedules = db.withTransaction {
+        val rows = ids.distinct().mapNotNull { schedules.getById(it) }
+        val rowIds = rows.map { it.id }
+        val history = if (rowIds.isEmpty()) emptyList() else logs.forSchedules(rowIds)
+        if (rowIds.isNotEmpty()) logs.deleteForSchedules(rowIds)
+        rows.forEach { schedules.delete(it) }
+        DeletedSchedules(rows, history)
+    }
+
+    /**
+     * Undo for [deleteWithHistory]: the same rows come back under the same ids (ids are never reused),
+     * with their history. A recipient forgotten in the meantime is unlinked rather than failing.
+     */
+    suspend fun restore(deleted: DeletedSchedules): List<Schedule> = db.withTransaction {
+        val rows = deleted.schedules.map { row ->
+            if (row.recipientId != null && recipients.get(row.recipientId) == null) row.copy(recipientId = null) else row
+        }
+        schedules.insertAll(rows)
+        logs.insertAll(deleted.logs)
+        rows
+    }
+
+    /** Sets or clears what the schedule is waiting on the user for, e.g. Discard on a missed occurrence. */
+    suspend fun setAttention(id: Long, attention: Attention?) = schedules.setAttention(id, attention)
+
+    /**
+     * "Mark as sent" on a message that may have gone out (B02): the user checked the chat and it did.
+     * Logged as the user's finding; the run keeps its own time, since that is when the message went.
+     */
+    suspend fun markSent(id: Long, now: Instant = Instant.now()): Schedule? = db.withTransaction {
+        val current = schedules.getById(id) ?: return@withTransaction null
+        val result = "SENT: marked as sent by you"
+        logs.insert(SendLog(scheduleId = id, atMillis = now.toEpochMilli(), status = SendStatus.SENT, targetName = current.targetName, detail = "Marked as sent by you"))
+        schedules.setOutcome(id, SendStatus.SENT, result, attention = null)
+        current.copy(lastStatus = SendStatus.SENT, lastResult = result, attention = null)
+    }
+
+    /** Schedule id to the occurrence its latest scheduled run was for. */
+    fun observeLatestOccurrences(): Flow<Map<Long, Long>> = logs.observeLatestOccurrenceRuns().map { runs ->
+        runs.mapNotNull { run -> run.scheduleId?.let { id -> run.occurrenceAtMillis?.let { id to it } } }.toMap()
+    }
 
     suspend fun batch(batchId: String): List<Schedule> = schedules.getBatch(batchId)
 
