@@ -149,17 +149,28 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
      * time; Undo puts the timing back. [summary] is what the snackbar says.
      */
     fun postpone(group: List<Schedule>, at: Instant, summary: String) {
+        // Something being sent keeps its occurrence until it is recorded (B08).
+        if (group.any { sendState.value.isBusy(it.id) }) {
+            events.trySend(ListEvent.Failed("It's being sent now, so it wasn't moved."))
+            return
+        }
         viewModelScope.launch {
             runCatching {
                 withContext(NonCancellable) {
-                    group.mapNotNull { container.repository.postpone(it.id, at) }.onEach { moved ->
+                    // Each as the user saw it: one sent or changed since isn't moved.
+                    group.mapNotNull { container.repository.postpone(it.id, at, seen = it) }.onEach { moved ->
                         container.alarmScheduler.sync(moved.after)
                         // A prompt it had was about the old time.
                         container.fallbackNotifier.cancel(moved.after.id)
                     }
                 }
             }
-                .onSuccess { moved -> if (moved.isNotEmpty()) events.trySend(ListEvent.Postponed(summary, moved.map { it.before })) }
+                .onSuccess { moved ->
+                    when {
+                        moved.isEmpty() -> events.trySend(ListEvent.Failed("It had just been sent or changed, so it wasn't moved."))
+                        else -> events.trySend(ListEvent.Postponed(summary, moved.map { it.before }))
+                    }
+                }
                 .onFailure { fail("Couldn't postpone", it) }
         }
     }

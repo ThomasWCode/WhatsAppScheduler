@@ -194,8 +194,9 @@ fun ScheduleListScreen(
             },
             menu = when (section) {
                 Section.ATTENTION -> listOfNotNull(
-                    // A series' missed occurrence can't be moved yet: it would move the series' next one.
-                    if (once) "Postpone…" to postpone else null,
+                    // A series' missed occurrence can't be moved yet: it would move the series' next one. One that
+                    // may have gone out is checked first (Open chat), not sent again later.
+                    if (once && first.attention != Attention.UNCERTAIN) "Postpone…" to postpone else null,
                     "Send now…" to { askToSend(group, copyOnly = !once) },
                     "Test (dry run)" to test,
                     if (once) "Delete" to { vm.delete(group) } else null,
