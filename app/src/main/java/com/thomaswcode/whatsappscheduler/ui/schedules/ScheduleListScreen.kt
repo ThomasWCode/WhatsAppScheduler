@@ -74,6 +74,7 @@ import com.thomaswcode.whatsappscheduler.AppContainer
 import com.thomaswcode.whatsappscheduler.data.db.Attention
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.data.db.SendStatus
+import com.thomaswcode.whatsappscheduler.domain.FriendlyTime
 import com.thomaswcode.whatsappscheduler.domain.PinCircuitBreaker
 import com.thomaswcode.whatsappscheduler.domain.Recurrence
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
@@ -123,6 +124,7 @@ fun ScheduleListScreen(
     // Held by id and saved, so an open dialog survives rotation and always shows the current rows.
     var sendIds by rememberSaveable { mutableStateOf<LongArray?>(null) }
     var sendCopyOnly by rememberSaveable { mutableStateOf(false) }
+    var postponeIds by rememberSaveable { mutableStateOf<LongArray?>(null) }
     var sentOpen by rememberSaveable { mutableStateOf(false) }
 
     fun announce(message: String, action: String? = null, onAction: () -> Unit = {}) {
@@ -156,6 +158,7 @@ fun ScheduleListScreen(
             when (event) {
                 is ListEvent.Deleted -> announce(event.summary, "Undo") { vm.undoDelete(event.removed) }
                 is ListEvent.Dismissed -> announce(event.summary, "Undo") { vm.undoDismiss(event.previous) }
+                is ListEvent.Postponed -> announce(event.summary, "Undo") { vm.undoPostpone(event.before) }
                 is ListEvent.Failed -> announce(event.message)
             }
         }
@@ -171,6 +174,9 @@ fun ScheduleListScreen(
         val once = first.rule == Recurrence.Once
         val busy = busyText(group, sendState)
         val test = { group.forEach { vm.send(SendRequest(it.id, SendKind.TEST)) } }
+        val postpone = { postponeIds = group.map { it.id }.toLongArray() }
+        // A series moves its next occurrence; one that is paused or finished has none to move.
+        val canPostpone = once || (first.enabled && first.nextAtMillis != null)
         ScheduleRow(
             group = group,
             line = busy ?: statusLine(section, group, now, dueAt, timeFormat),
@@ -188,18 +194,26 @@ fun ScheduleListScreen(
             },
             menu = when (section) {
                 Section.ATTENTION -> listOfNotNull(
+                    // A series' missed occurrence can't be moved yet: it would move the series' next one.
+                    if (once) "Postpone…" to postpone else null,
                     "Send now…" to { askToSend(group, copyOnly = !once) },
                     "Test (dry run)" to test,
                     if (once) "Delete" to { vm.delete(group) } else null,
                 )
                 Section.UPCOMING -> listOfNotNull(
+                    "Postpone…" to postpone,
                     "Send now…" to { askToSend(group) },
                     "Test (dry run)" to test,
                     // One-offs have no switch (R4); one switched off before that can still be resumed.
                     if (!first.enabled) "Resume" to { vm.setEnabled(group, true) } else null,
                     "Delete" to { vm.delete(group) },
                 )
-                Section.REPEATING -> listOf("Send now…" to { askToSend(group) }, "Test (dry run)" to test, "Delete" to { vm.delete(group) })
+                Section.REPEATING -> listOfNotNull(
+                    if (canPostpone) "Postpone…" to postpone else null,
+                    "Send now…" to { askToSend(group) },
+                    "Test (dry run)" to test,
+                    "Delete" to { vm.delete(group) },
+                )
                 Section.SENT -> listOf("Send again…" to { quick.openSendAgain(group) }, "Delete" to { vm.delete(group) })
             },
             actions = when {
@@ -210,7 +224,11 @@ fun ScheduleListScreen(
                     "Mark as sent" to { vm.markSent(group) },
                     "Send again" to { askToSend(group, copyOnly = !once) },
                 )
-                else -> listOf("Send now" to { askToSend(group, copyOnly = !once) }, "Discard" to { vm.discard(group) })
+                else -> listOfNotNull(
+                    "Send now" to { askToSend(group, copyOnly = !once) },
+                    if (once) "Postpone…" to postpone else null,
+                    "Discard" to { vm.discard(group) },
+                )
             },
             // In Needs attention a swipe discards: for a series that means this occurrence, not the series.
             onSwipe = when {
@@ -283,6 +301,18 @@ fun ScheduleListScreen(
             onSend = { requests ->
                 sendIds = null
                 requests.forEach(vm::send)
+            },
+        )
+    }
+
+    postponeIds?.let { ids -> schedules.filter { it.id in ids } }?.takeIf { it.isNotEmpty() }?.let { group ->
+        PostponeDialog(
+            schedule = group.first(),
+            now = now,
+            onDismiss = { postponeIds = null },
+            onMove = { at ->
+                postponeIds = null
+                vm.postpone(group, at, "Moved to " + FriendlyTime.dayAndTime(at.atZone(now.zone), now, timeFormat))
             },
         )
     }
