@@ -170,7 +170,9 @@ class SendQueueProcessor(
             log.warn("Schedule ${schedule.id} was deleted while it was being sent (${status.name})")
             return
         }
-        if (occurrence != null) alarms.sync(stored)
+        // After every kind of run, not only those that used up an occurrence: re-arming skips a
+        // schedule while any request for it is in flight, so this is where its alarm is restored.
+        alarms.sync(stored)
         when (result) {
             SendResult.Sent, SendResult.DryRun -> notifier.sent(schedule, dryRun = result == SendResult.DryRun)
             is SendResult.Uncertain -> notifier.uncertain(schedule, occurrence, result.reason)
@@ -199,9 +201,10 @@ class SendQueueProcessor(
     private fun publish() {
         val queued = queue.map { it.scheduleId }
         val currentId = current?.scheduleId
+        val holders = (queue + listOfNotNull(current)).filter { it.kind.consumesOccurrence }.map { it.scheduleId }.toSet()
         state.update {
-            if (currentId == null) it.copy(queuedIds = queued, currentId = null, phase = null, attempt = 0)
-            else it.copy(queuedIds = queued, currentId = currentId)
+            if (currentId == null) it.copy(queuedIds = queued, currentId = null, phase = null, attempt = 0, occurrenceHolderIds = holders)
+            else it.copy(queuedIds = queued, currentId = currentId, occurrenceHolderIds = holders)
         }
     }
 
