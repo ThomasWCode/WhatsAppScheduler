@@ -1,13 +1,13 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
+    // Kotlin itself is built into AGP 9; this plugin adds only the Compose compiler.
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
 }
 
 android {
     namespace = "com.thomaswcode.whatsappscheduler"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.thomaswcode.whatsappscheduler"
@@ -25,13 +25,10 @@ android {
         }
     }
 
+    // Kotlin's jvmTarget follows these under AGP's built-in Kotlin.
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-
-    kotlinOptions {
-        jvmTarget = "17"
     }
 
     buildFeatures {

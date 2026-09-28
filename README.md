@@ -11,12 +11,12 @@ Read the honest caveats in `docs/ARCHITECTURE.md` before relying on it: UI autom
 - Android 12 or newer (built and tested against Samsung One UI on Android 14–16).
 - Screen lock type PIN or password (with or without biometrics). Pattern is not supported.
 - WhatsApp or WhatsApp Business installed. WhatsApp's whole-app lock must be off; per-chat Chat Lock is fine.
-- JDK 17+ and Android SDK (platform 35, build-tools 35.0.0) to build.
+- To build: JDK 17 or newer (JDK 25, as bundled with current Android Studio, works) and the Android SDK with platform 37 and build tools 36 or newer.
 
 ## Build and install
 
 ```bash
-# from the repository root; the Gradle wrapper downloads Gradle 8.14.3 itself
+# from the repository root; the Gradle wrapper downloads Gradle 9.8.0 itself
 ./gradlew assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
@@ -29,11 +29,11 @@ mkdir -p ~/android-sdk/cmdline-tools && cd ~/android-sdk/cmdline-tools
 curl -sSL -o tools.zip https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
 unzip -q tools.zip && rm tools.zip && mv cmdline-tools latest
 yes | latest/bin/sdkmanager --sdk_root=$HOME/android-sdk --licenses
-latest/bin/sdkmanager --sdk_root=$HOME/android-sdk "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+latest/bin/sdkmanager --sdk_root=$HOME/android-sdk "platform-tools" "platforms;android-37.0" "build-tools;37.0.0"
 echo "sdk.dir=$HOME/android-sdk" > /path/to/WhatsAppScheduler/local.properties
 ```
 
-Or open the project in Android Studio (Ladybug or newer), which installs the SDK for you.
+Or open the project in a current Android Studio (one that supports AGP 9.4), which installs the SDK for you.
 
 ## Tests
 
