@@ -134,6 +134,18 @@ class ScheduleRepositoryTest {
     }
 
     @Test
+    fun switchingOnOrOffStartsFromTheStoredRow() = runTest {
+        val saved = saveDaily()
+        // The list still shows `saved`, but a send has finished since.
+        repository.recordRun(saved.id, nine.toEpochMilli(), SendStatus.SENT, null, "Mum", ranAt)
+        val off = repository.setEnabled(saved.id, false, now = ranAt.plusSeconds(60))!!
+        assertEquals(false, off.enabled)
+        assertEquals("the run is not written back over", SendStatus.SENT, off.lastStatus)
+        assertEquals(ranAt.toEpochMilli(), off.lastRunAtMillis)
+        assertNull(repository.setEnabled(999, true))
+    }
+
+    @Test
     fun recordManualLeavesTheNextOccurrence() = runTest {
         val saved = saveDaily()
         val stored = repository.recordManual(saved.id, SendStatus.SENT, null, "Mum", ranAt)!!

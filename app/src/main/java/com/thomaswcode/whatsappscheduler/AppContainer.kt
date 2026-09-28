@@ -10,6 +10,8 @@ import com.thomaswcode.whatsappscheduler.scheduling.AlarmScheduler
 import com.thomaswcode.whatsappscheduler.sending.FallbackNotifier
 import com.thomaswcode.whatsappscheduler.sending.Notifications
 import com.thomaswcode.whatsappscheduler.sending.PinGuard
+import com.thomaswcode.whatsappscheduler.sending.SendRequest
+import com.thomaswcode.whatsappscheduler.sending.SendService
 import com.thomaswcode.whatsappscheduler.sending.SendStateHolder
 import com.thomaswcode.whatsappscheduler.util.AutomationLog
 import java.time.Clock
@@ -37,4 +39,7 @@ class AppContainer(context: Context) {
 
     /** For work that must outlive the screen that started it, e.g. alarm recovery across a rotation. */
     val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /** Queues a send through the foreground service. */
+    fun send(request: SendRequest) = SendService.enqueue(appContext, request)
 }

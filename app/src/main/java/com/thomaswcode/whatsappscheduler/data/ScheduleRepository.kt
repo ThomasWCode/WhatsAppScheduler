@@ -41,6 +41,14 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
     suspend fun setEnabled(schedule: Schedule, enabled: Boolean): Schedule = save(schedule.copy(enabled = enabled))
 
     /**
+     * Switches a schedule on or off starting from the row as stored, not a copy the UI may have
+     * held since before a send finished, so the switch can't write back an outdated run (B08).
+     */
+    suspend fun setEnabled(id: Long, enabled: Boolean, now: Instant = Instant.now()): Schedule? = db.withTransaction {
+        schedules.getById(id)?.let { save(it.copy(enabled = enabled), now) }
+    }
+
+    /**
      * Reads the row as it is now rather than trusting the copy the send started with, and writes
      * only the run columns, so a change made while the send ran is kept (B08). The schedule moves
      * past [occurrenceAtMillis] only while the row still shows it: if it was edited or switched off

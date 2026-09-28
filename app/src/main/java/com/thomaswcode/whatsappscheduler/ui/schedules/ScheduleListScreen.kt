@@ -34,26 +34,25 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.thomaswcode.whatsappscheduler.AppContainer
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.domain.Recurrence
 import com.thomaswcode.whatsappscheduler.sending.SendKind
 import com.thomaswcode.whatsappscheduler.sending.SendRequest
-import com.thomaswcode.whatsappscheduler.sending.SendService
 import com.thomaswcode.whatsappscheduler.ui.formatStamp
 import com.thomaswcode.whatsappscheduler.ui.onboarding.PermissionChecks
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,15 +63,16 @@ fun ScheduleListScreen(
     onSettings: () -> Unit,
     onLogs: () -> Unit,
     onSetup: () -> Unit,
+    vm: ScheduleListViewModel = viewModel(factory = ScheduleListViewModel.factory(container)),
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val schedules by container.repository.observeSchedules().collectAsState(initial = emptyList())
-    val hasPin by container.secrets.hasPin().collectAsState(initial = true)
-    val settings by container.settings.settings.collectAsState(initial = null)
+    val schedules by vm.schedules.collectAsStateWithLifecycle()
+    val hasPin by vm.hasPin.collectAsStateWithLifecycle()
+    val settings by vm.settings.collectAsStateWithLifecycle()
     val setupOk = remember(hasPin, schedules) { PermissionChecks.allRequiredOk(PermissionChecks.evaluate(context, hasPin)) }
-    var pendingDelete by remember { mutableStateOf<Schedule?>(null) }
-    var pendingSend by remember { mutableStateOf<Schedule?>(null) }
+    // Held by id and saved, so an open dialog survives rotation and always shows the current row.
+    var pendingDeleteId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var pendingSendId by rememberSaveable { mutableStateOf<Long?>(null) }
 
     Scaffold(
         topBar = {
@@ -116,16 +116,11 @@ fun ScheduleListScreen(
                     items(schedules, key = { it.id }) { schedule ->
                         ScheduleRow(
                             schedule = schedule,
-                            onToggle = { enabled ->
-                                scope.launch {
-                                    val updated = container.repository.setEnabled(schedule, enabled)
-                                    container.alarmScheduler.sync(updated)
-                                }
-                            },
+                            onToggle = { enabled -> vm.setEnabled(schedule, enabled) },
                             onEdit = { onEdit(schedule.id) },
-                            onSendNow = { pendingSend = schedule },
-                            onDryRun = { SendService.enqueue(context, SendRequest(schedule.id, SendKind.TEST)) },
-                            onDelete = { pendingDelete = schedule },
+                            onSendNow = { pendingSendId = schedule.id },
+                            onDryRun = { vm.send(SendRequest(schedule.id, SendKind.TEST)) },
+                            onDelete = { pendingDeleteId = schedule.id },
                         )
                     }
                     item { Spacer(Modifier.height(80.dp)) }
@@ -134,32 +129,28 @@ fun ScheduleListScreen(
         }
     }
 
-    pendingDelete?.let { schedule ->
+    schedules.firstOrNull { it.id == pendingDeleteId }?.let { schedule ->
         AlertDialog(
-            onDismissRequest = { pendingDelete = null },
+            onDismissRequest = { pendingDeleteId = null },
             title = { Text("Delete schedule?") },
             text = { Text("\"${schedule.message.take(80)}\" to ${schedule.targetName}") },
             confirmButton = {
                 TextButton(onClick = {
-                    scope.launch {
-                        container.alarmScheduler.cancel(schedule.id)
-                        container.repository.delete(schedule)
-                        container.fallbackNotifier.cancel(schedule.id)
-                    }
-                    pendingDelete = null
+                    vm.delete(schedule)
+                    pendingDeleteId = null
                 }) { Text("Delete") }
             },
-            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { pendingDeleteId = null }) { Text("Cancel") } },
         )
     }
 
-    pendingSend?.let { schedule ->
+    schedules.firstOrNull { it.id == pendingSendId }?.let { schedule ->
         SendNowDialog(
             schedule = schedule,
-            onDismiss = { pendingSend = null },
+            onDismiss = { pendingSendId = null },
             onSend = { request ->
-                pendingSend = null
-                SendService.enqueue(context, request)
+                pendingSendId = null
+                vm.send(request)
             },
         )
     }
