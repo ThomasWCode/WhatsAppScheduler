@@ -30,13 +30,14 @@ import kotlinx.coroutines.withContext
 
 /** Something the list should say once, usually with Undo. */
 sealed interface ListEvent {
-    data class Deleted(val summary: String, val removed: DeletedSchedules) : ListEvent
+    /** [prompted] had a notification showing, which Undo puts back. */
+    data class Deleted(val summary: String, val removed: DeletedSchedules, val prompted: Set<Long>) : ListEvent
 
     /** Moved to a new time; [before] are the rows as they were, for Undo. */
     data class Postponed(val summary: String, val before: List<Schedule>) : ListEvent
 
     /** A series stopped asking about an occurrence; [previous] puts the attention back. */
-    data class Dismissed(val summary: String, val previous: Map<Long, Attention>) : ListEvent
+    data class Dismissed(val summary: String, val previous: Map<Long, Attention>, val prompted: Set<Long>) : ListEvent
 
     data class Failed(val message: String) : ListEvent
 }
@@ -75,27 +76,37 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
     fun delete(group: List<Schedule>, verb: String = "Deleted") {
         viewModelScope.launch {
             val ids = group.map { it.id }
+            val prompted = ids.filter(container.fallbackNotifier::isShowing).toSet()
             runCatching {
                 withContext(NonCancellable) {
-                    ids.forEach {
-                        container.alarmScheduler.cancel(it)
-                        // Its Tap to send prompt would otherwise outlive it (B10).
-                        container.fallbackNotifier.cancel(it)
+                    // The rows first: if that fails, their alarms must still be there. A stale alarm for a
+                    // deleted row is harmless, as the send queue drops it.
+                    container.repository.deleteWithHistory(ids).also { removed ->
+                        removed.schedules.forEach {
+                            container.alarmScheduler.cancel(it.id)
+                            // Its Tap to send prompt would otherwise outlive it (B10).
+                            container.fallbackNotifier.cancel(it.id)
+                        }
                     }
-                    container.repository.deleteWithHistory(ids)
                 }
             }
                 .onSuccess { removed ->
-                    if (removed.schedules.isNotEmpty()) events.trySend(ListEvent.Deleted("$verb: " + groupTitle(removed.schedules), removed))
+                    if (removed.schedules.isNotEmpty()) events.trySend(ListEvent.Deleted("$verb: " + groupTitle(removed.schedules), removed, prompted))
                 }
                 .onFailure { fail("Couldn't delete", it) }
         }
     }
 
-    fun undoDelete(removed: DeletedSchedules) {
+    fun undoDelete(removed: DeletedSchedules, prompted: Set<Long>) {
         viewModelScope.launch {
-            runCatching { withContext(NonCancellable) { container.repository.restore(removed).forEach(container.alarmScheduler::sync) } }
-                .onFailure { fail("Couldn't undo", it) }
+            runCatching {
+                withContext(NonCancellable) {
+                    container.repository.restore(removed).forEach {
+                        container.alarmScheduler.sync(it)
+                        if (it.id in prompted) container.fallbackNotifier.notifyAttention(it, dueAt.value[it.id])
+                    }
+                }
+            }.onFailure { fail("Couldn't undo", it) }
         }
     }
 
@@ -110,21 +121,26 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
         }
         viewModelScope.launch {
             val previous = group.mapNotNull { s -> s.attention?.let { s.id to it } }.toMap()
+            val prompted = previous.keys.filter(container.fallbackNotifier::isShowing).toSet()
             runCatching {
                 previous.keys.forEach {
                     container.repository.setAttention(it, null)
                     container.fallbackNotifier.cancel(it)
                 }
             }
-                .onSuccess { events.trySend(ListEvent.Dismissed("Dismissed: " + groupTitle(group), previous)) }
+                .onSuccess { events.trySend(ListEvent.Dismissed("Dismissed: " + groupTitle(group), previous, prompted)) }
                 .onFailure { fail("Couldn't dismiss", it) }
         }
     }
 
-    fun undoDismiss(previous: Map<Long, Attention>) {
+    fun undoDismiss(previous: Map<Long, Attention>, prompted: Set<Long>) {
         viewModelScope.launch {
-            runCatching { previous.forEach { (id, attention) -> container.repository.setAttention(id, attention) } }
-                .onFailure { fail("Couldn't undo", it) }
+            runCatching {
+                previous.forEach { (id, attention) ->
+                    container.repository.setAttention(id, attention)
+                    if (id in prompted) container.repository.get(id)?.let { container.fallbackNotifier.notifyAttention(it, dueAt.value[id]) }
+                }
+            }.onFailure { fail("Couldn't undo", it) }
         }
     }
 

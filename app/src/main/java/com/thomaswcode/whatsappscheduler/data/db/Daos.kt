@@ -83,8 +83,12 @@ interface ScheduleDao {
     @Query("SELECT * FROM schedules WHERE batchId = :batchId ORDER BY id")
     suspend fun getBatch(batchId: String): List<Schedule>
 
-    @Query("SELECT * FROM schedules WHERE recipientId IS NULL")
+    /** Newest first, so when old schedules disagree about a chat, the newest one's details are kept. */
+    @Query("SELECT * FROM schedules WHERE recipientId IS NULL ORDER BY createdAtMillis DESC, id DESC")
     suspend fun getUnlinked(): List<Schedule>
+
+    @Query("SELECT * FROM schedules WHERE recipientId = :recipientId AND nextAtMillis IS NOT NULL")
+    suspend fun pendingFor(recipientId: Long): List<Schedule>
 
     @Query("UPDATE schedules SET recipientId = :recipientId WHERE id = :id")
     suspend fun setRecipient(id: Long, recipientId: Long)
@@ -121,11 +125,14 @@ interface RecipientDao {
     @Query("SELECT * FROM recipients WHERE phoneE164 = :phoneE164 AND id != :exceptId LIMIT 1")
     suspend fun otherByPhone(phoneE164: String, exceptId: Long): Recipient?
 
-    @Query("SELECT * FROM recipients WHERE phoneE164 IS NULL AND kind = :kind AND COALESCE(whatsappName, displayName) = :chatName AND id != :exceptId LIMIT 1")
+    @Query("SELECT * FROM recipients WHERE phoneE164 IS NULL AND kind = :kind AND COALESCE(whatsappName, displayName) = :chatName COLLATE NOCASE AND id != :exceptId LIMIT 1")
     suspend fun otherByChatName(kind: TargetKind, chatName: String, exceptId: Long): Recipient?
 
-    /** A recipient found by chat name (groups, and contacts without a number). */
-    @Query("SELECT * FROM recipients WHERE phoneE164 IS NULL AND kind = :kind AND COALESCE(whatsappName, displayName) = :chatName LIMIT 1")
+    /**
+     * A recipient found by chat name (groups, and contacts without a number), whatever the case: the
+     * search falls back to a case-insensitive match, so "book club" would be the same chat as "Book Club".
+     */
+    @Query("SELECT * FROM recipients WHERE phoneE164 IS NULL AND kind = :kind AND COALESCE(whatsappName, displayName) = :chatName COLLATE NOCASE LIMIT 1")
     suspend fun byChatName(kind: TargetKind, chatName: String): Recipient?
 
     @Insert

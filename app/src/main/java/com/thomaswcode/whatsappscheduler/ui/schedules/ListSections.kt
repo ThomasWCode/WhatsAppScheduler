@@ -15,8 +15,8 @@ enum class Section { ATTENTION, UPCOMING, REPEATING, SENT }
 
 /**
  * The list's sections (quick-schedule.md §7). Each entry is a batch's members in that section, or a
- * single schedule. A batch can be split: the member that failed needs attention while the others
- * show as sent. A repeating schedule that needs attention shows in both places: the attention is
+ * single schedule; in Needs attention always a single one. A batch can be split: the member that
+ * failed needs attention while the others show as sent. A repeating schedule that needs attention shows in both places: the attention is
  * about one occurrence, and the series carries on.
  */
 data class ListSections(
@@ -31,7 +31,8 @@ data class ListSections(
         fun of(schedules: List<Schedule>): ListSections {
             val oneOffs = schedules.filter { it.rule == Recurrence.Once && it.attention == null }
             return ListSections(
-                attention = batches(schedules.filter { it.attention != null }) { it.attention }.sortedByDescending { group -> group.maxOf { it.shownAtMillis } },
+                // One entry per recipient, never a batch: Open chat, Mark as sent and Discard are each about one chat.
+                attention = schedules.filter { it.attention != null }.map { listOf(it) }.sortedByDescending { it.single().shownAtMillis },
                 upcoming = batches(oneOffs.filter { it.nextAtMillis != null }).sortedBy { group -> group.minOf { it.nextAtMillis ?: Long.MAX_VALUE } },
                 // Running series first, soonest first; paused and finished ones after them.
                 repeating = batches(schedules.filter { it.rule != Recurrence.Once })
