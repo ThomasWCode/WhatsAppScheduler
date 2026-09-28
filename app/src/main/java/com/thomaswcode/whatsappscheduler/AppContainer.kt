@@ -10,7 +10,9 @@ import com.thomaswcode.whatsappscheduler.data.settings.CryptoBox
 import com.thomaswcode.whatsappscheduler.data.settings.SecretStore
 import com.thomaswcode.whatsappscheduler.data.settings.SettingsStore
 import com.thomaswcode.whatsappscheduler.scheduling.AlarmScheduler
+import com.thomaswcode.whatsappscheduler.sending.ChatChecker
 import com.thomaswcode.whatsappscheduler.sending.FallbackNotifier
+import com.thomaswcode.whatsappscheduler.sending.accessibility.AccessibilitySender
 import com.thomaswcode.whatsappscheduler.sending.Notifications
 import com.thomaswcode.whatsappscheduler.sending.PinGuard
 import com.thomaswcode.whatsappscheduler.sending.SendRequest
@@ -21,6 +23,7 @@ import java.time.Clock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.sync.Mutex
 
 /** Hand-wired dependency container; the app is small enough not to need a DI framework. */
 class AppContainer(context: Context) {
@@ -41,6 +44,11 @@ class AppContainer(context: Context) {
     val fallbackNotifier: FallbackNotifier by lazy { FallbackNotifier(appContext, notifications) }
     val log: AutomationLog by lazy { AutomationLog(appContext) }
     val alarmScheduler: AlarmScheduler by lazy { AlarmScheduler(appContext, repository, sendState, log) }
+    /** Held by whatever drives WhatsApp, a send or a chat check, so the two never overlap. */
+    val automationLock = Mutex()
+    val chatChecker: ChatChecker by lazy {
+        ChatChecker(AccessibilitySender(appContext, settings, secrets, pinGuard, log, notifications), automationLock, recipients)
+    }
     val housekeeping: Housekeeping by lazy { Housekeeping(repository, { settings.current().keepSentDays }, log) }
 
     /** For work that must outlive the screen that started it, e.g. alarm recovery across a rotation. */

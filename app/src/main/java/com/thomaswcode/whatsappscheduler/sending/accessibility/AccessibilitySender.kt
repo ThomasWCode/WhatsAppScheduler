@@ -3,9 +3,11 @@ package com.thomaswcode.whatsappscheduler.sending.accessibility
 import android.content.Context
 import com.thomaswcode.whatsappscheduler.data.settings.SecretStore
 import com.thomaswcode.whatsappscheduler.data.settings.SettingsStore
+import com.thomaswcode.whatsappscheduler.domain.ChatCheck
 import com.thomaswcode.whatsappscheduler.domain.SendJob
 import com.thomaswcode.whatsappscheduler.domain.SendResult
 import com.thomaswcode.whatsappscheduler.domain.SendResult.Failed.Companion.PRECHECK
+import com.thomaswcode.whatsappscheduler.sending.ChatCheckRunner
 import com.thomaswcode.whatsappscheduler.sending.MessageSender
 import com.thomaswcode.whatsappscheduler.sending.Notifications
 import com.thomaswcode.whatsappscheduler.sending.PinGuard
@@ -33,7 +35,7 @@ class AccessibilitySender(
     private val pinGuard: PinGuard,
     private val log: AutomationLog,
     private val notifications: Notifications,
-) : MessageSender {
+) : MessageSender, ChatCheckRunner {
 
     private val wake = WakeUnlockController(context, log, notifications)
 
@@ -121,6 +123,51 @@ class AccessibilitySender(
     }
 
     /**
+     * F4 "Check this chat now": finds the chat by name the way a send would, checks the title of the
+     * chat that opens, then backs out of WhatsApp to the app it was started from. Nothing is typed.
+     * The user has just tapped the button, so the phone is unlocked and nothing needs waking.
+     */
+    override suspend fun checkChat(name: String): ChatCheck {
+        val service = WaAccessibilityService.instance.value ?: return ChatCheck.NotChecked("auto-send isn't running")
+        val whatsapp = installedWhatsApp() ?: return ChatCheck.NotChecked("WhatsApp isn't installed")
+        val settings = settingsStore.current()
+        val t = settings.stepTimeoutMs
+        val driver = UiDriver(service, log, t)
+        log.info("check: looking for '$name'")
+        service.active.set(true)
+        return try {
+            withTimeout(settings.jobTimeoutMs) {
+                val search = OpenChatBySearch(context, driver, log)
+                search.goHome(whatsapp, t)
+                search.search(name, t)
+                search.openResult(name, t)
+            }
+            log.info("check: found '$name'")
+            ChatCheck.Found
+        } catch (e: StepFailure) {
+            log.warn("check: '$name' not found: ${e.message}")
+            ChatCheck.NotFound(e.message ?: "not found")
+        } catch (e: TimeoutCancellationException) {
+            ChatCheck.NotFound("it took too long")
+        } finally {
+            runCatching { leaveWhatsApp(driver, whatsapp) }
+            service.active.set(false)
+        }
+    }
+
+    /**
+     * Back out of the chat, the search and WhatsApp itself, one step at a time and only while WhatsApp
+     * is in front, so the app the check was started from comes back and nothing of the user's is left.
+     */
+    private suspend fun leaveWhatsApp(driver: UiDriver, whatsapp: String) {
+        repeat(MAX_BACKS) {
+            driver.waitUntil(1_000) { driver.foregroundPackage() != null }
+            if (driver.foregroundPackage() != whatsapp) return
+            driver.back()
+        }
+    }
+
+    /**
      * Leaves WhatsApp and puts the phone back as it was. After a failure from before the tap,
      * [unsentDraft] is cleared from the composer first, so a message pre-filled by the chat link
      * doesn't wait in WhatsApp as a draft that could be sent by accident later (I10).
@@ -147,6 +194,11 @@ class AccessibilitySender(
         runCatching { driver.setText("tidyUp", entry, "") }
             .onSuccess { log.info("tidyUp: cleared the unsent message from the composer") }
             .onFailure { log.warn("tidyUp: could not clear the unsent message: ${it.message}") }
+    }
+
+    private companion object {
+        /** Chat, search, search box, chat list, WhatsApp itself, and one spare. */
+        const val MAX_BACKS = 6
     }
 
     @Suppress("DEPRECATION")
