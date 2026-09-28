@@ -5,6 +5,7 @@ import com.thomaswcode.whatsappscheduler.data.db.AppDatabase
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.data.db.SendLog
 import com.thomaswcode.whatsappscheduler.data.db.SendStatus
+import com.thomaswcode.whatsappscheduler.domain.Recurrence
 import com.thomaswcode.whatsappscheduler.domain.RecurrenceCalculator
 import java.time.Instant
 import java.time.ZoneId
@@ -54,10 +55,14 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
     ): Schedule? = db.withTransaction {
         val current = schedules.getById(id) ?: return@withTransaction null
         logs.insert(SendLog(scheduleId = id, atMillis = ranAt.toEpochMilli(), status = status, targetName = sentTo, detail = detail))
-        val next = if (current.nextAtMillis == occurrenceAtMillis) nextAfterRun(current, occurrenceAtMillis, ranAt) else current.nextAtMillis
+        val usedUp = current.nextAtMillis == occurrenceAtMillis
+        val next = if (usedUp) nextAfterRun(current, occurrenceAtMillis, ranAt) else current.nextAtMillis
+        // A one-off sent early is dated to when it went out. Its old, still-future time would otherwise
+        // bring it back whenever the next occurrence is recomputed, e.g. on switching it back on.
+        val firstAt = if (usedUp && current.rule == Recurrence.Once) minOf(current.firstAtMillis, ranAt.toEpochMilli()) else current.firstAtMillis
         val result = status.name + (detail?.let { ": $it" } ?: "")
-        schedules.updateRun(id, next, ranAt.toEpochMilli(), result)
-        current.copy(nextAtMillis = next, lastRunAtMillis = ranAt.toEpochMilli(), lastResult = result)
+        schedules.updateRun(id, firstAt, next, ranAt.toEpochMilli(), result)
+        current.copy(firstAtMillis = firstAt, nextAtMillis = next, lastRunAtMillis = ranAt.toEpochMilli(), lastResult = result)
     }
 
     override suspend fun recordManual(id: Long, status: SendStatus, detail: String?, sentTo: String, ranAt: Instant): Schedule? =

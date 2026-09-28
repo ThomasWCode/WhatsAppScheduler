@@ -108,7 +108,10 @@ class SendService : LifecycleService() {
 
     private class ServiceNotifier(private val notifications: Notifications, private val fallback: FallbackNotifier) : SendNotifier {
         override fun progress(text: String) = notifications.show(Notifications.ID_SENDING, notifications.sending(text))
-        override fun sent(schedule: Schedule, dryRun: Boolean) = fallback.cancel(schedule.id)
+        // Only a real send makes an earlier Tap to send prompt stale; a dry run sent nothing (B10).
+        override fun sent(schedule: Schedule, dryRun: Boolean) {
+            if (!dryRun) fallback.cancel(schedule.id)
+        }
         override fun failed(schedule: Schedule, occurrenceAtMillis: Long?, reason: String) = fallback.notifyFailed(schedule, occurrenceAtMillis, reason)
         override fun uncertain(schedule: Schedule, occurrenceAtMillis: Long?, reason: String) = fallback.notifyUncertain(schedule, occurrenceAtMillis, reason)
         override fun pinPaused(reason: String) = fallback.notifyPinPaused(reason)

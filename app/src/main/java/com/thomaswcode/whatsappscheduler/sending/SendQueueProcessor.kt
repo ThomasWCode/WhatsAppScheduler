@@ -11,7 +11,9 @@ import com.thomaswcode.whatsappscheduler.util.TraceLog
 import java.time.Clock
 import java.time.Instant
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 /**
  * The send queue without the Android service around it (T3). It makes three promises:
@@ -73,7 +75,9 @@ class SendQueueProcessor(
             return
         }
         val occurrence = if (request.kind.consumesOccurrence) {
-            if (!schedule.enabled) {
+            // Only the alarm defers to the switch; Send now on a switched-off schedule is a deliberate
+            // request, and must use up the occurrence so switching it back on can't send it again.
+            if (request.kind == SendKind.SCHEDULED && !schedule.enabled) {
                 log.info("Schedule ${schedule.id} is switched off; skipping")
                 return
             }
@@ -96,7 +100,7 @@ class SendQueueProcessor(
             delay(settings.retryDelaySeconds * 1000L)
             schedule = stillWanted(request, occurrence) ?: return
         }
-        finish(request, occurrence, schedule, result)
+        finish(request, occurrence, schedule, result, dryRun)
     }
 
     /** The occurrence [request] is for, or null (logged) when it is no longer the schedule's pending one. */
@@ -117,13 +121,19 @@ class SendQueueProcessor(
         val schedule = store.get(request.scheduleId)
         return when {
             schedule == null -> null.also { log.warn("Schedule ${request.scheduleId} was deleted while waiting to retry") }
-            occurrence != null && (!schedule.enabled || schedule.nextAtMillis != occurrence) ->
+            occurrence != null && ((request.kind == SendKind.SCHEDULED && !schedule.enabled) || schedule.nextAtMillis != occurrence) ->
                 null.also { log.info("Schedule ${schedule.id} changed while waiting to retry; dropping this send") }
             else -> schedule
         }
     }
 
-    private suspend fun finish(request: SendRequest, occurrence: Long?, schedule: Schedule, result: SendResult) {
+    private suspend fun finish(request: SendRequest, occurrence: Long?, schedule: Schedule, result: SendResult, dryRun: Boolean) {
+        if (result is SendResult.PinRejected) {
+            // Before anything that can fail or be cancelled: this record is what stops the same wrong
+            // PIN being typed again when the occurrence is retried later (B04).
+            withContext(NonCancellable) { pinGuard.recordRejection() }
+            notifier.pinPaused(pinGuard.block()?.describe() ?: result.reason)
+        }
         val (status, detail) = describe(result)
         // A manual send that failed its precheck did nothing on the phone, and the user is looking at the
         // app: it is logged, but the pending occurrence stays as it was and nothing is posted.
@@ -134,10 +144,6 @@ class SendQueueProcessor(
         } else {
             store.recordManual(schedule.id, status, detail, schedule.targetName, now)
         }
-        if (result is SendResult.PinRejected) {
-            pinGuard.recordRejection()
-            notifier.pinPaused(pinGuard.block()?.describe() ?: result.reason)
-        }
         if (stored == null) {
             log.warn("Schedule ${schedule.id} was deleted while it was being sent (${status.name})")
             return
@@ -146,8 +152,10 @@ class SendQueueProcessor(
         when (result) {
             SendResult.Sent, SendResult.DryRun -> notifier.sent(schedule, dryRun = result == SendResult.DryRun)
             is SendResult.Uncertain -> notifier.uncertain(schedule, occurrence, result.reason)
+            // A dry run (Test, or the global setting) never offers a manual send: its prompt would
+            // invite a real message during what was meant as a rehearsal.
             is SendResult.Failed, is SendResult.PinRejected ->
-                if (!untouched && request.kind != SendKind.TEST) notifier.failed(schedule, occurrence, detail ?: status.name)
+                if (!untouched && !dryRun) notifier.failed(schedule, occurrence, detail ?: status.name)
         }
     }
 

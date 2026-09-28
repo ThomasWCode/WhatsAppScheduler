@@ -8,7 +8,10 @@ interface SendNotifier {
     /** Text of the ongoing "sending" notification. */
     fun progress(text: String)
 
-    /** The message went out, or a dry run finished: any stale prompt for this schedule is removed (B10). */
+    /**
+     * The message went out, or a dry run finished. After a real send any prompt for this schedule is
+     * stale and removed (B10); after a dry run it stays, because nothing was sent.
+     */
     fun sent(schedule: Schedule, dryRun: Boolean)
 
     /** Automation failed before Send was tapped: offer the one-tap manual send. */

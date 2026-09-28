@@ -91,6 +91,26 @@ class ScheduleRepositoryTest {
     }
 
     @Test
+    fun oneOffSentEarlyStaysSentWhenSwitchedOffAndOnAgain() = runTest {
+        val saved = repository.save(
+            Schedule(
+                message = "Tomorrow's news", targetKind = TargetKind.CONTACT, targetName = "Mum", phoneE164 = "+447700900123",
+                isLocked = false, firstAtMillis = nine.plus(Duration.ofDays(1)).toEpochMilli(), zoneId = "Europe/London",
+                recurrence = "ONCE", nextAtMillis = null,
+            ),
+            now = nine,
+        )
+        val sent = repository.recordRun(saved.id, saved.nextAtMillis!!, SendStatus.SENT, null, "Mum", ranAt)!!
+        assertNull(sent.nextAtMillis)
+        assertEquals(ranAt.toEpochMilli(), sent.firstAtMillis)
+        // What setEnabled does, on the test's clock rather than the real one.
+        val later = ranAt.plusSeconds(60)
+        val off = repository.save(sent.copy(enabled = false), now = later)
+        val on = repository.save(off.copy(enabled = true), now = later)
+        assertNull("switching it back on must not bring the old time back", on.nextAtMillis)
+    }
+
+    @Test
     fun recordManualLeavesTheNextOccurrence() = runTest {
         val saved = saveDaily()
         val stored = repository.recordManual(saved.id, SendStatus.SENT, null, "Mum", ranAt)!!
