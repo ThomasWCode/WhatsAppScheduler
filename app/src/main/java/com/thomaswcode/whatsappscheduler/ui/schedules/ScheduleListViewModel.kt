@@ -1,5 +1,8 @@
 package com.thomaswcode.whatsappscheduler.ui.schedules
 
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
@@ -60,6 +63,26 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
 
     private val events = Channel<ListEvent>(Channel.BUFFERED)
     val eventFlow: Flow<ListEvent> = events.receiveAsFlow()
+
+    /**
+     * The list's snackbar. It lives here, not in the screen, so a message and its Undo survive a
+     * rotation: the screen is recreated and shows the snackbar that is still running.
+     */
+    val snackbar = SnackbarHostState()
+
+    /** Shows [message], replacing one that is showing so its Undo isn't queued behind it; [onAction] if tapped. */
+    fun announce(message: String, action: String? = null, onAction: () -> Unit = {}) {
+        viewModelScope.launch {
+            snackbar.currentSnackbarData?.dismiss()
+            val result = snackbar.showSnackbar(
+                message,
+                actionLabel = action,
+                withDismissAction = action == null,
+                duration = if (action != null) SnackbarDuration.Long else SnackbarDuration.Short,
+            )
+            if (result == SnackbarResult.ActionPerformed) onAction()
+        }
+    }
 
     /** Pauses or resumes a series (only repeating rows have a switch: R4, B29), or resumes an old paused one-off. */
     fun setEnabled(group: List<Schedule>, enabled: Boolean) {
