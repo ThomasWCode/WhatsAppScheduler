@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
@@ -24,16 +24,20 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,26 +57,47 @@ import com.thomaswcode.whatsappscheduler.sending.SendKind
 import com.thomaswcode.whatsappscheduler.sending.SendRequest
 import com.thomaswcode.whatsappscheduler.ui.formatStamp
 import com.thomaswcode.whatsappscheduler.ui.onboarding.PermissionChecks
+import com.thomaswcode.whatsappscheduler.ui.quick.QuickEvent
+import com.thomaswcode.whatsappscheduler.ui.quick.QuickScheduleSheet
+import com.thomaswcode.whatsappscheduler.ui.quick.QuickScheduleViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScheduleListScreen(
     container: AppContainer,
-    onAdd: () -> Unit,
     onEdit: (Long) -> Unit,
+    onRepeat: (QuickEvent.OpenFullEditor) -> Unit,
     onSettings: () -> Unit,
     onLogs: () -> Unit,
     onSetup: () -> Unit,
     vm: ScheduleListViewModel = viewModel(factory = ScheduleListViewModel.factory(container)),
+    quick: QuickScheduleViewModel = viewModel(factory = QuickScheduleViewModel.factory(container)),
 ) {
     val context = LocalContext.current
     val schedules by vm.schedules.collectAsStateWithLifecycle()
+    // A batch (one message to several people) is one row (quick-schedule.md §10).
+    val groups = remember(schedules) { schedules.groupBy { it.batchId ?: "#${it.id}" }.values.toList() }
+    val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(quick) {
+        quick.eventFlow.collect { event ->
+            when (event) {
+                is QuickEvent.Scheduled -> {
+                    val undo = event.createdIds
+                    val result = snackbar.showSnackbar(event.summary, actionLabel = if (undo != null) "Undo" else null, withDismissAction = undo == null)
+                    if (result == SnackbarResult.ActionPerformed && undo != null) quick.undo(undo)
+                }
+                is QuickEvent.Deleted -> snackbar.showSnackbar(event.summary, withDismissAction = true)
+                is QuickEvent.OpenFullEditor -> onRepeat(event)
+            }
+        }
+    }
     val hasPin by vm.hasPin.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     val setupOk = remember(hasPin, schedules) { PermissionChecks.allRequiredOk(PermissionChecks.evaluate(context, hasPin)) }
     // Held by id and saved, so an open dialog survives rotation and always shows the current row.
     var pendingDeleteId by rememberSaveable { mutableStateOf<Long?>(null) }
     var pendingSendId by rememberSaveable { mutableStateOf<Long?>(null) }
+    fun groupOf(id: Long?) = groups.firstOrNull { group -> group.any { it.id == id } }
 
     Scaffold(
         topBar = {
@@ -84,7 +109,15 @@ fun ScheduleListScreen(
                 },
             )
         },
-        floatingActionButton = { FloatingActionButton(onClick = onAdd) { Icon(Icons.Default.Add, contentDescription = "Add") } },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = quick::openNew,
+                // Material's extended FAB takes its accessible name from the icon, not the text (I11).
+                icon = { Icon(Icons.Default.Edit, contentDescription = "New message") },
+                text = { Text("New message") },
+            )
+        },
+        snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (!setupOk) {
@@ -109,18 +142,21 @@ fun ScheduleListScreen(
             }
             if (schedules.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No scheduled messages yet. Tap + to add one.", style = MaterialTheme.typography.bodyLarge)
+                    Text("No scheduled messages yet. Tap New message to add one.", style = MaterialTheme.typography.bodyLarge)
                 }
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-                    items(schedules, key = { it.id }) { schedule ->
+                    items(groups, key = { it.first().id }) { group ->
+                        val first = group.first()
+                        // One-offs open the quick sheet; only repeating schedules use the full editor (§6).
+                        val open = { if (first.rule == Recurrence.Once) quick.openEdit(first) else onEdit(first.id) }
                         ScheduleRow(
-                            schedule = schedule,
-                            onToggle = { enabled -> vm.setEnabled(schedule, enabled) },
-                            onEdit = { onEdit(schedule.id) },
-                            onSendNow = { pendingSendId = schedule.id },
-                            onDryRun = { vm.send(SendRequest(schedule.id, SendKind.TEST)) },
-                            onDelete = { pendingDeleteId = schedule.id },
+                            group = group,
+                            onToggle = { enabled -> group.forEach { vm.setEnabled(it, enabled) } },
+                            onEdit = open,
+                            onSendNow = { pendingSendId = first.id },
+                            onDryRun = { group.forEach { vm.send(SendRequest(it.id, SendKind.TEST)) } },
+                            onDelete = { pendingDeleteId = first.id },
                         )
                     }
                     item { Spacer(Modifier.height(80.dp)) }
@@ -129,14 +165,14 @@ fun ScheduleListScreen(
         }
     }
 
-    schedules.firstOrNull { it.id == pendingDeleteId }?.let { schedule ->
+    groupOf(pendingDeleteId)?.let { group ->
         AlertDialog(
             onDismissRequest = { pendingDeleteId = null },
             title = { Text("Delete schedule?") },
-            text = { Text("\"${schedule.message.take(80)}\" to ${schedule.targetName}") },
+            text = { Text("\"${group.first().message.take(80)}\" to ${groupTitle(group)}") },
             confirmButton = {
                 TextButton(onClick = {
-                    vm.delete(schedule)
+                    group.forEach(vm::delete)
                     pendingDeleteId = null
                 }) { Text("Delete") }
             },
@@ -144,16 +180,25 @@ fun ScheduleListScreen(
         )
     }
 
-    schedules.firstOrNull { it.id == pendingSendId }?.let { schedule ->
+    groupOf(pendingSendId)?.let { group ->
         SendNowDialog(
-            schedule = schedule,
+            group = group,
             onDismiss = { pendingSendId = null },
-            onSend = { request ->
+            onSend = { requests ->
                 pendingSendId = null
-                vm.send(request)
+                requests.forEach(vm::send)
             },
         )
     }
+
+    QuickScheduleSheet(quick)
+}
+
+/** "Mum", or "Mum, Dad +1" for a batch. */
+private fun groupTitle(group: List<Schedule>): String = when (group.size) {
+    1 -> group[0].targetName
+    2 -> "${group[0].targetName} and ${group[1].targetName}"
+    else -> "${group[0].targetName}, ${group[1].targetName} +${group.size - 2}"
 }
 
 /**
@@ -162,13 +207,15 @@ fun ScheduleListScreen(
  * either bring its next occurrence forward or send an extra copy that leaves the series alone.
  */
 @Composable
-private fun SendNowDialog(schedule: Schedule, onDismiss: () -> Unit, onSend: (SendRequest) -> Unit) {
+private fun SendNowDialog(group: List<Schedule>, onDismiss: () -> Unit, onSend: (List<SendRequest>) -> Unit) {
+    val schedule = group.first()
     val recurring = schedule.rule != Recurrence.Once
     // A switched-off one-off still has its time, and switching it back on would send it then, so
     // sending it now uses that time up. A paused series only gets extra copies.
     val next = if (recurring) schedule.nextAtMillis?.takeIf { schedule.enabled } else schedule.nextAtMillis
-    val early = next?.let { SendRequest(schedule.id, SendKind.SEND_NOW, it) }
-    val copy = SendRequest(schedule.id, SendKind.EXTRA_COPY)
+    // Every member of a batch goes, each using up its own occurrence.
+    val early = next?.let { group.mapNotNull { m -> m.nextAtMillis?.let { at -> SendRequest(m.id, SendKind.SEND_NOW, at) } } }
+    val copy = group.map { SendRequest(it.id, SendKind.EXTRA_COPY) }
     val explanation = when {
         next == null && recurring -> "This sends an extra copy. The schedule itself is not changed."
         next == null -> "It has already been sent or its time has passed, so this sends it again."
@@ -177,7 +224,7 @@ private fun SendNowDialog(schedule: Schedule, onDismiss: () -> Unit, onSend: (Se
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Send to ${schedule.targetName} now?") },
+        title = { Text("Send to ${groupTitle(group)} now?") },
         text = {
             Column {
                 Text("\"${schedule.message.take(120)}${if (schedule.message.length > 120) "…" else ""}\"", style = MaterialTheme.typography.bodyMedium)
@@ -203,13 +250,14 @@ private fun SendNowDialog(schedule: Schedule, onDismiss: () -> Unit, onSend: (Se
 
 @Composable
 private fun ScheduleRow(
-    schedule: Schedule,
+    group: List<Schedule>,
     onToggle: (Boolean) -> Unit,
     onEdit: () -> Unit,
     onSendNow: () -> Unit,
     onDryRun: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    val schedule = group.first()
     var menu by remember { mutableStateOf(false) }
     Card(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp).clickable(onClick = onEdit)) {
         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -219,7 +267,7 @@ private fun ScheduleRow(
                         Icon(Icons.Default.Lock, contentDescription = "Locked chat", modifier = Modifier.width(16.dp))
                         Spacer(Modifier.width(4.dp))
                     }
-                    Text(schedule.targetName, style = MaterialTheme.typography.titleMedium)
+                    Text(groupTitle(group), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Text(schedule.message, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(4.dp))
