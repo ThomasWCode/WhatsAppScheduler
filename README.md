@@ -45,10 +45,18 @@ Unit tests cover the recurrence arithmetic (including daylight-saving transition
 
 CI (`.github/workflows/ci.yml`) runs the unit tests, lint and a debug build on every pull request and on `main`, and keeps the debug APK as a build artifact.
 
+## Scheduling a message
+
+- **New message** opens a sheet: pick who (recent chats, a contact from the type-ahead, or a group typed by its exact name), write the message and tap a time (**In 30 min**, **Tonight**, **Tomorrow 09:00**, … or **Pick date & time…**). **Schedule** saves it, with **Undo** in case it was a mistake.
+- Up to 10 recipients get the same message at the same time. They are kept together as one row, and tapping it reopens the sheet to change or delete them all.
+- **Repeat…** hands the draft to the full editor for daily, weekly, monthly or custom repeats.
+- **Share** text from any app and choose **Schedule on WhatsApp**: the sheet opens over that app and you are back where you were after scheduling.
+- Contacts permission is optional. It lets the type-ahead search your contacts on the phone and mark the ones that are on WhatsApp; without it you can pick one contact at a time or type a number.
+
 ## First-time setup on the phone
 
 1. Install the APK and open the app. Open **Settings → Setup checklist** and clear every red item. The Samsung-specific steps are in `docs/SAMSUNG_SETUP.md`.
-2. In **Settings**, store your lock-screen PIN. If you hid WhatsApp's Locked chats folder behind a secret code, store that too.
+2. In **Settings**, store your lock-screen PIN. If you hid WhatsApp's Locked chats folder behind a secret code, store that too. Optionally set your own number (for a **Me** chip in the sheet) and the morning and evening times the time chips use.
 3. Turn on **Dry run**, create a message to yourself two minutes ahead, lock the phone and watch it unlock, open the chat, type the text, clear it and re-lock. Check **Logs → Automation trace** if it stops anywhere.
 4. Turn Dry run off.
 
@@ -58,7 +66,7 @@ CI (`.github/workflows/ci.yml`) runs the unit tests, lint and a debug build on e
 - `data` – Room database, repository, encrypted secret store, settings.
 - `scheduling` – exact alarms, boot recovery, missed-send handling.
 - `sending` – foreground service, wake/unlock flow, fallback notification, and `accessibility/` with the UI driver, the selector catalogue and the individual automation steps.
-- `ui` – Compose screens: schedule list, editor, settings, setup checklist, logs, UI inspector.
+- `ui` – Compose screens: schedule list, quick sheet (`quick/`), share target (`share/`), editor, settings, setup checklist, logs, UI inspector; `health/` works out what would stop a send.
 - `docs/` – architecture, Samsung setup, maintenance (refreshing view ids), device test protocol.
 
 ## Licence
