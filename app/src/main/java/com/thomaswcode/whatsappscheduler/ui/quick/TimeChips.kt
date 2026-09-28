@@ -47,21 +47,21 @@ fun rememberTimeFormat(): (LocalTime) -> String {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TimeChips(chips: List<TimeChip>, chosen: TimeChoice?, now: ZonedDateTime, onChoose: (TimeChoice) -> Unit) {
+fun TimeChips(chips: List<TimeChip>, chosen: TimeChoice?, now: ZonedDateTime, onChoose: (TimeChoice) -> Unit, enabled: Boolean = true) {
     val context = LocalContext.current
     val timeFormat = rememberTimeFormat()
     var pickingDate by rememberSaveable { mutableStateOf(false) }
     var pickedDate by rememberSaveable { mutableStateOf<Long?>(null) }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         chips.forEach { chip ->
-            FilterChip(selected = chosen == TimeChoice.Chip(chip.kind), onClick = { onChoose(TimeChoice.Chip(chip.kind)) }, label = { Text(chip.label) })
+            FilterChip(selected = chosen == TimeChoice.Chip(chip.kind), onClick = { onChoose(TimeChoice.Chip(chip.kind)) }, label = { Text(chip.label) }, enabled = enabled)
         }
         val exact = chosen as? TimeChoice.Exact
         if (exact != null) {
             val at = Instant.ofEpochMilli(exact.atMillis).atZone(now.zone)
-            FilterChip(selected = true, onClick = { pickingDate = true }, label = { Text(FriendlyTime.dayAndTime(at, now, timeFormat)) })
+            FilterChip(selected = true, onClick = { pickingDate = true }, label = { Text(FriendlyTime.dayAndTime(at, now, timeFormat)) }, enabled = enabled)
         }
-        FilterChip(selected = false, onClick = { pickingDate = true }, label = { Text("Pick date & time…") })
+        FilterChip(selected = false, onClick = { pickingDate = true }, label = { Text("Pick date & time…") }, enabled = enabled)
     }
 
     // Opens at the chosen time, or an hour from now when nothing is chosen yet.

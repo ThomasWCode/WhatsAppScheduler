@@ -170,6 +170,7 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
             contactHits = vm.contactHits,
             savedHits = vm.savedHits,
             contactsAllowed = vm.contactsAllowed,
+            enabled = !vm.saving,
             searchFocus = searchFocus,
             onQuery = vm::updateQuery,
             onSearchFocused = {
@@ -193,6 +194,8 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
         OutlinedTextField(
             value = draft.message,
             onValueChange = vm::setMessage,
+            // Frozen while saving: what shows is what is being saved.
+            enabled = !vm.saving,
             label = { Text("Message") },
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             minLines = 3,
@@ -200,7 +203,7 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
         )
         Spacer(Modifier.height(8.dp))
         Text("When", style = MaterialTheme.typography.titleSmall)
-        TimeChips(chips, draft.time, now, vm::choose)
+        TimeChips(chips, draft.time, now, vm::choose, enabled = !vm.saving)
         val sendable = at != null && QuickScheduleViewModel.isSendable(at, now)
         at?.let {
             Text(resolvedLine(it, now, timeFormat), style = MaterialTheme.typography.bodyMedium)

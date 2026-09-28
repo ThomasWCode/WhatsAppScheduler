@@ -166,7 +166,9 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
     /** Opens the one-off (or batch) in edit mode: the same sheet, titled "Edit message". */
     fun openEdit(schedule: Schedule) {
         viewModelScope.launch {
-            val members = schedule.batchId?.let { container.repository.batch(it) }?.ifEmpty { null } ?: listOf(schedule)
+            val batch = schedule.batchId?.let { container.repository.batch(it) }?.ifEmpty { null } ?: listOf(schedule)
+            // A batch part-way through: only the members still to be sent are edited; the others have had it.
+            val members = batch.filter { it.nextAtMillis != null }.ifEmpty { batch }
             draft = QuickDraft(
                 recipients = members.map { m ->
                     m.recipientId?.let { container.recipients.get(it) }?.toDraft()
@@ -196,15 +198,21 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         visible = false
     }
 
+    // While a save runs, the draft is what is being saved: changing it then would show one message and
+    // arm another, and the save would clear the change. So edits wait (the sheet disables them too).
+
     fun updateQuery(text: String) {
+        if (saving) return
         query = text
     }
 
     fun setMessage(text: String) {
+        if (saving) return
         draft = draft.copy(message = text)
     }
 
     fun choose(time: TimeChoice) {
+        if (saving) return
         draft = draft.copy(time = time)
         error = null
     }
@@ -216,6 +224,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
 
     /** Adds [recipient] to the To field, unless it is already there; clears the search. */
     fun add(recipient: RecipientDraft) {
+        if (saving) return
         when {
             draft.recipients.any { it.sameChatAs(recipient) } -> Unit
             draft.recipients.size >= ScheduleRepository.MAX_BATCH -> error = "One message can go to at most ${ScheduleRepository.MAX_BATCH} chats."
@@ -248,6 +257,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
     }
 
     fun remove(recipient: RecipientDraft) {
+        if (saving) return
         draft = draft.copy(recipients = draft.recipients.filterNot { it == recipient })
     }
 
@@ -273,9 +283,11 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
                     container.recipients.sameChatElsewhere(edited)?.let { return@runCatching it }
                     // Pending schedules just changed target: re-armed from the stored rows, and a Tap to send
                     // prompt they had would open the chat as it was.
-                    container.recipients.updateDetails(edited).forEach {
-                        container.alarmScheduler.sync(it)
-                        container.fallbackNotifier.cancel(it.id)
+                    container.recipients.updateDetails(edited).forEach { changed ->
+                        // The prompt first, and each step on its own: a failure re-arming one mustn't leave its
+                        // prompt pointing at the chat as it was, or skip the others.
+                        runCatching { container.fallbackNotifier.cancel(changed.id) }.onFailure { container.log.error("Clearing a stale prompt failed", it) }
+                        runCatching { container.alarmScheduler.sync(changed) }.onFailure { container.log.error("Re-arming after a details edit failed", it) }
                     }
                     null
                 }
@@ -312,6 +324,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
 
     /** Recent chips toggle the recipient in or out of the To field. */
     fun toggle(recipient: Recipient) {
+        if (saving) return
         val existing = draft.recipients.firstOrNull { it.recipientId == recipient.id }
         if (existing != null) remove(existing) else add(recipient)
     }
