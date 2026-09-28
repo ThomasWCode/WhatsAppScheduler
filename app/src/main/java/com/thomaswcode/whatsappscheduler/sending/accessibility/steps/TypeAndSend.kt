@@ -3,6 +3,7 @@ package com.thomaswcode.whatsappscheduler.sending.accessibility.steps
 import com.thomaswcode.whatsappscheduler.sending.accessibility.JobProgress
 import com.thomaswcode.whatsappscheduler.sending.accessibility.Selectors
 import com.thomaswcode.whatsappscheduler.sending.accessibility.UiDriver
+import com.thomaswcode.whatsappscheduler.sending.accessibility.sameVisibleText
 import com.thomaswcode.whatsappscheduler.util.AutomationLog
 import kotlinx.coroutines.delay
 
@@ -14,7 +15,8 @@ class TypeAndSend(private val driver: UiDriver, private val log: AutomationLog, 
     suspend fun run(message: String, dryRun: Boolean, timeoutMs: Long) {
         val entry = driver.waitFor(step, Selectors.waEntry, timeoutMs)
         entry.refresh()
-        if (entry.text?.toString() != message) driver.setText(step, entry, message)
+        // A composer showing its hint is empty even when the hint happens to read like the message.
+        if (entry.isShowingHintText || !sameVisibleText(entry.text, message)) driver.setText(step, entry, message)
         if (dryRun) {
             log.info("$step: DRY RUN, not tapping send; clearing composer")
             driver.setText(step, entry, "")

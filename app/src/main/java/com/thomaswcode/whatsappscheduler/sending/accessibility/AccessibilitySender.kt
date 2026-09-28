@@ -62,15 +62,19 @@ class AccessibilitySender(
 
                 val deepLink = OpenChatByDeepLink(context, driver, log)
                 val search = OpenChatBySearch(context, driver, log)
-                val auth = HandleAuthPrompt(driver, log, progress, pinBlock)
+                val auth = HandleAuthPrompt(driver, log, progress, pinBlock, secretCode)
                 when {
                     target.isLocked && !(settings.deepLinkForLockedChats && target.canDeepLink) -> {
                         search.goHome(whatsapp, t)
                         OpenLockedChat(driver, log, search, auth).run(target.name, pin, secretCode, t)
                     }
                     target.canDeepLink -> {
+                        // A Chat Lock prompt cancelled earlier leaves WhatsApp's unlock screen in its task,
+                        // and while it is there WhatsApp won't open a locked chat from a link. Bringing the
+                        // chat list to the front first closes it (seen on One UI 8 / WhatsApp 2.26).
+                        if (target.isLocked) search.goHome(whatsapp, t)
                         deepLink.launch(target, job.message, whatsapp)
-                        if (target.isLocked) auth.run(pin, appearTimeoutMs = 4_000, stepTimeoutMs = t)
+                        if (target.isLocked) auth.run(pin, appearTimeoutMs = t, stepTimeoutMs = t, alreadyPast = deepLink::composerInFront)
                         deepLink.awaitComposer(t)
                     }
                     else -> {
@@ -114,7 +118,11 @@ class AccessibilitySender(
      */
     private suspend fun tidyUp(driver: UiDriver, before: UnlockOutcome, relock: Boolean, unsentDraft: String?) {
         unsentDraft?.let { clearDraft(driver, it) }
-        repeat(2) { if (driver.find(Selectors.waEntry) != null) driver.back() }
+        // Out of the chat; out of any search a failure left open, which may hold the Chat Lock secret
+        // code; and out of any Chat Lock prompt or secret-code sheet, which would derail the next attempt.
+        repeat(5) {
+            if (driver.findAny(Selectors.waEntry, Selectors.waSearchInput, Selectors.waSecretCodeField, Selectors.authNegativeButton) != null) driver.back()
+        }
         if (relock || before.screenWasOff) {
             wake.relock(driver)
         } else {
@@ -126,7 +134,7 @@ class AccessibilitySender(
     private suspend fun clearDraft(driver: UiDriver, message: String) {
         val entry = driver.find(Selectors.waEntry) ?: return
         entry.refresh()
-        if (entry.text?.toString()?.trim() != message.trim()) return
+        if (entry.isShowingHintText || !sameVisibleText(entry.text, message)) return
         runCatching { driver.setText("tidyUp", entry, "") }
             .onSuccess { log.info("tidyUp: cleared the unsent message from the composer") }
             .onFailure { log.warn("tidyUp: could not clear the unsent message: ${it.message}") }

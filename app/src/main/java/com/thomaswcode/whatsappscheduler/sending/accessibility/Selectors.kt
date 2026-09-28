@@ -114,9 +114,31 @@ object Selectors {
         text = Regex("(?i)^(use (device |screen |phone )?(pin|password|passcode|pattern|screen lock)|pin|password|use credentials?|enter pin)$"),
         clickable = true,
     )
-    val authUseCredentialById = Selector(
-        "auth.useCredential.id",
-        ids = listOf("com.android.systemui:id/button_use_credential", "com.android.systemui:id/button_negative", "com.android.systemui:id/negative_button"),
+    /** A dedicated "use PIN" button; always safe to press. */
+    val authUseCredentialById = Selector("auth.useCredential.id", ids = listOf("com.android.systemui:id/button_use_credential"))
+
+    /**
+     * A biometric prompt's negative button. What it does depends on its text, so it is only pressed
+     * when that text asks for the PIN or the secret code (B26): on many prompts it is "Cancel", and
+     * on One UI's Chat Lock prompt it is "Use secret code".
+     */
+    val authNegativeButton = Selector(
+        "auth.negative",
+        ids = listOf("com.android.systemui:id/button_negative", "com.android.systemui:id/negative_button", "com.samsung.android.biometrics.app.setting:id/button_negative"),
+    )
+
+    /** Label of the negative button when a locked chat takes WhatsApp's own secret code instead of the device PIN. */
+    val useSecretCodeLabel = Regex("(?i)^use (the )?secret code$")
+
+    /** WhatsApp's "Enter your secret code" sheet for a locked chat opened directly (e.g. by a wa.me link). */
+    val waSecretCodeField = Selector(
+        "wa.secretCode",
+        ids = listOf("$WHATSAPP:id/secret_code_edit_text", "$WHATSAPP_BUSINESS:id/secret_code_edit_text"),
+        editable = true,
+    )
+    val waSecretCodeContinue = Selector(
+        "wa.secretCode.continue",
+        ids = listOf("$WHATSAPP:id/secret_code_authenticate_button", "$WHATSAPP_BUSINESS:id/secret_code_authenticate_button"),
     )
     val authPromptTitle = Selector("auth.prompt", pkg = sysPkg, text = Regex("(?i).*(unlock|verify|confirm|fingerprint|face|biometric|locked chats|screen lock).*"))
     val authPasswordField = Selector(
