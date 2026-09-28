@@ -25,6 +25,10 @@ interface ScheduleDao {
     @Insert
     suspend fun insert(schedule: Schedule): Long
 
+    /** Puts deleted rows back under their own ids (Undo). */
+    @Insert
+    suspend fun insertAll(schedules: List<Schedule>)
+
     @Update
     suspend fun update(schedule: Schedule)
 
@@ -40,6 +44,13 @@ interface ScheduleDao {
 
     @Query("UPDATE schedules SET lastRunAtMillis = :ranAtMillis, lastResult = :result, lastStatus = :status, attention = :attention WHERE id = :id")
     suspend fun updateLastRun(id: Long, ranAtMillis: Long, result: String, status: SendStatus, attention: Attention?)
+
+    @Query("UPDATE schedules SET attention = :attention WHERE id = :id")
+    suspend fun setAttention(id: Long, attention: Attention?)
+
+    /** Records what the user found out about the last run, e.g. that it did go out; nothing else changes. */
+    @Query("UPDATE schedules SET lastStatus = :status, lastResult = :result, attention = :attention WHERE id = :id")
+    suspend fun setOutcome(id: Long, status: SendStatus, result: String, attention: Attention?)
 
     @Query("SELECT * FROM schedules WHERE batchId = :batchId ORDER BY id")
     suspend fun getBatch(batchId: String): List<Schedule>
@@ -103,6 +114,25 @@ interface SendLogDao {
 
     @Insert
     suspend fun insert(log: SendLog)
+
+    @Insert
+    suspend fun insertAll(logs: List<SendLog>)
+
+    @Query("SELECT * FROM send_log WHERE scheduleId IN (:scheduleIds)")
+    suspend fun forSchedules(scheduleIds: List<Long>): List<SendLog>
+
+    @Query("DELETE FROM send_log WHERE scheduleId IN (:scheduleIds)")
+    suspend fun deleteForSchedules(scheduleIds: List<Long>)
+
+    /**
+     * Each schedule's latest run for an occurrence (not a manual one), so the list can say when the
+     * message that needs attention was due.
+     */
+    @Query(
+        "SELECT * FROM send_log WHERE id IN (SELECT MAX(id) FROM send_log " +
+            "WHERE scheduleId IS NOT NULL AND occurrenceAtMillis IS NOT NULL GROUP BY scheduleId)"
+    )
+    fun observeLatestOccurrenceRuns(): Flow<List<SendLog>>
 
     @Query("DELETE FROM send_log WHERE atMillis < :beforeMillis")
     suspend fun prune(beforeMillis: Long)
