@@ -106,10 +106,13 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
     suspend fun saveBatch(template: Schedule, recipients: List<Recipient>, members: List<Schedule> = emptyList(), now: Instant = Instant.now()): BatchChange =
         db.withTransaction {
             require(recipients.isNotEmpty() && recipients.size <= MAX_BATCH) { "A message goes to 1–$MAX_BATCH recipients" }
-            val batchId = if (recipients.size > 1) members.firstNotNullOfOrNull { it.batchId } ?: UUID.randomUUID().toString() else null
-            val byRecipient = members.filter { it.recipientId != null }.associateBy { it.recipientId }
+            // The rows as they are now: a member may have finished sending since the caller read it, and
+            // saving that stale copy would overwrite the run it just recorded (B08).
+            val current = members.mapNotNull { schedules.getById(it.id) }
+            val batchId = if (recipients.size > 1) current.firstNotNullOfOrNull { it.batchId } ?: UUID.randomUUID().toString() else null
+            val byRecipient = current.filter { it.recipientId != null }.associateBy { it.recipientId }
             val saved = recipients.map { recipient ->
-                val base = byRecipient[recipient.id] ?: members.singleOrNull { it.recipientId == null && recipients.size == 1 } ?: template.copy(id = 0)
+                val base = byRecipient[recipient.id] ?: current.singleOrNull { it.recipientId == null && recipients.size == 1 } ?: template.copy(id = 0)
                 save(
                     base.copy(
                         message = template.message,
@@ -131,7 +134,7 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
                     now,
                 )
             }
-            val removed = members.filter { member -> saved.none { it.id == member.id } }
+            val removed = current.filter { member -> saved.none { it.id == member.id } }
             removed.forEach { schedules.delete(it) }
             BatchChange(saved, removed)
         }
