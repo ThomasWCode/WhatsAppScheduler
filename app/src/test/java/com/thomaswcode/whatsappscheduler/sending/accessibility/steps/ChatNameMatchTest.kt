@@ -24,10 +24,10 @@ class ChatNameMatchTest {
 
     @Test
     fun invisibleCharactersAreIgnored() {
-        assertTrue(chatNameMatches("​Matlock fun", "Matlock fun"))
+        assertTrue(chatNameMatches("​Book club", "Book club"))
         assertTrue(chatNameMatches("‏Family‏", "Family"))
         assertTrue(chatNameMatches("Thomas White‎ (You)", "Thomas White"))
-        assertFalse(chatNameMatches("​Matlock funds", "Matlock fun"))
+        assertFalse(chatNameMatches("​Book clubs", "Book club"))
     }
 
     @Test
