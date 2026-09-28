@@ -45,6 +45,9 @@ interface ScheduleDao {
     @Query("UPDATE schedules SET lastRunAtMillis = :ranAtMillis, lastResult = :result, lastStatus = :status, attention = :attention WHERE id = :id")
     suspend fun updateLastRun(id: Long, ranAtMillis: Long, result: String, status: SendStatus, attention: Attention?)
 
+    @Query("UPDATE schedules SET lastResult = :result WHERE id = :id")
+    suspend fun setLastResult(id: Long, result: String)
+
     @Query("UPDATE schedules SET attention = :attention WHERE id = :id")
     suspend fun setAttention(id: Long, attention: Attention?)
 

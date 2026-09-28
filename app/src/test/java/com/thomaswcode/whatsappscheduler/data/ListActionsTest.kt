@@ -93,6 +93,19 @@ class ListActionsTest {
     }
 
     @Test
+    fun aTestRunDoesNotChangeWhenTheMessageWent() = runTest {
+        val sent = schedules.save(oneOff(), now)
+        schedules.recordRun(sent.id, sent.nextAtMillis!!, SendStatus.SENT, null, "Mum", ranAt)
+        val tested = schedules.recordManual(sent.id, SendStatus.DRY_RUN, "composer filled, send not tapped", "Mum", ranAt.plusSeconds(3600))!!
+        assertEquals(SendStatus.SENT, tested.lastStatus)
+        assertEquals(ranAt.toEpochMilli(), schedules.get(sent.id)!!.lastRunAtMillis)
+        assertEquals("manual DRY_RUN: composer filled, send not tapped", schedules.get(sent.id)!!.lastResult)
+        // A copy sent by hand is a real send, so it is the last run now.
+        val copy = schedules.recordManual(sent.id, SendStatus.SENT, null, "Mum", ranAt.plusSeconds(7200))!!
+        assertEquals(ranAt.plusSeconds(7200).toEpochMilli(), copy.lastRunAtMillis)
+    }
+
+    @Test
     fun dueTimeComesFromTheLatestScheduledRunNotAManualOne() = runTest {
         val series = schedules.save(oneOff().copy(recurrence = "DAILY"), now)
         val occurrence = series.nextAtMillis!!
