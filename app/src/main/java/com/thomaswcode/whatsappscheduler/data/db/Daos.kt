@@ -93,6 +93,12 @@ interface RecipientDao {
     @Query("SELECT * FROM recipients WHERE phoneE164 = :phoneE164 LIMIT 1")
     suspend fun byPhone(phoneE164: String): Recipient?
 
+    @Query("SELECT * FROM recipients WHERE phoneE164 = :phoneE164 AND id != :exceptId LIMIT 1")
+    suspend fun otherByPhone(phoneE164: String, exceptId: Long): Recipient?
+
+    @Query("SELECT * FROM recipients WHERE phoneE164 IS NULL AND kind = :kind AND COALESCE(whatsappName, displayName) = :chatName AND id != :exceptId LIMIT 1")
+    suspend fun otherByChatName(kind: TargetKind, chatName: String, exceptId: Long): Recipient?
+
     /** A recipient found by chat name (groups, and contacts without a number). */
     @Query("SELECT * FROM recipients WHERE phoneE164 IS NULL AND kind = :kind AND COALESCE(whatsappName, displayName) = :chatName LIMIT 1")
     suspend fun byChatName(kind: TargetKind, chatName: String): Recipient?
