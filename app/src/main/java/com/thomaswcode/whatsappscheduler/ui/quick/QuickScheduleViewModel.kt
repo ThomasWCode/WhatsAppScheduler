@@ -187,7 +187,9 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         visible = false
     }
 
+    /** Refused while saving: the save would still arm the message, and a failed one could no longer be retried. */
     fun discard() {
+        if (saving) return
         draft = QuickDraft()
         query = ""
         error = null
@@ -254,24 +256,53 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
      * pending schedules, and to the draft.
      */
     fun saveDetails(original: RecipientDraft, updated: RecipientDraft) {
-        viewModelScope.launch {
-            original.recipientId?.let { container.recipients.get(it) }?.let { stored ->
-                container.recipients.updateDetails(
-                    stored.copy(whatsappName = updated.whatsappName, phoneE164 = updated.phoneE164, isLocked = updated.isLocked, kind = updated.kind),
-                )
-                // Pending schedules just changed target, so their alarms are re-armed from the stored rows.
-                container.repository.all().filter { it.recipientId == stored.id && it.nextAtMillis != null }.forEach(container.alarmScheduler::sync)
-            }
-            // The edit may have made it the same chat as another one chosen; it is then there once.
+        if (saving) return
+        // The edit may make it the same chat as another one chosen; it is then there once.
+        fun applyToDraft() {
             draft = draft.copy(recipients = draft.recipients.map { if (it == original) updated else it }.distinctChats())
+        }
+        val id = original.recipientId ?: return applyToDraft()
+        // Counts as saving, so Schedule waits for it: a message saved meanwhile would go to the chat as it was.
+        saving = true
+        viewModelScope.launch {
+            val outcome = withContext(NonCancellable) {
+                runCatching {
+                    val stored = container.recipients.get(id) ?: return@runCatching null
+                    val edited = stored.copy(whatsappName = updated.whatsappName, phoneE164 = updated.phoneE164, isLocked = updated.isLocked, kind = updated.kind)
+                    // Refused rather than leaving two stored identities for one chat.
+                    container.recipients.sameChatElsewhere(edited)?.let { return@runCatching it }
+                    container.recipients.updateDetails(edited)
+                    // Pending schedules just changed target, so their alarms are re-armed from the stored rows.
+                    container.repository.all().filter { it.recipientId == stored.id && it.nextAtMillis != null }.forEach(container.alarmScheduler::sync)
+                    null
+                }
+            }
+            saving = false
+            outcome
+                .onSuccess { conflict ->
+                    if (conflict == null) {
+                        applyToDraft()
+                    } else {
+                        val what = if (updated.phoneE164 != null) "that number" else "that name"
+                        error = "${conflict.displayName} already has $what. Choose ${conflict.displayName} instead."
+                    }
+                }
+                .onFailure {
+                    container.log.error("Saving recipient details failed", it)
+                    error = "Couldn't save the details (${it.message ?: it.javaClass.simpleName}). Try again."
+                }
         }
     }
 
     /** "Remove from recents": forgets the stored recipient; a chosen chip stays, as a one-off entry. */
     fun forget(recipient: RecipientDraft) {
         val id = recipient.recipientId ?: return
+        if (saving) return
+        saving = true
         viewModelScope.launch {
-            container.recipients.get(id)?.let { container.recipients.remove(it) }
+            runCatching { withContext(NonCancellable) { container.recipients.get(id)?.let { container.recipients.remove(it) } } }
+                .onFailure { container.log.error("Removing a recipient failed", it) }
+            saving = false
             draft = draft.copy(recipients = draft.recipients.map { if (it.recipientId == id) it.copy(recipientId = null) else it })
         }
     }

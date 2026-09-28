@@ -126,7 +126,7 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
             if (draft.isEditing) {
                 TextButton(onClick = vm::delete, enabled = !vm.saving) { Text("Delete", color = MaterialTheme.colorScheme.error) }
             } else if (draft.recipients.isNotEmpty() || draft.message.isNotBlank() || draft.time != null) {
-                TextButton(onClick = vm::discard) { Text("Discard") }
+                TextButton(onClick = vm::discard, enabled = !vm.saving) { Text("Discard") }
             }
         }
         // One warning at most: the most serious thing that would stop or change the send (sorted by severity).
