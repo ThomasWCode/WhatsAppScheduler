@@ -74,7 +74,8 @@ class RecipientRepository(private val db: AppDatabase) {
 
     /**
      * Links schedules made before recipients existed (schema v1) to a recipient each, so recents and
-     * Chat Lock carry over. Runs on every fresh start; only unlinked schedules are touched.
+     * Chat Lock carry over. Runs once per install (MainActivity): afterwards an unlinked schedule is one
+     * whose recipient was removed from recents on purpose.
      */
     suspend fun linkUnlinkedSchedules() = db.withTransaction {
         schedules.getUnlinked().forEach { schedule ->

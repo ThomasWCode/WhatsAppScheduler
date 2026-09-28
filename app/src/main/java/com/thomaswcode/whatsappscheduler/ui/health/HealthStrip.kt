@@ -45,23 +45,20 @@ fun rememberHealth(serviceConnected: Boolean, hasPin: Boolean, pinBlock: PinBloc
 }
 
 /**
- * One line about auto-send (quick-schedule.md §7): the most serious problem, red when it stops
- * sending, with a button to fix it. Otherwise, with [showReady], a green "Auto-send ready".
- * [minorToo] also shows problems that only delay or change a send when nothing blocks it; without
- * it, dry run is the only one of those shown.
+ * One line about auto-send (quick-schedule.md §7): the most serious problem (the items come sorted by
+ * severity), red when it stops sending, with a button to fix it. Otherwise, with [showReady], a
+ * green "Auto-send ready".
  */
 @Composable
 fun HealthStrip(
     items: List<HealthItem>,
     showReady: Boolean,
-    minorToo: Boolean,
     onOpenSettings: (() -> Unit)?,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
-    val item = items.firstOrNull { it.problem.blocksSending }
-        ?: items.firstOrNull { minorToo || it.problem == HealthProblem.DRY_RUN }
+    val item = items.firstOrNull()
     if (item == null && !showReady) return
     val blocking = item?.problem?.blocksSending == true
     val container = when {

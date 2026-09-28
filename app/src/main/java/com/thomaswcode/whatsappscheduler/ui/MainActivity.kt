@@ -37,8 +37,13 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) {
             container.appScope.launch {
                 runCatching { container.alarmScheduler.rescheduleAll() }.onFailure { container.log.error("rescheduleAll failed", it) }
-                // Schedules from before recipients existed become recents, keeping their Chat Lock flag.
-                runCatching { container.recipients.linkUnlinkedSchedules() }.onFailure { container.log.error("Linking recipients failed", it) }
+                // Once: schedules from before recipients existed become recents, keeping their Chat Lock flag.
+                runCatching {
+                    if (!container.settings.recipientsLinked()) {
+                        container.recipients.linkUnlinkedSchedules()
+                        container.settings.markRecipientsLinked()
+                    }
+                }.onFailure { container.log.error("Linking recipients failed", it) }
             }
         }
     }

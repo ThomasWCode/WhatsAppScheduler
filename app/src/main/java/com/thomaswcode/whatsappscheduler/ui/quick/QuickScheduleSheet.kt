@@ -128,8 +128,8 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
                 TextButton(onClick = vm::discard) { Text("Discard") }
             }
         }
-        // One warning at most: the most serious thing that would stop the send, or dry run.
-        HealthStrip(health, showReady = false, minorToo = false, onOpenSettings = null, modifier = Modifier.padding(vertical = 6.dp))
+        // One warning at most: the most serious thing that would stop or change the send.
+        HealthStrip(health, showReady = false, onOpenSettings = null, modifier = Modifier.padding(vertical = 6.dp))
         Spacer(Modifier.height(4.dp))
         RecipientField(
             chosen = draft.recipients,
@@ -170,10 +170,13 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
         Spacer(Modifier.height(8.dp))
         Text("When", style = MaterialTheme.typography.titleSmall)
         TimeChips(chips, draft.time, now, vm::choose)
+        val sendable = at != null && QuickScheduleViewModel.isSendable(at, now)
         at?.let {
             Text(resolvedLine(it, now, timeFormat), style = MaterialTheme.typography.bodyMedium)
-            if (Duration.between(now, it) < Duration.ofMinutes(2)) {
-                Text("Sends in under 2 minutes", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
+            when {
+                !sendable -> Text("That time has passed. Pick a later one.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                Duration.between(now, it) < Duration.ofMinutes(2) ->
+                    Text("Sends in under 2 minutes", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
             }
         }
         vm.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp)) }
@@ -183,7 +186,7 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
             Spacer(Modifier.weight(1f).width(8.dp))
             Button(
                 onClick = vm::schedule,
-                enabled = !vm.saving && draft.recipients.isNotEmpty() && draft.message.isNotBlank() && at != null,
+                enabled = !vm.saving && draft.recipients.isNotEmpty() && draft.message.isNotBlank() && sendable,
             ) {
                 Text(
                     when {
