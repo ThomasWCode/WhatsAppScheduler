@@ -115,6 +115,7 @@ class SendService : LifecycleService() {
         override fun failed(schedule: Schedule, occurrenceAtMillis: Long?, reason: String) = fallback.notifyFailed(schedule, occurrenceAtMillis, reason)
         override fun uncertain(schedule: Schedule, occurrenceAtMillis: Long?, reason: String) = fallback.notifyUncertain(schedule, occurrenceAtMillis, reason)
         override fun pinPaused(reason: String) = fallback.notifyPinPaused(reason)
+        override fun missed(schedule: Schedule, occurrenceAtMillis: Long) = fallback.notifyMissed(schedule, occurrenceAtMillis)
     }
 
     companion object {

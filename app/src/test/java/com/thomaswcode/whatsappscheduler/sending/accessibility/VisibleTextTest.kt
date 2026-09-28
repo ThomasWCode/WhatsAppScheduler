@@ -24,6 +24,18 @@ class VisibleTextTest {
     }
 
     @Test
+    fun joinersAreKeptBecauseTheyChangeWhatANameIs() {
+        // Technologist (one emoji, joined) and woman + laptop (two emoji) are different names.
+        assertFalse(sameVisibleText("👩‍💻 Work", "👩💻 Work"))
+        assertFalse(sameVisibleText("م‌ن", "من"))
+    }
+
+    @Test
+    fun directionIsolatesAreIgnored() {
+        assertTrue(sameVisibleText("⁨Family⁩", "Family"))
+    }
+
+    @Test
     fun invisibleCharactersAreSpelledOutForLogs() {
         assertEquals("\\u200BMatlock fun", showInvisible("​Matlock fun"))
     }
