@@ -84,19 +84,23 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
      * Postpone (quick-schedule.md §9): moves one occurrence to [at]. For a one-off that is its time;
      * for a series only the next occurrence moves and the rule is untouched, so the series resumes
      * after the moved send. Deliberately not through [save], which would recompute the occurrence
-     * from the rule. The time it was due is kept as "moved from" (the first one, if moved again), and
-     * whatever it waited on is cleared: it has a time again.
+     * from the rule. The time it was due is kept as "moved from" (the first one, if moved again).
+     * [seen] is the row as the user chose to move it: if it has been sent, retried or edited since,
+     * nothing is moved and null is returned, as it is for a row that is gone.
      */
-    suspend fun postpone(id: Long, at: Instant): Postponed? = db.withTransaction {
+    suspend fun postpone(id: Long, at: Instant, seen: Schedule? = null): Postponed? = db.withTransaction {
         val current = schedules.getById(id) ?: return@withTransaction null
+        if (seen != null && (current.nextAtMillis != seen.nextAtMillis || current.lastRunAtMillis != seen.lastRunAtMillis)) return@withTransaction null
         val due = current.nextAtMillis ?: current.firstAtMillis
         val atMillis = at.toEpochMilli()
         val moved = if (current.rule == Recurrence.Once) {
-            // A missed or failed one-off is scheduled again, even one switched off before one-offs lost their switch.
-            current.copy(firstAtMillis = atMillis, nextAtMillis = atMillis, enabled = true)
+            // A missed or failed one-off is scheduled again, even one switched off before one-offs lost
+            // their switch, and has nothing left to wait on.
+            current.copy(firstAtMillis = atMillis, nextAtMillis = atMillis, enabled = true, attention = null)
         } else {
+            // A series' attention is about an earlier occurrence, which moving the next one doesn't settle.
             current.copy(nextAtMillis = atMillis)
-        }.copy(postponedFromMillis = current.postponedFromMillis ?: due, attention = null)
+        }.copy(postponedFromMillis = current.postponedFromMillis ?: due)
         schedules.update(moved)
         Postponed(current, moved)
     }

@@ -109,6 +109,25 @@ class PostponeAndHousekeepingTest {
     }
 
     @Test
+    fun whatWasSentOrChangedSinceIsNotMoved() = runTest {
+        val seen = schedules.save(message(), now)
+        schedules.recordRun(seen.id, seen.nextAtMillis!!, SendStatus.SENT, null, "Mum", tomorrowNine.plusSeconds(20))
+        assertNull(schedules.postpone(seen.id, tomorrowNine.plus(Duration.ofDays(1)), seen = seen))
+        assertNull("the sent one-off stays sent", schedules.get(seen.id)!!.nextAtMillis)
+        // As seen: moved.
+        val fresh = schedules.save(message(), now)
+        assertNotNull(schedules.postpone(fresh.id, tomorrowNine.plus(Duration.ofDays(1)), seen = fresh))
+    }
+
+    @Test
+    fun aSeriesKeepsWhatItWaitsOnWhenItsNextSendMoves() = runTest {
+        val daily = schedules.save(message(recurrence = "DAILY"), now)
+        val failed = schedules.recordRun(daily.id, daily.nextAtMillis!!, SendStatus.FAILED, "search: Timed out", "Mum", tomorrowNine.plusSeconds(20))!!
+        val moved = schedules.postpone(daily.id, Instant.ofEpochMilli(failed.nextAtMillis!!).plus(Duration.ofHours(3)), seen = failed)!!.after
+        assertEquals("the earlier occurrence still needs attention", Attention.FAILED, moved.attention)
+    }
+
+    @Test
     fun savingReplacesAPostponement() = runTest {
         val daily = schedules.save(message(recurrence = "DAILY"), now)
         schedules.postpone(daily.id, tomorrowNine.plus(Duration.ofHours(3)))
