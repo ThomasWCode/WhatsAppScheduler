@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -28,7 +29,8 @@ class MainActivity : ComponentActivity() {
         val container = SchedulerApp.container(this)
         if (savedInstanceState == null) destination.value = intent.getStringExtra(EXTRA_DESTINATION)
         setContent { AppTheme { AppNav(container, destination) } }
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+        // A runtime permission from Android 13; before that, notifications are on unless switched off.
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
         // Only on a fresh start: a recreate (rotation, dark mode switching at sunset) doesn't need it
@@ -44,6 +46,8 @@ class MainActivity : ComponentActivity() {
                         container.settings.markRecipientsLinked()
                     }
                 }.onFailure { container.log.error("Linking recipients failed", it) }
+                // Failures from before schema v2 show under Needs attention too.
+                runCatching { container.repository.typeLegacyOutcomes() }.onFailure { container.log.error("Typing old outcomes failed", it) }
                 runCatching { container.housekeeping.run() }.onFailure { container.log.error("Housekeeping failed", it) }
             }
         }

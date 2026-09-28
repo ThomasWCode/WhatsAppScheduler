@@ -66,6 +66,10 @@ interface ScheduleDao {
     )
     suspend fun clearSent(beforeMillis: Long): Int
 
+    /** Rows from before schema v2 whose last scheduled run is known only as text. */
+    @Query("SELECT * FROM schedules WHERE lastStatus IS NULL AND lastResult IS NOT NULL AND lastResult NOT LIKE 'manual %'")
+    suspend fun untypedOutcomes(): List<Schedule>
+
     @Query("UPDATE schedules SET lastResult = :result WHERE id = :id")
     suspend fun setLastResult(id: Long, result: String)
 
@@ -113,6 +117,12 @@ interface RecipientDao {
 
     @Query("SELECT * FROM recipients WHERE phoneE164 = :phoneE164 LIMIT 1")
     suspend fun byPhone(phoneE164: String): Recipient?
+
+    @Query("SELECT * FROM recipients WHERE phoneE164 = :phoneE164 AND id != :exceptId LIMIT 1")
+    suspend fun otherByPhone(phoneE164: String, exceptId: Long): Recipient?
+
+    @Query("SELECT * FROM recipients WHERE phoneE164 IS NULL AND kind = :kind AND COALESCE(whatsappName, displayName) = :chatName AND id != :exceptId LIMIT 1")
+    suspend fun otherByChatName(kind: TargetKind, chatName: String, exceptId: Long): Recipient?
 
     /** A recipient found by chat name (groups, and contacts without a number). */
     @Query("SELECT * FROM recipients WHERE phoneE164 IS NULL AND kind = :kind AND COALESCE(whatsappName, displayName) = :chatName LIMIT 1")
