@@ -150,6 +150,39 @@ class SendQueueProcessorTest {
         assertFalse(state.state.value.isBusy(1))
     }
 
+    // Missed occurrences (B09 interim): decided in the queue, so a re-arm and a late alarm agree
+
+    @Test
+    fun occurrenceLateBeyondTheGraceWindowIsReportedMissedNotSent() = runTest {
+        store.put(daily())
+        clock.now = due.plus(Duration.ofHours(3))
+        val sender = FakeSender()
+        processor(sender, Settings(missedGraceMinutes = 120)).run { enqueue(scheduled()); drain() }
+        assertTrue(sender.jobs.isEmpty())
+        assertEquals(listOf(SendStatus.SKIPPED), store.logged)
+        assertEquals(listOf("missed Mum"), notifier.events)
+        assertEquals(due.plus(Duration.ofDays(1)).toEpochMilli(), store.row(1).nextAtMillis)
+    }
+
+    @Test
+    fun occurrenceLateWithinTheGraceWindowIsSent() = runTest {
+        store.put(oneOff())
+        clock.now = due.plus(Duration.ofMinutes(90))
+        val sender = FakeSender()
+        processor(sender, Settings(missedGraceMinutes = 120)).run { enqueue(scheduled()); drain() }
+        assertEquals(1, sender.jobs.size)
+        assertEquals(listOf(SendStatus.SENT), store.logged)
+    }
+
+    @Test
+    fun sendNowIsNeverTooLate() = runTest {
+        store.put(oneOff())
+        clock.now = due.plus(Duration.ofHours(3))
+        val sender = FakeSender()
+        processor(sender, Settings(missedGraceMinutes = 120)).run { enqueue(SendRequest(1, SendKind.SEND_NOW, due.toEpochMilli())); drain() }
+        assertEquals(1, sender.jobs.size)
+    }
+
     // B02 and retries
 
     @Test
@@ -362,6 +395,9 @@ class SendQueueProcessorTest {
         }
         override fun pinPaused(reason: String) {
             events += "pinPaused"
+        }
+        override fun missed(schedule: Schedule, occurrenceAtMillis: Long) {
+            events += "missed ${schedule.targetName}"
         }
     }
 

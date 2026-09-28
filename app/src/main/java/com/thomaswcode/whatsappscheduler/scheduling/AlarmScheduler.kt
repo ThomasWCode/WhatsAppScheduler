@@ -6,16 +6,12 @@ import android.content.Context
 import android.content.Intent
 import com.thomaswcode.whatsappscheduler.data.ScheduleRepository
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
-import com.thomaswcode.whatsappscheduler.data.db.SendStatus
-import com.thomaswcode.whatsappscheduler.data.settings.SettingsStore
-import com.thomaswcode.whatsappscheduler.sending.FallbackNotifier
 import com.thomaswcode.whatsappscheduler.sending.SendKind
 import com.thomaswcode.whatsappscheduler.sending.SendRequest
 import com.thomaswcode.whatsappscheduler.sending.SendService
 import com.thomaswcode.whatsappscheduler.sending.SendStateHolder
 import com.thomaswcode.whatsappscheduler.ui.MainActivity
 import com.thomaswcode.whatsappscheduler.util.TraceLog
-import java.time.Duration
 import java.time.Instant
 
 /**
@@ -27,9 +23,7 @@ import java.time.Instant
 class AlarmScheduler(
     private val context: Context,
     private val repository: ScheduleRepository,
-    private val settings: SettingsStore,
     private val sendState: SendStateHolder,
-    private val fallback: FallbackNotifier,
     private val log: TraceLog,
 ) : ScheduleAlarms {
     private val alarmManager get() = context.getSystemService(AlarmManager::class.java)
@@ -61,28 +55,22 @@ class AlarmScheduler(
     }
 
     /**
-     * Re-arms every alarm (after boot, update or clock change). Occurrences missed while the phone
-     * was off are sent now when inside the grace window; later ones are logged as skipped and the
-     * user is told (interim for B09). Schedules that are queued or being sent are left alone: their
-     * occurrence only moves on when the send finishes, so it would look overdue (B01).
+     * Re-arms every alarm (after boot, update or clock change). An occurrence whose alarm could not
+     * fire (phone off, force-stop, clock change) is handed to the send queue as if the alarm had
+     * fired late, and the queue decides between sending it and reporting it missed. Deciding in one
+     * place means an alarm delivered at the same moment can't race this into a second outcome.
+     * Schedules that are queued or being sent are left alone: their occurrence only moves on when
+     * the send finishes, so it would look overdue (B01).
      */
     suspend fun rescheduleAll(now: Instant = Instant.now()) {
-        val grace = Duration.ofMinutes(settings.current().missedGraceMinutes.toLong())
-        val busy = sendState.state.value
         repository.all().forEach { schedule ->
             val next = schedule.nextAtMillis
             when {
-                busy.isBusy(schedule.id) -> log.info("Schedule ${schedule.id} is being sent; not re-arming it")
+                // Read per schedule, not once up front: a send may have started since the list was loaded.
+                sendState.state.value.isBusy(schedule.id) -> log.info("Schedule ${schedule.id} is being sent; not re-arming it")
                 !schedule.enabled || next == null -> cancel(schedule.id)
                 next > now.toEpochMilli() -> sync(schedule)
-                Duration.between(Instant.ofEpochMilli(next), now) <= grace ->
-                    SendService.enqueue(context, SendRequest(schedule.id, SendKind.SCHEDULED, next))
-                else -> {
-                    val minutes = Duration.between(Instant.ofEpochMilli(next), now).toMinutes()
-                    val updated = repository.recordRun(schedule.id, next, SendStatus.SKIPPED, "missed by $minutes min (phone off?)", schedule.targetName, now)
-                    updated?.let(::sync)
-                    fallback.notifyMissed(schedule, next)
-                }
+                else -> SendService.enqueue(context, SendRequest(schedule.id, SendKind.SCHEDULED, next))
             }
         }
     }
