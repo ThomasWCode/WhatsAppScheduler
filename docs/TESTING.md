@@ -31,6 +31,9 @@ Unit tests (`./gradlew test`) cover the quick sheet's time chips and friendly ti
 | 25 | Swipe a row away, then tap Undo | The row goes with its history (Logs → Sends); Undo brings back the row, its history and its alarm (`dumpsys alarm`). |
 | 26 | Dry run on: a one-off to a made-up group name, then ⋯ → Send now… | While it retries, the row says "Waiting to try again…" and can't be opened or swiped. Then it moves to Needs attention, "Couldn't send · <time>", with Send now and Discard; Discard shows Undo. |
 | 27 | A daily schedule (Repeat… from the sheet) | It is under Repeating with a switch; switched off it says "paused". One-offs have no switch. |
+| 28 | ⋯ → Postpone… on a one-off, to tomorrow evening; then Undo | The row says "Tomorrow 18:30 · moved from …" and `dumpsys alarm` shows the new time; Undo puts both back. A missed one-off's Postpone… starts at the same time on the next day and brings it back to Upcoming. |
+| 29 | Postpone a daily series' next send past the one after it | The dialog says "This also skips …". After the moved send, the series continues at its usual time the next day. |
+| 30 | Settings → Keep sent messages for → 7 days, with a one-off sent more than 7 days ago; reopen the app | The one-off is gone from Sent; Logs → Sends still lists its send. |
 
 Useful commands:
 
