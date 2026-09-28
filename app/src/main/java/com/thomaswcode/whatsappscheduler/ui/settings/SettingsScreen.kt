@@ -113,6 +113,7 @@ fun SettingsScreen(
                 update { it.copy(eveningMinutes = t.hour * 60 + t.minute) }
             }
             OwnNumberRow(settings.ownNumberE164, settings.defaultCountryIso) { e164 -> update { it.copy(ownNumberE164 = e164) } }
+            KeepSentRow(settings.keepSentDays) { days -> update { it.copy(keepSentDays = days) } }
             ToggleRow("Use phone-number link for locked contacts", "Faster path for locked contact chats; enable only if a dry run shows it works.", settings.deepLinkForLockedChats) { v -> update { it.copy(deepLinkForLockedChats = v) } }
             NumberRow("Retries per message", settings.retryCount) { v -> update { it.copy(retryCount = v.coerceIn(0, 5)) } }
             NumberRow("Seconds between retries", settings.retryDelaySeconds) { v -> update { it.copy(retryDelaySeconds = v.coerceIn(5, 600)) } }
@@ -242,6 +243,25 @@ private fun SecretDialog(title: String, hint: String, onDismiss: () -> Unit, onS
         confirmButton = { TextButton(onClick = { onSave(value) }) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+/** How long sent messages stay under Sent before they are cleared (their history stays, up to 90 days). */
+@Composable
+private fun KeepSentRow(days: Int, onChange: (Int) -> Unit) {
+    val options = listOf(7 to "7 days", 30 to "30 days", 90 to "90 days", 0 to "Always")
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+        Text("Keep sent messages for")
+        Text("Sent one-offs are cleared from the list after this; Logs keep their history for 90 days.", style = MaterialTheme.typography.bodySmall)
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+            options.forEachIndexed { i, (value, label) ->
+                SegmentedButton(
+                    selected = days == value,
+                    onClick = { onChange(value) },
+                    shape = SegmentedButtonDefaults.itemShape(i, options.size),
+                ) { Text(label, maxLines = 1) }
+            }
+        }
+    }
 }
 
 /** A time of day, changed with the time picker; follows the phone's 12/24-hour setting. */

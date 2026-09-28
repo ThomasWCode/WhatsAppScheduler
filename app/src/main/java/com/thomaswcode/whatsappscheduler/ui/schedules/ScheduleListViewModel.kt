@@ -15,6 +15,7 @@ import com.thomaswcode.whatsappscheduler.sending.SendRequest
 import com.thomaswcode.whatsappscheduler.sending.SendState
 import com.thomaswcode.whatsappscheduler.sending.accessibility.WaAccessibilityService
 import com.thomaswcode.whatsappscheduler.ui.minuteClock
+import java.time.Instant
 import java.time.ZonedDateTime
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
@@ -30,6 +31,9 @@ import kotlinx.coroutines.withContext
 /** Something the list should say once, usually with Undo. */
 sealed interface ListEvent {
     data class Deleted(val summary: String, val removed: DeletedSchedules) : ListEvent
+
+    /** Moved to a new time; [before] are the rows as they were, for Undo. */
+    data class Postponed(val summary: String, val before: List<Schedule>) : ListEvent
 
     /** A series stopped asking about an occurrence; [previous] puts the attention back. */
     data class Dismissed(val summary: String, val previous: Map<Long, Attention>) : ListEvent
@@ -120,6 +124,33 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
     fun undoDismiss(previous: Map<Long, Attention>) {
         viewModelScope.launch {
             runCatching { previous.forEach { (id, attention) -> container.repository.setAttention(id, attention) } }
+                .onFailure { fail("Couldn't undo", it) }
+        }
+    }
+
+    /**
+     * Postpone… (quick-schedule.md §9): each member's occurrence moves to [at] and is armed for that
+     * time; Undo puts the timing back. [summary] is what the snackbar says.
+     */
+    fun postpone(group: List<Schedule>, at: Instant, summary: String) {
+        viewModelScope.launch {
+            runCatching {
+                withContext(NonCancellable) {
+                    group.mapNotNull { container.repository.postpone(it.id, at) }.onEach { moved ->
+                        container.alarmScheduler.sync(moved.after)
+                        // A prompt it had was about the old time.
+                        container.fallbackNotifier.cancel(moved.after.id)
+                    }
+                }
+            }
+                .onSuccess { moved -> if (moved.isNotEmpty()) events.trySend(ListEvent.Postponed(summary, moved.map { it.before })) }
+                .onFailure { fail("Couldn't postpone", it) }
+        }
+    }
+
+    fun undoPostpone(before: List<Schedule>) {
+        viewModelScope.launch {
+            runCatching { withContext(NonCancellable) { before.mapNotNull { container.repository.restoreTiming(it) }.forEach(container.alarmScheduler::sync) } }
                 .onFailure { fail("Couldn't undo", it) }
         }
     }
