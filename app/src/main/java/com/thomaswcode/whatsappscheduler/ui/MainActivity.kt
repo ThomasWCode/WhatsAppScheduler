@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import com.thomaswcode.whatsappscheduler.SchedulerApp
@@ -21,6 +22,8 @@ class MainActivity : ComponentActivity() {
     private val destination = MutableStateFlow<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Picks status-bar icon contrast per theme, so they are visible in dark mode (B25, I3).
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val container = SchedulerApp.container(this)
         if (savedInstanceState == null) destination.value = intent.getStringExtra(EXTRA_DESTINATION)
@@ -49,7 +52,7 @@ class MainActivity : ComponentActivity() {
         private const val EXTRA_DESTINATION = "destination"
         const val DESTINATION_SETTINGS = "settings"
 
-        /** Opens the app on [destination], reusing the running instance if there is one. */
+        /** Opens the app on [destination] (Settings, or a navigation route), reusing the running instance if there is one. */
         fun intent(context: Context, destination: String): Intent =
             Intent(context, MainActivity::class.java)
                 .putExtra(EXTRA_DESTINATION, destination)

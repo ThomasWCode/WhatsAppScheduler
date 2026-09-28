@@ -41,6 +41,20 @@
         </activity>
 
         <activity
+            android:name=".ui.share.ShareTargetActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:label="@string/share_target_label"
+            android:theme="@style/Theme.WhatsAppScheduler.Translucent"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
+        <activity
             android:name=".sending.UnlockActivity"
             android:excludeFromRecents="true"
             android:exported="false"
