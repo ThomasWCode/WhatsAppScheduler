@@ -93,6 +93,36 @@ class ListActionsTest {
     }
 
     @Test
+    fun aResendThatMayHaveGoneOutAsksToBeChecked() = runTest {
+        val failed = schedules.save(oneOff(), now)
+        schedules.recordRun(failed.id, failed.nextAtMillis!!, SendStatus.FAILED, "search: Timed out", "Mum", ranAt)
+        // Send now on it: the occurrence is used up, so it is a run by hand, and it may have gone out.
+        val resent = schedules.recordManual(failed.id, SendStatus.UNCERTAIN, "verify: composer not cleared", "Mum", ranAt.plusSeconds(600))!!
+        assertEquals(Attention.UNCERTAIN, resent.attention)
+        assertEquals(Attention.UNCERTAIN, schedules.get(failed.id)!!.attention)
+    }
+
+    @Test
+    fun outcomesFromBeforeSchemaTwoAreTypedOnce() = runTest {
+        suspend fun legacy(result: String) =
+            schedules.save(oneOff().copy(firstAtMillis = now.minusSeconds(86_400).toEpochMilli(), lastResult = result, lastRunAtMillis = now.minusSeconds(86_000).toEpochMilli()), now)
+        val failed = legacy("FAILED: search: No chat named 'Gran'")
+        val skipped = legacy("SKIPPED: missed by 180 min (phone off?)")
+        val sent = legacy("SENT")
+        val tested = legacy("manual DRY_RUN: composer filled, send not tapped")
+        assertEquals(3, schedules.typeLegacyOutcomes())
+        assertEquals(Attention.FAILED, schedules.get(failed.id)!!.attention)
+        assertEquals(Attention.MISSED, schedules.get(skipped.id)!!.attention)
+        assertEquals(SendStatus.SENT, schedules.get(sent.id)!!.lastStatus)
+        assertNull(schedules.get(sent.id)!!.attention)
+        assertNull("a run by hand never decides attention", schedules.get(tested.id)!!.lastStatus)
+        // Done: Discard on it isn't undone by the next start.
+        schedules.setAttention(failed.id, null)
+        assertEquals(0, schedules.typeLegacyOutcomes())
+        assertNull(schedules.get(failed.id)!!.attention)
+    }
+
+    @Test
     fun aTestRunDoesNotChangeWhenTheMessageWent() = runTest {
         val sent = schedules.save(oneOff(), now)
         schedules.recordRun(sent.id, sent.nextAtMillis!!, SendStatus.SENT, null, "Mum", ranAt)

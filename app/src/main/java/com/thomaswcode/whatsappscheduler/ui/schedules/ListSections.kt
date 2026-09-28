@@ -1,5 +1,6 @@
 package com.thomaswcode.whatsappscheduler.ui.schedules
 
+import com.thomaswcode.whatsappscheduler.data.ScheduleRepository
 import com.thomaswcode.whatsappscheduler.data.db.Attention
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.data.db.SendStatus
@@ -51,14 +52,9 @@ data class ListSections(
     }
 }
 
-/**
- * The last run's outcome. Rows from before schema v2 have only the text of [Schedule.lastResult],
- * which starts with the status name, after "manual " for a run from the app.
- */
+/** The last run's outcome; for rows from before schema v2, read from the text of [Schedule.lastResult]. */
 val Schedule.shownStatus: SendStatus?
-    get() = lastStatus ?: lastResult?.removePrefix("manual ")?.let { text ->
-        SendStatus.entries.firstOrNull { text == it.name || text.startsWith(it.name + ":") }
-    }
+    get() = lastStatus ?: ScheduleRepository.statusFromResult(lastResult)
 
 /**
  * The line under a row's recipients: when it goes, when it went, or why it needs you. [dueAt] maps a

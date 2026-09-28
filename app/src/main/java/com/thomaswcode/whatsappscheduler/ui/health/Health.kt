@@ -1,17 +1,15 @@
 package com.thomaswcode.whatsappscheduler.ui.health
 
-import android.Manifest
 import android.app.AlarmManager
 import android.app.KeyguardManager
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
-import androidx.core.content.ContextCompat
+import androidx.core.app.NotificationManagerCompat
 import com.thomaswcode.whatsappscheduler.domain.PinBlock
 import com.thomaswcode.whatsappscheduler.sending.accessibility.Selectors
 import com.thomaswcode.whatsappscheduler.sending.accessibility.WaAccessibilityService
@@ -98,7 +96,8 @@ object HealthCheck {
                 "Fix", Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, pkgUri),
             )
         }
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+        // The app-level switch, which on Android 13+ also reflects the notification permission; on 12 there is no permission.
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
             items += HealthItem(
                 HealthProblem.NOTIFICATIONS_BLOCKED,
                 "Notifications are blocked, so a failed send can't ask you to finish it.",
