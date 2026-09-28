@@ -1,17 +1,15 @@
 package com.thomaswcode.whatsappscheduler.ui.onboarding
 
-import android.Manifest
 import android.app.AlarmManager
 import android.app.KeyguardManager
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
-import androidx.core.content.ContextCompat
+import androidx.core.app.NotificationManagerCompat
 import com.thomaswcode.whatsappscheduler.sending.accessibility.Selectors
 import com.thomaswcode.whatsappscheduler.sending.accessibility.WaAccessibilityService
 
@@ -68,7 +66,8 @@ object PermissionChecks {
             SetupItem(
                 "notifications", "Notifications allowed",
                 "Needed for the foreground service and the tap-to-send fallback.",
-                if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) CheckState.OK else CheckState.MISSING,
+                // On Android 12 there is no notification permission, only the app-level switch.
+                if (NotificationManagerCompat.from(context).areNotificationsEnabled()) CheckState.OK else CheckState.MISSING,
                 appDetails,
             ),
             SetupItem(

@@ -1,13 +1,11 @@
 package com.thomaswcode.whatsappscheduler.ui.health
 
-import android.Manifest
 import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.PowerManager
 import android.provider.Settings
-import androidx.core.content.ContextCompat
+import androidx.core.app.NotificationManagerCompat
 import com.thomaswcode.whatsappscheduler.domain.PinBlock
 import com.thomaswcode.whatsappscheduler.sending.accessibility.WaAccessibilityService
 
@@ -53,7 +51,8 @@ object HealthCheck {
             items += HealthItem(HealthProblem.NO_PIN, "No lock-screen PIN is stored, so a locked phone can't be unlocked to send.", null, null)
         }
         if (dryRun) items += HealthItem(HealthProblem.DRY_RUN, "Dry run is on: messages are typed but never sent.", null, null)
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+        // The app-level switch, which on Android 13+ also reflects the notification permission; on 12 there is no permission.
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
             items += HealthItem(
                 HealthProblem.NOTIFICATIONS_BLOCKED,
                 "Notifications are blocked, so a failed send can't ask you to finish it.",
