@@ -262,7 +262,8 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
                 // Pending schedules just changed target, so their alarms are re-armed from the stored rows.
                 container.repository.all().filter { it.recipientId == stored.id && it.nextAtMillis != null }.forEach(container.alarmScheduler::sync)
             }
-            draft = draft.copy(recipients = draft.recipients.map { if (it == original) updated else it })
+            // The edit may have made it the same chat as another one chosen; it is then there once.
+            draft = draft.copy(recipients = draft.recipients.map { if (it == original) updated else it }.distinctChats())
         }
     }
 
@@ -300,7 +301,8 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
             // Not cancelled if the sheet or screen goes away mid-save, which would strand rows without alarms.
             val outcome = withContext(NonCancellable) {
                 runCatching {
-                    val resolved = d.recipients.map { container.recipients.resolve(it) }
+                    // Once per chat, however the recipients were stored, so one chat can't get the message twice.
+                    val resolved = d.recipients.map { container.recipients.resolve(it) }.distinctBy { it.phoneE164 ?: "${it.kind}:${it.chatName}" }
                     val members = d.editingIds.mapNotNull { container.repository.get(it) }
                     val template = Schedule(
                         message = d.message.trim(), targetKind = TargetKind.CONTACT, targetName = "", phoneE164 = null, isLocked = false,
@@ -390,6 +392,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
      * it, since a copy left here would come back as a duplicate the next time the sheet opens.
      */
     fun repeat() {
+        if (saving) return
         val d = draft
         events.trySend(QuickEvent.OpenFullEditor(d.recipients.firstOrNull(), d.message, resolvedTime()?.toInstant()?.toEpochMilli()))
         discard()

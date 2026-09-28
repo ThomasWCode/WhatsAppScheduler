@@ -85,6 +85,10 @@ fun availableRecents(recents: List<Recipient>, chosen: List<RecipientDraft>, me:
         chosen.none { it.sameChatAs(draft) } && me?.sameChatAs(draft) != true
     }
 
+/** Keeps the first of any that are the same chat, so one message can't go to a chat twice. */
+fun List<RecipientDraft>.distinctChats(): List<RecipientDraft> =
+    fold(emptyList()) { kept, recipient -> if (kept.any { it.sameChatAs(recipient) }) kept else kept + recipient }
+
 /** True when [other] would be the same chat as this draft: same stored recipient, same number, or same named chat. */
 fun RecipientDraft.sameChatAs(other: RecipientDraft): Boolean = when {
     recipientId != null && recipientId == other.recipientId -> true
