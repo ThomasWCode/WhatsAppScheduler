@@ -97,7 +97,9 @@ class HandleAuthPrompt(
             val enter = driver.find(Selectors.authEnterByText) ?: driver.find(Selectors.keyguardEnter)
             if (enter != null) driver.click(step, enter) else field.let { driver.imeEnter(it) }
         }
-        if (!driver.waitUntilGone(Selectors.authPasswordField, stepTimeoutMs)) {
+        // Gone by every selector that could have found the field, not only the first: when the fallback
+        // found it, waiting on the other selector alone would pass at once and count a wrong PIN as accepted.
+        if (!driver.waitUntil(stepTimeoutMs) { driver.findAny(Selectors.authPasswordField, Selectors.authAnyEditable) == null }) {
             driver.fail(step, "Credential prompt did not close after entering PIN")
         }
         progress.pinUnconfirmed = false
