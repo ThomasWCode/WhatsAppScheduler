@@ -183,7 +183,7 @@ fun ScheduleListScreen(
                 busy != null -> { { announce("It's being sent now. You can change it once that has finished.") } }
                 // Sent: the main action is to send it again (§8). A one-off opens the quick sheet (§6).
                 section == Section.SENT -> { { quick.openSendAgain(group) } }
-                once -> { { quick.openEdit(first) } }
+                once -> { { quick.openEdit(group) } }
                 else -> { { onEdit(first.id) } }
             },
             menu = when (section) {
