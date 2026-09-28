@@ -73,6 +73,9 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
                         isLocked = recipient.isLocked,
                         // Edited by the user, so whatever it was waiting on has been dealt with.
                         attention = null,
+                        // The sheet has no pause: saving schedules the message, for every member alike, so
+                        // an added recipient can't be armed while the rest of the batch stays switched off.
+                        enabled = true,
                     ),
                     now,
                 )
