@@ -64,6 +64,9 @@ sealed interface QuickEvent {
 
     /** What "Check this chat now" found. */
     data class Checked(val message: String) : QuickEvent
+
+    /** The checks started together have all finished, after their [Checked] results. */
+    data object ChecksDone : QuickEvent
     data class Deleted(val summary: String) : QuickEvent
 
     /** "Repeat…": continue in the full editor with this recipient, message and time. */
@@ -163,9 +166,25 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         null -> null
     }
 
+    /**
+     * The check offer (features F4) from the last message scheduled, until it is answered. A host that
+     * closes with the sheet, the Share target, asks it itself: it is set as the sheet closes, so it is
+     * there before that host could finish. The app's list offers it under the Scheduled snackbar instead.
+     */
+    var pendingCheckOffers by mutableStateOf<List<RecipientDraft>>(emptyList())
+        private set
+
+    /** Checks the offered chats, or not; either way the offer is answered. */
+    fun answerCheckOffer(check: Boolean) {
+        val chats = pendingCheckOffers
+        pendingCheckOffers = emptyList()
+        if (check && chats.isNotEmpty()) checkChats(chats)
+    }
+
     /** Shows the sheet for a new message, bringing back a draft left by swiping it away. */
     fun openNew() {
         if (draft.isEditing) draft = QuickDraft()
+        pendingCheckOffers = emptyList()
         error = null
         visible = true
     }
@@ -173,6 +192,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
     /** Text shared from another app; the sheet opens on the recipient. */
     fun openShared(text: String) {
         draft = QuickDraft(message = text)
+        pendingCheckOffers = emptyList()
         query = ""
         error = null
         visible = true
@@ -209,6 +229,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
 
     private fun show(newDraft: QuickDraft) {
         draft = newDraft
+        pendingCheckOffers = emptyList()
         query = ""
         error = null
         visible = true
@@ -406,36 +427,50 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
      */
     fun checkChat(recipient: RecipientDraft) = checkChats(listOf(recipient))
 
-    /** [checkChat] for each of [chats] in turn, stopping at one that couldn't be checked, as the rest couldn't either. */
+    /**
+     * [checkChat] for each of [chats] in turn. A name that isn't found says nothing about the next one,
+     * but a check that couldn't run, or that WhatsApp failed, would most likely go the same way again,
+     * so the rest are left. [QuickEvent.ChecksDone] follows the results.
+     */
     fun checkChats(chats: List<RecipientDraft>) {
         container.appScope.launch {
-            for (recipient in chats) {
-                val name = recipient.chatName
-                val outcome = try {
-                    container.chatChecker.check(recipient)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    // Anything the steps don't turn into a result, such as a node gone while WhatsApp changed
-                    // windows, or the database: a check that failed, rather than the app crashing.
-                    container.log.error("Checking a chat failed", e)
-                    CheckOutcome(ChatCheck.Failed(e.message ?: e.javaClass.simpleName), recipient.recipientId)
+            try {
+                for (recipient in chats) {
+                    val result = checkOne(recipient)
+                    if (result is ChatCheck.NotChecked || result is ChatCheck.Failed) break
                 }
-                // A chip for a name typed but not saved is linked to the recipient the check stored.
-                if (recipient.recipientId == null && outcome.recipientId != null && !saving) {
-                    draft = draft.copy(recipients = draft.recipients.map { if (it == recipient) it.copy(recipientId = outcome.recipientId) else it })
-                }
-                val message = when (val result = outcome.result) {
-                    ChatCheck.Found -> "Found “$name” in WhatsApp."
-                    // The step's own reason is in the automation log; here, what to do about it.
-                    is ChatCheck.NotFound -> "Couldn't find “$name” in WhatsApp's search. Check the name is exactly as WhatsApp shows it."
-                    is ChatCheck.Failed -> "Couldn't check “$name”: WhatsApp didn't respond as expected. Logs under Settings → Diagnostics say where."
-                    is ChatCheck.NotChecked -> "Didn't check “$name”: ${result.reason}."
-                }
-                events.trySend(QuickEvent.Checked(message))
-                if (outcome.result is ChatCheck.NotChecked) break
+            } finally {
+                events.trySend(QuickEvent.ChecksDone)
             }
         }
+    }
+
+    /** Checks [recipient] and reports what it found. */
+    private suspend fun checkOne(recipient: RecipientDraft): ChatCheck {
+        val name = recipient.chatName
+        val outcome = try {
+            container.chatChecker.check(recipient)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Anything the steps don't turn into a result, such as a node gone while WhatsApp changed
+            // windows, or the database: a check that failed, rather than the app crashing.
+            container.log.error("Checking a chat failed", e)
+            CheckOutcome(ChatCheck.Failed(e.message ?: e.javaClass.simpleName), recipient.recipientId)
+        }
+        // A chip for a name typed but not saved is linked to the recipient the check stored.
+        if (recipient.recipientId == null && outcome.recipientId != null && !saving) {
+            draft = draft.copy(recipients = draft.recipients.map { if (it == recipient) it.copy(recipientId = outcome.recipientId) else it })
+        }
+        val message = when (val result = outcome.result) {
+            ChatCheck.Found -> "Found “$name” in WhatsApp."
+            // The step's own reason is in the automation log; here, what to do about it.
+            is ChatCheck.NotFound -> "Couldn't find “$name” in WhatsApp's search. Check the name is exactly as WhatsApp shows it."
+            is ChatCheck.Failed -> "Couldn't check “$name”: WhatsApp didn't respond as expected. Logs under Settings → Diagnostics say where."
+            is ChatCheck.NotChecked -> "Didn't check “$name”: ${result.reason}."
+        }
+        events.trySend(QuickEvent.Checked(message))
+        return outcome.result
     }
 
     /** When the chat was last found by a check (features F4), whether or not it is a recent. */
@@ -507,6 +542,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
             outcome
                 .onSuccess { change ->
                     val summary = (if (d.isEditing) "Saved: " else "Scheduled: ") + names(d.recipients) + " · " + FriendlyTime.dayAndTime(at, now)
+                    pendingCheckOffers = checkOffers
                     events.trySend(QuickEvent.Scheduled(summary, change.saved.map { it.id }.takeUnless { d.isEditing }, checkOffers))
                     draft = QuickDraft()
                     query = ""
