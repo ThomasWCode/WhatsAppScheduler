@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.PowerManager
+import android.provider.Settings
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
@@ -120,7 +121,16 @@ class SendService : LifecycleService() {
     }
 
     /** Opens the Postpone picker for messages held on the countdown; the user has just asked for it. */
+    /**
+     * Opens the picker straight after Postpone… on the countdown. Android lets a service do that only
+     * with "Display over other apps", which sending needs anyway (WhatsApp is brought to the front the
+     * same way). Without it the held notifications stay, and their own Postpone… opens the picker.
+     */
     private fun choosePostpone(schedules: List<Schedule>) {
+        if (!Settings.canDrawOverlays(this)) {
+            container.log.warn("Postpone picker not opened: \"Display over other apps\" is off; its notification offers Postpone…")
+            return
+        }
         runCatching { startActivity(PostponeActivity.intent(this, schedules.map { it.id }).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
             .onFailure { container.log.error("Opening the Postpone picker failed", it) }
     }
