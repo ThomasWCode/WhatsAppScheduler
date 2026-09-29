@@ -67,6 +67,9 @@ class RecipientRepository(private val db: AppDatabase) {
     /** "Check this chat now" found the chat (features F4). */
     suspend fun markVerified(id: Long, atMillis: Long) = recipients.markVerified(id, atMillis)
 
+    /** A check didn't find the chat: it no longer shows as found. */
+    suspend fun clearVerified(id: Long) = recipients.markVerified(id, null)
+
     /** The stored recipient [draft] already is, if any, without creating one: by id, number, or chat name. */
     suspend fun existing(draft: RecipientDraft): Recipient? =
         draft.recipientId?.let { recipients.get(it) }
