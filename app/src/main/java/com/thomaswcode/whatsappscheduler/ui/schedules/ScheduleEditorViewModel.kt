@@ -13,6 +13,7 @@ import androidx.lifecycle.viewmodel.compose.saveable
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.thomaswcode.whatsappscheduler.AppContainer
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.data.RecipientDraft
 import com.thomaswcode.whatsappscheduler.data.contacts.ContactHit
 import com.thomaswcode.whatsappscheduler.data.db.Recipient
@@ -277,7 +278,7 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
     /** A contact result or one from the system picker; someone already saved is taken as that recipient. */
     fun add(hit: ContactHit) {
         val picked = when (val input = RecipientInput.fromContact(hit, countryIso)) {
-            is RecipientInput.Refused -> return run { error = input.reason }
+            is RecipientInput.Refused -> return run { error = container.text(input.reason, input.number) }
             is RecipientInput.Chosen -> input.recipient
         }
         choose(picked)
@@ -287,7 +288,7 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
     fun addTyped(text: String) {
         val typed = when (val input = RecipientInput.fromTyped(text, countryIso)) {
             null -> return
-            is RecipientInput.Refused -> return run { error = input.reason }
+            is RecipientInput.Refused -> return run { error = container.text(input.reason, input.number) }
             is RecipientInput.Chosen -> input.recipient
         }
         choose(typed)

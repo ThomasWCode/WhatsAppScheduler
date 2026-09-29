@@ -11,6 +11,7 @@ import androidx.core.app.Person
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.data.db.Recipient
 import com.thomaswcode.whatsappscheduler.ui.MainActivity
 import com.thomaswcode.whatsappscheduler.ui.schedules.initials
@@ -68,7 +69,7 @@ class ShareShortcuts(private val context: Context) {
         return ShortcutInfoCompat.Builder(context, id)
             .setRank(rank)
             .setShortLabel(recipient.displayName)
-            .setLongLabel("${recipient.displayName} · Schedule on WhatsApp")
+            .setLongLabel(context.getString(R.string.share_shortcut_long_label, recipient.displayName))
             .setIcon(IconCompat.createWithAdaptiveBitmap(avatar(recipient.displayName)))
             // Picked from the launcher's long-press menu rather than the share sheet, it opens the app.
             .setIntent(Intent(context, MainActivity::class.java).setAction(Intent.ACTION_VIEW))

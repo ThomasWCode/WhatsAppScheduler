@@ -17,8 +17,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.data.RecipientDraft
 import com.thomaswcode.whatsappscheduler.domain.PhoneNormaliser
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
@@ -52,38 +54,38 @@ internal fun RecipientDetailsDialog(
                 OutlinedTextField(
                     value = whatsappName,
                     onValueChange = { whatsappName = it },
-                    label = { Text("Name in WhatsApp") },
+                    label = { Text(stringResource(R.string.recipient_name_in_whatsapp)) },
                     placeholder = { Text(recipient.displayName) },
-                    supportingText = { Text("Only if WhatsApp shows the chat under another name; used to find it without a number.") },
+                    supportingText = { Text(stringResource(R.string.recipient_name_in_whatsapp_help)) },
                     singleLine = true,
                 )
                 if (recipient.kind == TargetKind.CONTACT) {
                     OutlinedTextField(
                         value = number,
                         onValueChange = { number = it },
-                        label = { Text("Number") },
+                        label = { Text(stringResource(R.string.recipient_number)) },
                         isError = !numberOk,
-                        supportingText = { Text(if (numberOk) "Leave empty to find the chat by name." else "Not a valid number.") },
+                        supportingText = { Text(stringResource(if (numberOk) R.string.recipient_number_help else R.string.recipient_number_invalid)) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
                     Column(Modifier.weight(1f)) {
-                        Text("Behind Chat Lock")
-                        Text("Adds the Locked chats steps when sending.", style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.recipient_behind_chat_lock))
+                        Text(stringResource(R.string.recipient_behind_chat_lock_help), style = MaterialTheme.typography.bodySmall)
                     }
                     Switch(checked = locked, onCheckedChange = { locked = it })
                 }
                 onCheck?.let { check ->
-                    checkedAtMillis?.let { Text("✓ Found in WhatsApp's search ${stamp(it)}", style = MaterialTheme.typography.bodySmall) }
+                    checkedAtMillis?.let { Text(stringResource(R.string.recipient_found_at, stamp(it)), style = MaterialTheme.typography.bodySmall) }
                     // It checks the details as saved: after an edit, those aren't what the fields show yet.
                     val edited = whatsappName != (recipient.whatsappName ?: "") || number != (recipient.phoneE164 ?: "") || locked != recipient.isLocked
-                    if (edited) Text("Save to check the new details.", style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = check, enabled = !edited) { Text("Check this chat now") }
+                    if (edited) Text(stringResource(R.string.recipient_save_to_check), style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = check, enabled = !edited) { Text(stringResource(R.string.recipient_check_now)) }
                 }
                 if (recipient.recipientId != null) {
-                    TextButton(onClick = onForget) { Text("Remove from recents") }
+                    TextButton(onClick = onForget) { Text(stringResource(R.string.recipient_remove_from_recents)) }
                 }
             }
         },
@@ -99,8 +101,8 @@ internal fun RecipientDetailsDialog(
                         ),
                     )
                 },
-            ) { Text("Save") }
+            ) { Text(stringResource(R.string.action_save)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
     )
 }

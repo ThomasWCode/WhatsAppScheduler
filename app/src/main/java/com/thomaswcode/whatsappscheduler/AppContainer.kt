@@ -1,6 +1,7 @@
 package com.thomaswcode.whatsappscheduler
 
 import android.content.Context
+import androidx.annotation.PluralsRes
 import androidx.annotation.StringRes
 import com.thomaswcode.whatsappscheduler.data.Housekeeping
 import com.thomaswcode.whatsappscheduler.data.RecipientRepository
@@ -40,6 +41,9 @@ class AppContainer(context: Context) {
 
     /** Text from strings.xml, for code without a Context of its own, such as the view models. */
     fun text(@StringRes id: Int, vararg args: Any): String = appContext.getString(id, *args)
+
+    /** A plural from strings.xml for [count], formatted with [args]. */
+    fun plural(@PluralsRes id: Int, count: Int, vararg args: Any): String = appContext.resources.getQuantityString(id, count, *args)
 
     val database: AppDatabase by lazy { AppDatabase.build(appContext) }
     val repository: ScheduleRepository by lazy { ScheduleRepository(database) }

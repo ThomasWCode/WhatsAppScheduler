@@ -78,4 +78,79 @@
     <string name="send_now_early_or_copy">Send the %1$s message early, or send an extra copy and keep that one as it is.</string>
     <string name="send_now_instead_partial">It will be sent now instead of at %1$s, to the recipients it hasn\'t gone to yet.</string>
     <string name="send_now_instead">It will be sent now instead of at %1$s.</string>
+
+    <!-- Quick sheet -->
+    <string name="action_save">Save</string>
+    <string name="action_next">Next</string>
+    <string name="action_ok">OK</string>
+    <string name="action_allow">Allow</string>
+    <string name="action_not_now">Not now</string>
+    <string name="quick_title_edit">Edit message</string>
+    <string name="quick_message_label">Message</string>
+    <string name="quick_when">When</string>
+    <string name="quick_time_passed">That time has passed. Pick a later one.</string>
+    <string name="quick_sends_soon">Sends in under 2 minutes</string>
+    <string name="quick_repeat">Repeat…</string>
+    <string name="quick_saving">Saving…</string>
+    <string name="quick_schedule">Schedule</string>
+    <string name="quick_schedule_at">Schedule · %1$s</string>
+    <string name="quick_pick_date_time">Pick date &amp; time…</string>
+    <string name="quick_went_while_editing">It went to %1$s while you were editing, so nothing was saved.</string>
+    <string name="quick_went_while_editing_save_again">It went to %1$s while you were editing, so nothing was saved. Save again to change the rest.</string>
+    <plurals name="quick_max_recipients">
+        <item quantity="one">One message can go to at most %1$d chat.</item>
+        <item quantity="other">One message can go to at most %1$d chats.</item>
+    </plurals>
+    <string name="quick_check_found">Found “%1$s” in WhatsApp.</string>
+    <string name="quick_check_not_found">Couldn\'t find “%1$s” in WhatsApp\'s search. Check the name is exactly as WhatsApp shows it.</string>
+    <string name="quick_check_failed">Couldn\'t check “%1$s”: WhatsApp didn\'t respond as expected. Logs under Settings → Diagnostics say where.</string>
+    <string name="quick_check_not_checked">Didn\'t check “%1$s”: %2$s.</string>
+    <string name="problem_choose_recipient">Choose who it\'s for.</string>
+    <string name="problem_enter_message">Enter a message.</string>
+    <string name="problem_choose_time">Choose when to send it.</string>
+    <string name="quick_scheduled">Scheduled: %1$s · %2$s</string>
+    <string name="quick_saved">Saved: %1$s · %2$s</string>
+    <string name="quick_saved_unarmed">Saved, but its alarm couldn\'t be set (%1$s). Tap Save to try again.</string>
+    <string name="quick_save_failed">Couldn\'t save (%1$s). Try again.</string>
+    <string name="quick_delete_failed">Couldn\'t delete (%1$s). Try again.</string>
+
+    <!-- Recipients -->
+    <string name="recipient_to">To</string>
+    <string name="recipient_me">Me</string>
+    <string name="recipient_search_hint">Search contacts or type a group…</string>
+    <string name="recipient_search_hint_single">Send it to someone else…</string>
+    <string name="recipient_search_hint_more">Add another…</string>
+    <string name="recipient_allow_contacts_hint">Allow contacts to search them here.</string>
+    <string name="recipient_pick_from_contacts">Pick from contacts</string>
+    <string name="recipient_number_on_whatsapp">%1$s · on WhatsApp</string>
+    <string name="recipient_group_or_chat_name">Group or chat name</string>
+    <string name="recipient_found_by_name">Found by name</string>
+    <string name="recipient_use_number">Use %1$s</string>
+    <string name="recipient_use_name">Use \"%1$s\" as a group or chat name</string>
+    <string name="recipient_opens_number">Opens the chat with this number</string>
+    <string name="recipient_found_by_exact_name">Found by this exact name in WhatsApp\'s search</string>
+    <string name="recipient_details_action">Details</string>
+    <string name="recipient_remove">Remove %1$s</string>
+    <string name="recipient_name_in_whatsapp">Name in WhatsApp</string>
+    <string name="recipient_name_in_whatsapp_help">Only if WhatsApp shows the chat under another name; used to find it without a number.</string>
+    <string name="recipient_number">Number</string>
+    <string name="recipient_number_help">Leave empty to find the chat by name.</string>
+    <string name="recipient_number_invalid">Not a valid number.</string>
+    <string name="recipient_behind_chat_lock">Behind Chat Lock</string>
+    <string name="recipient_behind_chat_lock_help">Adds the Locked chats steps when sending.</string>
+    <string name="recipient_found_at">✓ Found in WhatsApp\'s search %1$s</string>
+    <string name="recipient_save_to_check">Save to check the new details.</string>
+    <string name="recipient_check_now">Check this chat now</string>
+    <string name="recipient_remove_from_recents">Remove from recents</string>
+    <string name="recipient_contact_number_invalid">%1$s isn\'t a number WhatsApp can open. Edit the contact, or type the number with its country code.</string>
+    <string name="recipient_typed_number_invalid">%1$s isn\'t a number WhatsApp can open. Type it with its country code.</string>
+    <string name="recipient_already_has_number">%1$s already has that number. Choose %1$s instead.</string>
+    <string name="recipient_already_has_name">%1$s already has that name. Choose %1$s instead.</string>
+    <string name="recipient_details_save_failed">Couldn\'t save the details (%1$s). Try again.</string>
+    <string name="recipient_remove_failed">Couldn\'t remove %1$s from recents. Try again.</string>
+
+    <!-- Share target and Direct Share -->
+    <string name="share_check_title">Check in WhatsApp?</string>
+    <string name="share_check_text">Check %1$s in WhatsApp now? WhatsApp\'s search is run for the name while you watch; nothing is typed.</string>
+    <string name="share_shortcut_long_label">%1$s · Schedule on WhatsApp</string>
 </resources>
