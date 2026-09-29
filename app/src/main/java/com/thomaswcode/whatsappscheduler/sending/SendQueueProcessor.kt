@@ -196,15 +196,17 @@ class SendQueueProcessor(
                     return true
                 }
                 HeadsUpChoice.SNOOZE -> {
+                    // One time for them all, so the batch's alarms still come due together and share the
+                    // next countdown.
+                    val now = clock.instant()
                     batch.forEach { member ->
-                        store.snooze(member.id, occurrence, clock.instant().plus(SNOOZE), clock.instant())?.let(alarms::sync)
+                        store.snooze(member.id, occurrence, now.plus(SNOOZE), now)?.let(::arm)
                     }
                     return false
                 }
                 HeadsUpChoice.POSTPONE -> {
-                    val held = batch.mapNotNull { member ->
-                        store.hold(member.id, occurrence, clock.instant())?.also { alarms.sync(it.schedule) }?.held
-                    }
+                    val now = clock.instant()
+                    val held = batch.mapNotNull { member -> store.hold(member.id, occurrence, now)?.also { arm(it.schedule) }?.held }
                     // One picker for them all, as the countdown was.
                     if (held.isNotEmpty()) notifier.held(held)
                     return false
@@ -213,6 +215,11 @@ class SendQueueProcessor(
         }
         // Every countdown was cut short by a call, now over or waited out as long as allowed.
         return true
+    }
+
+    /** Arms [schedule]'s alarm; one that fails is logged, not allowed to stop what is being done for the rest. */
+    private fun arm(schedule: Schedule) {
+        runCatching { alarms.sync(schedule) }.onFailure { log.error("Arming schedule ${schedule.id} failed", it) }
     }
 
     /** Re-reads the schedule after a retry delay: it may have been deleted, switched off or edited meanwhile. */
