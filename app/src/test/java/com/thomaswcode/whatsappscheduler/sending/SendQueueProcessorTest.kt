@@ -368,6 +368,31 @@ class SendQueueProcessorTest {
     }
 
     @Test
+    fun aBatchLetThroughIsntMissedForTheTimeItsCountdownTook() = runTest {
+        store.put(oneOff(1).copy(batchId = "b"))
+        store.put(oneOff(2).copy(batchId = "b", targetName = "Dad"))
+        val sender = FakeSender()
+        // The phone was held for 25 minutes, past the 20-minute grace window, before the batch went.
+        val countdown = FakeHeadsUp(onAsk = { clock.now = clock.now.plus(Duration.ofMinutes(25)) })
+        processor(sender, Settings(), headsUp = countdown).run { enqueue(scheduled(1)); drain() }
+        assertEquals(listOf(1L, 2L), sender.jobs.map { it.scheduleId })
+        assertTrue(notifier.missedIds.isEmpty())
+    }
+
+    @Test
+    fun aSendQueuedBehindALongCountdownIsntMissed() = runTest {
+        store.put(oneOff(1))
+        store.put(oneOff(3).copy(targetName = "Sam"))
+        val sender = FakeSender()
+        var asks = 0
+        val countdown = FakeHeadsUp(onAsk = { if (asks++ == 0) clock.now = clock.now.plus(Duration.ofMinutes(25)) })
+        processor(sender, Settings(), headsUp = countdown).run { enqueue(scheduled(1)); enqueue(scheduled(3)); drain() }
+        // Its alarm came on time; the 25 minutes were spent behind the first send's countdown.
+        assertEquals(listOf(1L, 3L), sender.jobs.map { it.scheduleId })
+        assertTrue(notifier.missedIds.isEmpty())
+    }
+
+    @Test
     fun postponingABatchOpensOnePicker() = runTest {
         store.put(oneOff(1).copy(batchId = "b"))
         store.put(oneOff(2).copy(batchId = "b", targetName = "Dad"))
@@ -673,6 +698,8 @@ class SendQueueProcessorTest {
         private val canShow: Boolean = true,
         /** In use for this many looks, then put down. */
         private var inUseLooks: Int = Int.MAX_VALUE,
+        /** Runs as each countdown is shown, e.g. to let time pass while it is. */
+        private val onAsk: () -> Unit = {},
     ) : HeadsUp {
         val asked = mutableListOf<List<Long>>()
         override fun inUse() = inUse && inUseLooks-- > 0
@@ -680,6 +707,7 @@ class SendQueueProcessorTest {
         override fun canShow() = canShow
         override suspend fun ask(schedules: List<Schedule>, endsAtMillis: Long): HeadsUpChoice? {
             asked += schedules.map { it.id }
+            onAsk()
             if (asked.size == 1) calls = callAfterFirstAsk
             if (callDuringEveryAsk > 0) calls = callDuringEveryAsk
             return choice
