@@ -6,6 +6,8 @@ import com.thomaswcode.whatsappscheduler.domain.Recurrence
 import com.thomaswcode.whatsappscheduler.scheduling.ScheduleAlarms
 import java.time.Clock
 import java.time.Instant
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * What the "Needs your attention" notifications' buttons do (features F3), on the schedule as it is
@@ -21,6 +23,8 @@ class AttentionActions(
     /** Removes the schedule's notification (FallbackNotifier.cancel). */
     private val cancelPrompt: (Long) -> Unit,
     private val clock: Clock = Clock.systemDefaultZone(),
+    /** Held by a send while it takes its row (SendQueueProcessor), so a discard can't slip in between. */
+    private val admission: Mutex = Mutex(),
 ) {
 
     /**
@@ -40,12 +44,14 @@ class AttentionActions(
      * Discard: a one-off goes, its history staying in Logs; a series goes on, and only stops waiting on
      * this occurrence.
      */
-    suspend fun discard(id: Long): String? {
+    suspend fun discard(id: Long): String? = admission.withLock {
+        // Checked and done while no send can be taking the row: one queued before is refused here, and
+        // one after finds the row gone rather than sending what the user has just discarded.
         val schedule = repository.get(id) ?: return gone(id)
         if (sendState().isBusy(id)) return BUSY
         if (schedule.rule == Recurrence.Once) repository.delete(schedule) else repository.setAttention(id, null)
         cancelPrompt(id)
-        return null
+        null
     }
 
     /** Mark as sent: the user checked the chat and it went (B02). */

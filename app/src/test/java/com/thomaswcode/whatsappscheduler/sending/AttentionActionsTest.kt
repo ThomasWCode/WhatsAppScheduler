@@ -14,10 +14,14 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -92,6 +96,22 @@ class AttentionActionsTest {
         assertEquals("It's being sent now, so it wasn't moved.", actions.postpone(m, now.plus(Duration.ofHours(2))))
         assertTrue(requested.isEmpty() && cancelled.isEmpty() && armed.isEmpty())
         assertEquals(m, schedules.get(m.id))
+    }
+
+    @Test
+    fun aDiscardWaitsForASendTakingTheRow() = runTest {
+        val m = missed()
+        val admission = Mutex()
+        val guarded = AttentionActions(schedules, alarms, { state }, { requested += it }, { cancelled += it }, clock, admission)
+        admission.lock()
+        val discard = async { guarded.discard(m.id) }
+        runCurrent()
+        assertFalse(discard.isCompleted)
+        // The send went ahead with the row: the discard finds it busy and leaves it.
+        state = SendState(currentId = m.id)
+        admission.unlock()
+        assertEquals("It's being sent now.", discard.await())
+        assertNotNull(schedules.get(m.id))
     }
 
     @Test
