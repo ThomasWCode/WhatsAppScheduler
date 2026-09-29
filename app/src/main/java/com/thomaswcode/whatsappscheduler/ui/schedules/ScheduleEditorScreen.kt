@@ -326,7 +326,8 @@ private fun FieldError(text: String) {
 private fun NumberField(label: String, value: String, problem: String?, onChange: (String) -> Unit) {
     OutlinedTextField(
         value = value,
-        onValueChange = { onChange(it.filter(Char::isDigit).take(3)) },
+        // Nine digits at most, which still fits an Int: nothing a real rule needs is cut off.
+        onValueChange = { onChange(it.filter(Char::isDigit).take(9)) },
         label = { Text(label) },
         singleLine = true,
         isError = problem != null,

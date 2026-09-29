@@ -322,9 +322,12 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
                         }
                         else -> {
                             if (form.recipient == original) form = form.copy(recipient = updated)
-                            // Stored with the recipient already: nothing about them is left to lose on leaving.
-                            // Not stored yet, they go with this message, and leaving unsaved still asks.
-                            if (saved == DetailsSaved.Stored && initial.recipient == original) initial = initial.copy(recipient = updated)
+                            // Stored with the recipient already, and so with this schedule when it is linked to that
+                            // recipient: nothing about them is left to lose on leaving. Otherwise (not stored yet, or
+                            // this schedule not linked to the recipient that was updated) they go with this message,
+                            // and leaving unsaved still asks.
+                            val linked = existing?.recipientId != null && existing?.recipientId == original.recipientId
+                            if (saved == DetailsSaved.Stored && linked && initial.recipient == original) initial = initial.copy(recipient = updated)
                         }
                     }
                 }
@@ -376,6 +379,8 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
         )
         saving = true
         viewModelScope.launch {
+            // Whether the row is saved, whatever fails after.
+            var committed = false
             // Not cancelled if the screen closes mid-save, which would leave the row without its alarm.
             val outcome = withContext(NonCancellable) {
                 runCatching {
@@ -400,6 +405,7 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
                     )
                     // If a later step fails, Save again updates this row rather than inserting another.
                     existing = saved
+                    committed = true
                     runCatching { container.recipients.markUsed(listOf(recipient.id)) }.onFailure { container.log.error("Marking a recipient used failed", it) }
                     // A prompt for the old version of the message is stale now (B10); cleared first, so a
                     // failure arming the alarm can't leave it behind.
@@ -411,7 +417,15 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
                 .onSuccess { doneEvents.trySend(Unit) }
                 .onFailure {
                     container.log.error("Saving schedule failed", it)
-                    error = "Couldn't save (${it.message ?: it.javaClass.simpleName}). Try again."
+                    val reason = it.message ?: it.javaClass.simpleName
+                    if (committed) {
+                        // The row is saved: the form is what is stored now, so leaving loses nothing, and there is
+                        // nothing to discard. Save again only tries the alarm again.
+                        initial = f
+                        error = "Saved, but its alarm couldn't be set ($reason). Tap Save to try again."
+                    } else {
+                        error = "Couldn't save ($reason). Try again."
+                    }
                     saving = false
                 }
         }
