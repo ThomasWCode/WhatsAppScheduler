@@ -15,7 +15,8 @@ class HeadsUpActionReceiver : BroadcastReceiver() {
             ACTION_POSTPONE -> HeadsUpChoice.POSTPONE
             else -> return
         }
-        SchedulerApp.container(context).headsUpAnswers.answer(choice)
+        val token = intent.getLongExtra(EXTRA_TOKEN, -1L)
+        SchedulerApp.container(context).headsUpAnswers.answer(token, choice)
     }
 
     companion object {
@@ -23,6 +24,10 @@ class HeadsUpActionReceiver : BroadcastReceiver() {
         const val ACTION_SNOOZE = "com.thomaswcode.whatsappscheduler.action.HEADS_UP_SNOOZE"
         const val ACTION_POSTPONE = "com.thomaswcode.whatsappscheduler.action.HEADS_UP_POSTPONE"
 
-        fun intent(context: Context, action: String): Intent = Intent(context, HeadsUpActionReceiver::class.java).setAction(action)
+        private const val EXTRA_TOKEN = "token"
+
+        /** [token] names the countdown the button belongs to (HeadsUpAnswers). */
+        fun intent(context: Context, action: String, token: Long): Intent =
+            Intent(context, HeadsUpActionReceiver::class.java).setAction(action).putExtra(EXTRA_TOKEN, token)
     }
 }
