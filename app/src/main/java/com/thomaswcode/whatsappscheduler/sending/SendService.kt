@@ -37,7 +37,12 @@ class SendService : LifecycleService() {
             // Under the same lock as "Check this chat now", so the two never drive WhatsApp at once.
             sender = LockedSender(AccessibilitySender(this, c.settings, c.secrets, c.pinGuard, c.log, c.notifications), c.automationLock),
             alarms = c.alarmScheduler,
-            notifier = ServiceNotifier(c.notifications, c.fallbackNotifier),
+            notifier = ServiceNotifier(c.notifications, c.fallbackNotifier) { schedule, dryRun ->
+                // A test run always says it sent nothing (B11); a real send only if wanted (features F2).
+                c.appScope.launch {
+                    if (dryRun || c.settings.current().notifyAfterSend) runCatching { c.sentNotifier.notifySent(schedule, dryRun) }
+                }
+            },
             pinGuard = c.pinGuard,
             state = c.sendState,
             log = c.log,
@@ -112,11 +117,16 @@ class SendService : LifecycleService() {
         }
     }
 
-    private class ServiceNotifier(private val notifications: Notifications, private val fallback: FallbackNotifier) : SendNotifier {
+    private class ServiceNotifier(
+        private val notifications: Notifications,
+        private val fallback: FallbackNotifier,
+        private val confirm: (Schedule, Boolean) -> Unit,
+    ) : SendNotifier {
         override fun progress(text: String) = notifications.show(Notifications.ID_SENDING, notifications.sending(text))
         // Only a real send makes an earlier Tap to send prompt stale; a dry run sent nothing (B10).
         override fun sent(schedule: Schedule, dryRun: Boolean) {
             if (!dryRun) fallback.cancel(schedule.id)
+            confirm(schedule, dryRun)
         }
         override fun failed(schedule: Schedule, occurrenceAtMillis: Long?, reason: String) = fallback.notifyFailed(schedule, occurrenceAtMillis, reason)
         override fun uncertain(schedule: Schedule, occurrenceAtMillis: Long?, reason: String) = fallback.notifyUncertain(schedule, occurrenceAtMillis, reason)

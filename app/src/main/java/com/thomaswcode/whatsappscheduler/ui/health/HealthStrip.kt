@@ -35,12 +35,14 @@ import com.thomaswcode.whatsappscheduler.domain.PinBlock
  * e.g. from the settings page a Fix opened, or after One UI switched the service off (B24).
  */
 @Composable
-fun rememberHealth(serviceConnected: Boolean, hasPin: Boolean, pinBlock: PinBlock?, dryRun: Boolean): List<HealthItem> {
+fun rememberHealth(serviceConnected: Boolean, hasPin: Boolean, pinBlock: PinBlock?, dryRunUntilMillis: Long?, nowMillis: Long): List<HealthItem> {
     val context = LocalContext.current
     var resumes by remember { mutableIntStateOf(0) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { resumes++ }
-    return remember(resumes, serviceConnected, hasPin, pinBlock, dryRun) {
-        HealthCheck.evaluate(context, serviceConnected, hasPin, pinBlock, dryRun)
+    // Test mode that has run out is off, though its end is still stored.
+    val testModeUntil = dryRunUntilMillis?.takeIf { it > nowMillis }
+    return remember(resumes, serviceConnected, hasPin, pinBlock, testModeUntil) {
+        HealthCheck.evaluate(context, serviceConnected, hasPin, pinBlock, testModeUntil)
     }
 }
 
@@ -56,6 +58,7 @@ fun HealthStrip(
     onOpenSettings: (() -> Unit)?,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
+    onTurnOffDryRun: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val item = items.firstOrNull()
@@ -98,6 +101,7 @@ fun HealthStrip(
                     Text(item.fixLabel ?: "Fix")
                 }
                 item.problem.fixedInAppSettings && onOpenSettings != null -> TextButton(onClick = onOpenSettings) { Text(item.fixLabel ?: "Settings") }
+                item.problem == HealthProblem.DRY_RUN && onTurnOffDryRun != null -> TextButton(onClick = onTurnOffDryRun) { Text(item.fixLabel ?: "Turn off") }
             }
         }
     }
