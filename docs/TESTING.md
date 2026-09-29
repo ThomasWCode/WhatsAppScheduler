@@ -55,6 +55,8 @@ Unit tests (`./gradlew test`) cover the quick sheet's time chips and friendly ti
 | 52 | Switch the phone to 12-hour time; open Logs and a notification that names a time | Times read "6:34 am", not "06:34". |
 | 53 | A repeating message made in one time zone, with the phone then set to another | Its row adds its own zone's time, e.g. "next Tomorrow 14:00 (09:00 New York time)". |
 | 54 | Light mode; and themed icons on in the home screen settings | The app uses the phone's own colours in light mode as in dark. Its icon follows the theme. |
+| 55 | Share text from another app (Chrome, Notes) | The share sheet offers the most recent chats (up to four) as WhatsApp Scheduler targets, with their initials. Picking one opens the quick sheet over that app with the chat chosen and the text as the message. |
+| 56 | Remove a chat from recents (its details), then share again | That chat is no longer offered. |
 
 Useful commands:
 
