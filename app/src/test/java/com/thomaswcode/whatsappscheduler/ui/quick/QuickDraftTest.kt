@@ -39,6 +39,9 @@ class QuickDraftTest {
         val exact = QuickDraft(message = "Hi", time = TimeChoice.Exact(1_790_000_000_000L))
         assertEquals(exact, roundTrip(exact))
         assertEquals(QuickDraft(), roundTrip(QuickDraft()))
+        // A check offer is kept the same way.
+        val offers = draft.recipients
+        assertEquals(offers, RecipientsSaver.restore(with(RecipientsSaver) { SaverScope { true }.save(offers) }!!))
     }
 
     @Test
@@ -62,6 +65,17 @@ class QuickDraftTest {
         assertTrue(RecipientDraft(TargetKind.GROUP, " work Crew").sameChatAs(crew.toDraft()))
         // By number and by name are different ways to reach a chat, so they are not assumed equal.
         assertFalse(RecipientDraft(TargetKind.CONTACT, "Dad").sameChatAs(dad.toDraft()))
+    }
+
+    @Test
+    fun chatsOfferedACheckAreNamed() {
+        val club = RecipientDraft(TargetKind.GROUP, "Book club")
+        val work = RecipientDraft(TargetKind.GROUP, "Work crew")
+        val quiz = RecipientDraft(TargetKind.GROUP, "Quiz night")
+        val chess = RecipientDraft(TargetKind.GROUP, "Chess")
+        assertEquals("“Book club”", QuickScheduleViewModel.quoted(listOf(club)))
+        assertEquals("“Book club” and “Work crew”", QuickScheduleViewModel.quoted(listOf(club, work)))
+        assertEquals("“Book club”, “Work crew” and 2 more", QuickScheduleViewModel.quoted(listOf(club, work, quiz, chess)))
     }
 
     @Test
