@@ -466,7 +466,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
             try {
                 for (recipient in chats) {
                     val result = checkOne(recipient)
-                    if (result is ChatCheck.NotChecked || result is ChatCheck.Failed) break
+                    if ((result is ChatCheck.NotChecked && result.stopsOthers) || result is ChatCheck.Failed) break
                 }
             } finally {
                 events.trySend(QuickEvent.ChecksDone)
