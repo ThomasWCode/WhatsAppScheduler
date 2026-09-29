@@ -182,12 +182,11 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
     fun openEdit(schedule: Schedule) {
         viewModelScope.launch {
             val batch = schedule.batchId?.let { container.repository.batch(it) }?.ifEmpty { null } ?: listOf(schedule)
-            // A batch part-way through, or finished with mixed outcomes: only the members that haven't gone
-            // (nor may have) are edited, so saving can't send it to anyone twice. All of them only when
-            // every one went, which is sending it again.
-            val pending = batch.filter { it.nextAtMillis != null }
-            val unsent = batch.filter { it.lastStatus != SendStatus.SENT && it.lastStatus != SendStatus.UNCERTAIN }
-            val members = pending.ifEmpty { unsent }.ifEmpty { batch }
+            // A batch part-way through, or finished with mixed outcomes: the members still to go, pending or
+            // failed or missed, are edited together, and none that went (or may have), so saving can't send
+            // it to anyone twice. All of them only when every one went, which is sending it again.
+            val members = batch.filter { it.nextAtMillis != null || (it.lastStatus != SendStatus.SENT && it.lastStatus != SendStatus.UNCERTAIN) }
+                .ifEmpty { batch }
             draft = QuickDraft(
                 recipients = members.map { m ->
                     m.recipientId?.let { container.recipients.get(it) }?.toDraft()
