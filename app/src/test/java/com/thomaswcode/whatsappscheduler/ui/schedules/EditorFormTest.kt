@@ -92,6 +92,22 @@ class EditorFormTest {
     }
 
     @Test
+    fun chatLockGoesWithTheContactItWasFor() {
+        val blank = EditorForm.blank(ZonedDateTime.of(2026, 9, 28, 12, 0, 0, 0, london))
+        val lockedMum = blank.copy(phone = "+447400123456", name = "Mum", locked = true)
+        // Someone else: off until what is remembered for them is looked up.
+        assertFalse(lockedMum.picked("+447400123457", "Dad", "GB").locked)
+        // Mum again: as it was.
+        assertTrue(lockedMum.picked("+447400123456", "Mum", "GB").locked)
+        // Switched on before anyone was chosen: for whoever is picked.
+        val flippedFirst = blank.copy(locked = true, lockedTouched = true).picked("+447400123457", "Dad", "GB")
+        assertTrue(flippedFirst.locked && flippedFirst.lockedTouched)
+        // Switched for Mum, then Dad picked: not a statement about Dad.
+        val dad = lockedMum.copy(lockedTouched = true).picked("+447400123457", "Dad", "GB")
+        assertFalse(dad.locked || dad.lockedTouched)
+    }
+
+    @Test
     fun storedScheduleFillsTheForm() {
         val schedule = Schedule(
             message = "Bins!", targetKind = TargetKind.CONTACT, targetName = "Dad", phoneE164 = "+447400123456", isLocked = false,
