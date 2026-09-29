@@ -44,6 +44,7 @@ Unit tests (`./gradlew test`) cover the quick sheet's time chips and friendly ti
 | 38 | Test mode on; a one-off a few minutes ahead, the phone in use when it's due | "Sending to … " pops up counting down from 10 s, with Send now, Snooze 5 min and Postpone…. Left alone, it goes when the count ends; Send now goes at once. With the screen off, no countdown. |
 | 39 | The same, tapping Snooze 5 min; then again, tapping Postpone… | Snooze: the row says it moves to 5 minutes on, and it goes then (Logs: "snoozed 5 min on the countdown"). Postpone…: the picker opens; a time reschedules it, and dismissing leaves it under Needs attention as "Not sent: choose a new time", with that notification. For a series only that occurrence is held; the series goes on. |
 | 40 | A message due while on a phone or WhatsApp call; and one due while another app is open | During the call it waits, and the countdown starts once the call ends. Afterwards the phone goes back to the app that was open, as it was (Home only from the launcher). |
+| 41 | Settings → Advanced → Step timeout: type 1, then 5000; press Done; leave and come back | "1" stays as typed, marked 2000–60000 and not saved; "15000" is saved on Done and still there on return. The tuning settings are under Advanced, closed until opened. |
 
 Useful commands:
 
