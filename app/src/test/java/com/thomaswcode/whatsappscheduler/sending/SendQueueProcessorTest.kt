@@ -216,6 +216,13 @@ class SendQueueProcessorTest {
     }
 
     @Test
+    fun sendNowIsMarkedByHandInTheLog() = runTest {
+        store.put(oneOff())
+        processor(FakeSender()).run { enqueue(SendRequest(1, SendKind.SEND_NOW, due.toEpochMilli())); drain() }
+        assertEquals(listOf("(manual) "), store.details)
+    }
+
+    @Test
     fun sendNowIsNeverTooLate() = runTest {
         store.put(oneOff())
         clock.now = due.plus(Duration.ofHours(3))
@@ -611,6 +618,7 @@ class SendQueueProcessorTest {
     private class FakeStore : SendStore {
         private val rows = mutableMapOf<Long, Schedule>()
         val logged = mutableListOf<SendStatus>()
+        val details = mutableListOf<String?>()
         var failWrites = false
 
         fun put(schedule: Schedule) {
@@ -629,6 +637,7 @@ class SendQueueProcessorTest {
             check(!failWrites) { "disk full" }
             val current = rows[id] ?: return null
             logged += status
+            details += detail
             val next = if (current.nextAtMillis == occurrenceAtMillis) ScheduleRepository.nextAfterRun(current, occurrenceAtMillis, ranAt) else current.nextAtMillis
             return current.copy(nextAtMillis = next, lastRunAtMillis = ranAt.toEpochMilli(), lastResult = status.name).also(::put)
         }

@@ -44,7 +44,7 @@ import com.thomaswcode.whatsappscheduler.ui.BackBar
 import com.thomaswcode.whatsappscheduler.ui.formatStamp
 
 /** The Sends tab's filters (improvements I8). */
-enum class LogFilter(val label: String, private val statuses: Set<SendStatus>?) {
+enum class LogFilter(val label: String, val statuses: Set<SendStatus>?) {
     ALL("All", null),
     SENT("Sent", setOf(SendStatus.SENT)),
 
@@ -52,8 +52,6 @@ enum class LogFilter(val label: String, private val statuses: Set<SendStatus>?) 
     FAILED("Failed", setOf(SendStatus.FAILED, SendStatus.UNCERTAIN)),
     MISSED("Missed", setOf(SendStatus.MISSED)),
     ;
-
-    fun keeps(log: SendLog): Boolean = statuses == null || log.status in statuses
 
     /** What the tab says when nothing is left to show. */
     val empty: String
@@ -77,8 +75,9 @@ fun LogsScreen(container: AppContainer, onBack: () -> Unit, onOpenSchedule: (Lon
     val context = LocalContext.current
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var filter by rememberSaveable { mutableStateOf(LogFilter.ALL) }
-    // Remembered, so choosing a filter doesn't start the query again and flash the empty state.
-    val sendsFlow = remember { container.repository.observeLogs() }
+    // Filtered in the query, before its limit, so older matching runs aren't cut off. Remembered per
+    // filter; until a new one's first result the list is blank rather than saying there are none.
+    val sendsFlow = remember(filter) { container.repository.observeLogs(filter.statuses) }
     val sends by sendsFlow.collectAsState(initial = null)
     val trace by container.log.lines.collectAsState()
 
@@ -100,7 +99,7 @@ fun LogsScreen(container: AppContainer, onBack: () -> Unit, onOpenSchedule: (Lon
                 Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Automation trace") })
             }
             if (tab == 0) {
-                sends?.let { SendsTab(it, filter, onFilter = { chosen -> filter = chosen }, onOpenSchedule) }
+                SendsTab(sends, filter, onFilter = { chosen -> filter = chosen }, onOpenSchedule)
             } else {
                 TraceTab(trace)
             }
@@ -109,14 +108,14 @@ fun LogsScreen(container: AppContainer, onBack: () -> Unit, onOpenSchedule: (Lon
 }
 
 @Composable
-private fun SendsTab(sends: List<SendLog>, filter: LogFilter, onFilter: (LogFilter) -> Unit, onOpenSchedule: (Long) -> Unit) {
+private fun SendsTab(sends: List<SendLog>?, filter: LogFilter, onFilter: (LogFilter) -> Unit, onOpenSchedule: (Long) -> Unit) {
     // Wraps, so none is cut off on a narrow window or with large text.
     FlowRow(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         LogFilter.entries.forEach { choice ->
             FilterChip(selected = filter == choice, onClick = { onFilter(choice) }, label = { Text(choice.label) })
         }
     }
-    val shown = sends.filter(filter::keeps)
+    val shown = sends ?: return
     if (shown.isEmpty()) {
         EmptyState(filter.empty)
         return

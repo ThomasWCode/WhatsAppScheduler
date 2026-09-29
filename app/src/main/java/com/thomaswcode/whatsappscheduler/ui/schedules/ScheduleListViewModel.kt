@@ -12,7 +12,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.thomaswcode.whatsappscheduler.AppContainer
 import com.thomaswcode.whatsappscheduler.data.DeletedSchedules
-import com.thomaswcode.whatsappscheduler.data.OccurrenceRun
+import com.thomaswcode.whatsappscheduler.data.LatestRuns
 import com.thomaswcode.whatsappscheduler.data.db.Attention
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.data.settings.Settings
@@ -65,7 +65,7 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
         WaAccessibilityService.instance.map { it != null }.stateIn(viewModelScope, whileShown, WaAccessibilityService.instance.value != null)
 
     /** Each schedule's latest scheduled run: when the message that needs attention was due, and why it didn't go. */
-    val latestRuns: StateFlow<Map<Long, OccurrenceRun>> = container.repository.observeLatestOccurrences().stateIn(viewModelScope, whileShown, emptyMap())
+    val latestRuns: StateFlow<Map<Long, LatestRuns>> = container.repository.observeLatestOccurrences().stateIn(viewModelScope, whileShown, emptyMap())
 
     val now: StateFlow<ZonedDateTime> = minuteClock().stateIn(viewModelScope, whileShown, ZonedDateTime.now())
 
@@ -160,7 +160,7 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
                 withContext(NonCancellable) {
                     container.repository.restore(removed).forEach {
                         container.alarmScheduler.sync(it)
-                        if (it.id in prompted) container.fallbackNotifier.notifyAttention(it, latestRuns.value[it.id])
+                        if (it.id in prompted) container.fallbackNotifier.notifyAttention(it, latestRuns.value[it.id]?.behind(it.attention))
                     }
                 }
             }.onFailure { fail("Couldn't undo", it) }
@@ -195,7 +195,7 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
             runCatching {
                 previous.forEach { (id, attention) ->
                     container.repository.setAttention(id, attention)
-                    if (id in prompted) container.repository.get(id)?.let { container.fallbackNotifier.notifyAttention(it, latestRuns.value[id]) }
+                    if (id in prompted) container.repository.get(id)?.let { container.fallbackNotifier.notifyAttention(it, latestRuns.value[id]?.behind(it.attention)) }
                 }
             }.onFailure { fail("Couldn't undo", it) }
         }
@@ -280,7 +280,7 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
                     // Committed: each is armed on its own, and one that couldn't be is reported.
                     val unarmed = restored.count { r ->
                         if (r.id in prompted && r.attention != null) {
-                            runCatching { container.fallbackNotifier.notifyAttention(r, latestRuns.value[r.id]) }
+                            runCatching { container.fallbackNotifier.notifyAttention(r, latestRuns.value[r.id]?.behind(r.attention)) }
                         }
                         runCatching { container.alarmScheduler.sync(r) }.onFailure { container.log.error("Re-arming after Undo failed", it) }.isFailure
                     }

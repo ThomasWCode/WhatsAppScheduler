@@ -1,6 +1,6 @@
 package com.thomaswcode.whatsappscheduler.ui.schedules
 
-import com.thomaswcode.whatsappscheduler.data.OccurrenceRun
+import com.thomaswcode.whatsappscheduler.data.LatestRuns
 import com.thomaswcode.whatsappscheduler.data.ScheduleRepository
 import com.thomaswcode.whatsappscheduler.data.db.Attention
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
@@ -61,23 +61,24 @@ val Schedule.shownStatus: SendStatus?
 
 /**
  * The line under a row's recipients: when it goes, when it went, or why it needs you. [runs] maps a
- * schedule to its latest scheduled run, and the occurrence it was for: a missed message says when it was
+ * schedule to its latest scheduled runs, the one behind what it waits on saying when that was due: a missed message says when it was
  * due, while a failed one says when it was tried, which differs after Send now.
  */
 fun statusLine(
     section: Section,
     group: List<Schedule>,
     now: ZonedDateTime,
-    runs: Map<Long, OccurrenceRun>,
+    runs: Map<Long, LatestRuns>,
     time: (LocalTime) -> String = { it.format(hourMinute) },
 ): String {
     val schedule = group.first()
     fun day(millis: Long) = FriendlyTime.dayAndTime(Instant.ofEpochMilli(millis).atZone(now.zone), now, time)
     return when (section) {
         Section.ATTENTION -> {
-            val run = runs[schedule.id]
-            val due = run?.atMillis ?: if (schedule.rule == Recurrence.Once) schedule.firstAtMillis else schedule.lastRunAtMillis ?: schedule.firstAtMillis
-            val tried = schedule.lastRunAtMillis ?: due
+            // The run that left it waiting: its occurrence is when it was due, and it says when it was tried and why.
+            val run = runs[schedule.id]?.behind(schedule.attention)
+            val due = run?.occurrenceAtMillis ?: if (schedule.rule == Recurrence.Once) schedule.firstAtMillis else schedule.lastRunAtMillis ?: schedule.firstAtMillis
+            val tried = run?.ranAtMillis ?: schedule.lastRunAtMillis ?: due
             when (schedule.attention) {
                 Attention.MISSED -> "Missed · ${day(due)}"
                 // Why, in words, where the step that failed is known (improvements I2): from that occurrence's
