@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.text.format.DateFormat
+import com.thomaswcode.whatsappscheduler.data.OccurrenceRun
 import com.thomaswcode.whatsappscheduler.data.db.Attention
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.domain.PlainResult
@@ -127,10 +128,12 @@ class FallbackNotifier(private val context: Context, private val notifications: 
 
     /**
      * Posts again the prompt for what [schedule] waits on, e.g. after Undo on the list put it back.
-     * The reason is the detail its last run recorded ("FAILED: search: …" gives "search: …").
+     * The reason is what its latest scheduled [run] recorded, or for a row from before runs were logged
+     * by occurrence, its last result ("FAILED: search: …" gives "search: …").
      */
-    fun notifyAttention(schedule: Schedule, occurrenceAtMillis: Long?) {
-        val reason = schedule.lastResult?.let { it.substringAfter(": ", missingDelimiterValue = it) } ?: "unknown"
+    fun notifyAttention(schedule: Schedule, run: OccurrenceRun?) {
+        val occurrenceAtMillis = run?.atMillis
+        val reason = run?.detail ?: schedule.lastResult?.let { it.substringAfter(": ", missingDelimiterValue = it) } ?: "unknown"
         when (schedule.attention) {
             Attention.FAILED -> notifyFailed(schedule, occurrenceAtMillis, reason)
             Attention.UNCERTAIN -> notifyUncertain(schedule, occurrenceAtMillis)

@@ -28,6 +28,9 @@ data class DeletedSchedules(val schedules: List<Schedule>, val logs: List<SendLo
 /** [members] went out, or may have, while their edit was open, so the edit wasn't saved (see saveBatch). */
 class SentWhileEditing(val members: List<Schedule>) : IllegalStateException("sent while it was being edited")
 
+/** A schedule's latest scheduled run: the occurrence it was for ([atMillis]) and its logged [detail]. */
+data class OccurrenceRun(val atMillis: Long, val detail: String?)
+
 class ScheduleRepository(private val db: AppDatabase) : SendStore {
 
     private val schedules = db.scheduleDao()
@@ -186,9 +189,12 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
         current.copy(lastStatus = SendStatus.SENT, lastResult = result, attention = null)
     }
 
-    /** Schedule id to the occurrence its latest scheduled run was for. */
-    fun observeLatestOccurrences(): Flow<Map<Long, Long>> = logs.observeLatestOccurrenceRuns().map { runs ->
-        runs.mapNotNull { run -> run.scheduleId?.let { id -> run.occurrenceAtMillis?.let { id to it } } }.toMap()
+    /**
+     * Schedule id to its latest scheduled run: the occurrence it was for, and what it recorded. A run by
+     * hand later changes the schedule's last result, but not this.
+     */
+    fun observeLatestOccurrences(): Flow<Map<Long, OccurrenceRun>> = logs.observeLatestOccurrenceRuns().map { runs ->
+        runs.mapNotNull { run -> run.scheduleId?.let { id -> run.occurrenceAtMillis?.let { id to OccurrenceRun(it, run.detail) } } }.toMap()
     }
 
     suspend fun batch(batchId: String): List<Schedule> = schedules.getBatch(batchId)

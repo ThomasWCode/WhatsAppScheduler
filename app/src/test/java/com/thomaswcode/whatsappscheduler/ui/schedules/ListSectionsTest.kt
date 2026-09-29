@@ -1,5 +1,6 @@
 package com.thomaswcode.whatsappscheduler.ui.schedules
 
+import com.thomaswcode.whatsappscheduler.data.OccurrenceRun
 import com.thomaswcode.whatsappscheduler.data.db.Attention
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.data.db.SendStatus
@@ -101,8 +102,8 @@ class ListSectionsTest {
 
     @Test
     fun statusLinesSayWhenInPlainWords() {
-        val dueAt = mapOf(6L to ms("2026-09-28T09:00"))
-        fun line(section: Section, s: Schedule) = statusLine(section, listOf(s), now, dueAt)
+        val runs = mapOf(6L to OccurrenceRun(ms("2026-09-28T09:00"), null))
+        fun line(section: Section, s: Schedule) = statusLine(section, listOf(s), now, runs)
 
         assertEquals("Today 20:00 · in 3 h", line(Section.UPCOMING, schedule(1)))
         assertEquals("Tomorrow 09:00", line(Section.UPCOMING, schedule(1, next = "2026-09-29T09:00")))
@@ -127,9 +128,15 @@ class ListSectionsTest {
         // Failed or uncertain: when it was tried, which after Send now is earlier than it was due.
         val failed = schedule(6, next = null).copy(lastRunAtMillis = ms("2026-09-28T08:40"), attention = Attention.FAILED)
         assertEquals("Couldn't send · Today 08:40", line(Section.ATTENTION, failed))
-        // Why, in words, when the step that failed is known.
-        val notFound = failed.copy(lastResult = "FAILED: search: Timed out after 8000ms waiting for wa.searchInput")
-        assertEquals("Couldn't find the chat · Today 08:40", line(Section.ATTENTION, notFound))
+        // Why, in words, when the step that failed is known: from that occurrence's own run, which a later
+        // try by hand doesn't change.
+        val notFound = mapOf(6L to OccurrenceRun(ms("2026-09-28T09:00"), "search: Timed out after 8000ms waiting for wa.searchInput"))
+        assertEquals("Couldn't find the chat · Today 08:40", statusLine(Section.ATTENTION, listOf(failed), now, notFound))
+        val triedByHand = failed.copy(lastResult = "manual DRY_RUN: composer filled, send not tapped")
+        assertEquals("Couldn't find the chat · Today 08:40", statusLine(Section.ATTENTION, listOf(triedByHand), now, notFound))
+        // A row from before runs were logged by occurrence has only its last result.
+        val legacy = schedule(9, next = null).copy(lastRunAtMillis = ms("2026-09-28T08:40"), attention = Attention.FAILED, lastResult = "FAILED: search: No result")
+        assertEquals("Couldn't find the chat · Today 08:40", line(Section.ATTENTION, legacy))
         assertEquals("May have been sent · Today 08:40: check the chat", line(Section.ATTENTION, failed.copy(attention = Attention.UNCERTAIN)))
 
         val sent = schedule(5, next = null).copy(lastRunAtMillis = ms("2026-09-27T09:00"), lastStatus = SendStatus.SENT)
