@@ -78,8 +78,11 @@ class OpenChatBySearch(private val context: Context, private val driver: UiDrive
         delay(600)
     }
 
-    /** Picks the result row whose title equals [name], preferring an exact case-sensitive match, and opens it. */
-    suspend fun openResult(name: String, timeoutMs: Long) = open(findResult(name, timeoutMs), name, timeoutMs)
+    /**
+     * Picks the result row whose title equals [name], preferring an exact case-sensitive match, and opens
+     * it; the chat's title as shown, or null when WhatsApp's layout doesn't expose it.
+     */
+    suspend fun openResult(name: String, timeoutMs: Long): String? = open(findResult(name, timeoutMs), name, timeoutMs)
 
     /**
      * The result row whose title equals [name], preferring an exact case-sensitive match. Its one
@@ -104,8 +107,11 @@ class OpenChatBySearch(private val context: Context, private val driver: UiDrive
         return chosen
     }
 
-    /** Opens the result [chosen] and checks that the chat which opens is [name]. */
-    suspend fun open(chosen: AccessibilityNodeInfo, name: String, timeoutMs: Long) {
+    /**
+     * Opens the result [chosen] and checks that the chat which opens is [name]. Returns the title it
+     * read, or null when none could be found, in which case which chat opened isn't known.
+     */
+    suspend fun open(chosen: AccessibilityNodeInfo, name: String, timeoutMs: Long): String? {
         driver.click(step, chosen)
         // Rows are clicked as soon as they appear, so a click lost to the list's entry animation is repeated once.
         if (driver.tryWaitFor(Selectors.waEntry, 2_500) == null) {
@@ -119,6 +125,7 @@ class OpenChatBySearch(private val context: Context, private val driver: UiDrive
             driver.fail(step, "Opened chat titled '$title' instead of '$name'")
         }
         delay(300)
+        return title
     }
 
     /**
