@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.PowerManager
+import android.provider.Settings
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
@@ -37,7 +38,7 @@ class SendService : LifecycleService() {
             // Under the same lock as "Check this chat now", so the two never drive WhatsApp at once.
             sender = LockedSender(AccessibilitySender(this, c.settings, c.secrets, c.pinGuard, c.log, c.notifications), c.automationLock),
             alarms = c.alarmScheduler,
-            notifier = ServiceNotifier(c.notifications, c.fallbackNotifier) { schedule, dryRun ->
+            notifier = ServiceNotifier(c.notifications, c.fallbackNotifier, ::choosePostpone) { schedule, dryRun ->
                 // A test run always says it sent nothing (B11); a real send only if wanted (features F2).
                 c.appScope.launch {
                     if (dryRun || c.settings.current().notifyAfterSend) runCatching { c.sentNotifier.notifySent(schedule, dryRun) }
@@ -50,6 +51,8 @@ class SendService : LifecycleService() {
             clock = Clock.systemDefaultZone(),
             jobGuard = WakeLockGuard(getSystemService(PowerManager::class.java)),
             admission = c.sendAdmission,
+            headsUp = HeadsUpPrompt(this, c.notifications, c.headsUpAnswers),
+            stopped = c.stoppedOccurrences,
         )
     }
 
@@ -118,9 +121,25 @@ class SendService : LifecycleService() {
         }
     }
 
+    /** Opens the Postpone picker for messages held on the countdown; the user has just asked for it. */
+    /**
+     * Opens the picker straight after Postpone… on the countdown. Android lets a service do that only
+     * with "Display over other apps", which sending needs anyway (WhatsApp is brought to the front the
+     * same way). Without it the held notifications stay, and their own Postpone… opens the picker.
+     */
+    private fun choosePostpone(schedules: List<Schedule>) {
+        if (!Settings.canDrawOverlays(this)) {
+            container.log.warn("Postpone picker not opened: \"Display over other apps\" is off; its notification offers Postpone…")
+            return
+        }
+        runCatching { startActivity(PostponeActivity.intent(this, schedules.map { it.id }).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            .onFailure { container.log.error("Opening the Postpone picker failed", it) }
+    }
+
     private class ServiceNotifier(
         private val notifications: Notifications,
         private val fallback: FallbackNotifier,
+        private val choosePostpone: (List<Schedule>) -> Unit,
         private val confirm: (Schedule, Boolean) -> Unit,
     ) : SendNotifier {
         override fun progress(text: String) = notifications.show(Notifications.ID_SENDING, notifications.sending(text))
@@ -133,6 +152,11 @@ class SendService : LifecycleService() {
         override fun uncertain(schedule: Schedule, occurrenceAtMillis: Long?, reason: String) = fallback.notifyUncertain(schedule, occurrenceAtMillis, reason)
         override fun pinPaused(reason: String) = fallback.notifyPinPaused(reason)
         override fun missed(schedule: Schedule, occurrenceAtMillis: Long) = fallback.notifyMissed(schedule, occurrenceAtMillis)
+        override fun held(schedules: List<Schedule>, pick: Boolean) {
+            schedules.forEach(fallback::notifyHeld)
+            if (pick) choosePostpone(schedules)
+        }
+        override fun unarmed(schedule: Schedule) = fallback.notifyUnarmed(schedule)
     }
 
     companion object {

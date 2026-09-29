@@ -127,6 +127,7 @@ fun SettingsScreen(
             NumberRow("Step timeout (ms)", settings.stepTimeoutMs.toInt()) { v -> update { it.copy(stepTimeoutMs = v.coerceIn(2000, 60000).toLong()) } }
             NumberRow("Whole-send timeout (ms)", settings.jobTimeoutMs.toInt()) { v -> update { it.copy(jobTimeoutMs = v.coerceIn(20000, 600000).toLong()) } }
             NumberRow("Missed-send grace (minutes)", settings.missedGraceMinutes) { v -> update { it.copy(missedGraceMinutes = v.coerceIn(0, 24 * 60)) } }
+            NumberRow("Countdown before sending, in use (seconds)", settings.headsUpSeconds) { v -> update { it.copy(headsUpSeconds = v.coerceIn(5, 30)) } }
             TextRow("Default country for phone numbers (ISO)", settings.defaultCountryIso) { v -> update { it.copy(defaultCountryIso = v.uppercase().take(2)) } }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))

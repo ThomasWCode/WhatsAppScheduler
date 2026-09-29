@@ -28,9 +28,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Postpone… from a "Needs your attention" notification (features F3): the list's picker, over
- * whatever is on screen, for the one-off the notification is about. It closes once a time is chosen
- * or the picker is dismissed.
+ * Postpone… from a "Needs your attention" notification (features F3), or for what a countdown held
+ * (features F1): the list's picker, over whatever is on screen, for the one-offs it is given, moved
+ * together. It closes once a time is chosen or the picker is dismissed.
  */
 class PostponeActivity : ComponentActivity() {
 
@@ -38,12 +38,14 @@ class PostponeActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val container = SchedulerApp.container(this)
-        val id = intent.getLongExtra(EXTRA_SCHEDULE_ID, -1L)
+        // A notification posted before the picker took several schedules carries one, under the old key.
+        val ids = intent.getLongArrayExtra(EXTRA_SCHEDULE_IDS)?.toList()
+            ?: intent.getLongExtra(EXTRA_SCHEDULE_ID, -1L).takeIf { it > 0 }?.let { listOf(it) }.orEmpty()
         setContent {
             AppTheme {
-                // The row as it was when the picker first opened: the move is refused if it is sent or changed
-                // meanwhile. Its timing is saved, so a rotation reads the row again without forgetting that.
-                var seen by remember { mutableStateOf<Schedule?>(null) }
+                // The rows as they were when the picker first opened: the move is refused if one is sent or
+                // changed meanwhile. Their timing is saved, so a rotation reads them again without forgetting that.
+                var seen by remember { mutableStateOf<List<Schedule>?>(null) }
                 var seenTiming by rememberSaveable { mutableStateOf<LongArray?>(null) }
                 val scope = rememberCoroutineScope()
                 val timeFormat = rememberTimeFormat()
@@ -55,26 +57,29 @@ class PostponeActivity : ComponentActivity() {
                         delay(60_000L - tick.second * 1_000L - tick.nano / 1_000_000)
                     }
                 }
-                LaunchedEffect(id) {
-                    val row = container.repository.get(id)
-                    val timing = seenTiming ?: row?.let { longArrayOf(it.nextAtMillis ?: -1L, it.lastRunAtMillis ?: -1L) }?.also { seenTiming = it }
-                    seen = if (row == null || timing == null) null
-                    else row.copy(nextAtMillis = timing[0].takeIf { it >= 0 }, lastRunAtMillis = timing[1].takeIf { it >= 0 })
+                LaunchedEffect(ids) {
+                    val rows = ids.mapNotNull { container.repository.get(it) }
+                    // Id, next time and last run of each, as first seen.
+                    val timing = seenTiming ?: rows.flatMap { listOf(it.id, it.nextAtMillis ?: -1L, it.lastRunAtMillis ?: -1L) }.toLongArray().also { seenTiming = it }
+                    val first = timing.toList().chunked(3).associate { (id, next, run) -> id to (next to run) }
+                    seen = rows.mapNotNull { row ->
+                        first[row.id]?.let { (next, run) -> row.copy(nextAtMillis = next.takeIf { it >= 0 }, lastRunAtMillis = run.takeIf { it >= 0 }) }
+                    }.ifEmpty { null }
                     if (seen == null) {
                         Toast.makeText(this@PostponeActivity, "It has been deleted.", Toast.LENGTH_LONG).show()
-                        container.fallbackNotifier.cancel(id)
+                        ids.forEach(container.fallbackNotifier::cancel)
                         finish()
                     }
                 }
-                seen?.let { schedule ->
+                seen?.let { group ->
                     PostponeDialog(
-                        schedule = schedule,
+                        schedule = group.first(),
                         now = now,
                         onDismiss = ::finish,
                         onMove = { at ->
                             scope.launch {
                                 // Not cancelled by the activity closing: the move and its alarm belong together.
-                                val problem = withContext(NonCancellable) { container.attentionActions.postpone(schedule, at) }
+                                val problem = withContext(NonCancellable) { container.attentionActions.postpone(group, at) }
                                 val done = problem ?: "Moved to ${FriendlyTime.dayAndTime(at.atZone(now.zone), ZonedDateTime.now(), timeFormat)}"
                                 Toast.makeText(this@PostponeActivity, done, Toast.LENGTH_LONG).show()
                                 finish()
@@ -87,9 +92,13 @@ class PostponeActivity : ComponentActivity() {
     }
 
     companion object {
+        private const val EXTRA_SCHEDULE_IDS = "scheduleIds"
         private const val EXTRA_SCHEDULE_ID = "scheduleId"
 
-        fun intent(context: Context, scheduleId: Long): Intent =
-            Intent(context, PostponeActivity::class.java).putExtra(EXTRA_SCHEDULE_ID, scheduleId)
+        fun intent(context: Context, scheduleId: Long): Intent = intent(context, listOf(scheduleId))
+
+        /** One picker for all of [scheduleIds], moved together, e.g. a batch its countdown held. */
+        fun intent(context: Context, scheduleIds: List<Long>): Intent =
+            Intent(context, PostponeActivity::class.java).putExtra(EXTRA_SCHEDULE_IDS, scheduleIds.toLongArray())
     }
 }

@@ -304,34 +304,82 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
         )
     }
 
-    override suspend fun recordMissed(id: Long, occurrenceAtMillis: Long, detail: String, sentTo: String, ranAt: Instant): MissedRun? =
+    override suspend fun recordMissed(id: Long, occurrenceAtMillis: Long, detail: String, sentTo: String, ranAt: Instant): HeldRun? =
         db.withTransaction {
             // Only while the row still has that occurrence pending: one edited, moved or deleted since the
             // queue looked at it isn't missed, and holding it would mark the user's new time as missed.
             val current = schedules.getById(id)?.takeIf { it.nextAtMillis == occurrenceAtMillis } ?: return@withTransaction null
             if (current.rule == Recurrence.Once) {
                 val stored = recordRun(id, occurrenceAtMillis, SendStatus.MISSED, detail, sentTo, ranAt) ?: return@withTransaction null
-                return@withTransaction MissedRun(stored, stored)
+                return@withTransaction HeldRun(stored, stored)
             }
-            // The series goes on past the occurrence, as after any run, but its own last run and whatever it
-            // already waits on (an earlier failure, say) stay as they were: the missed message is held on its
-            // own, with its own run and history, so Send now, Postpone and Discard are the one-off ones.
-            val usedUp = current.nextAtMillis == occurrenceAtMillis || current.postponedFromMillis != null
-            val series = if (!usedUp) current else current.copy(
-                nextAtMillis = nextAfterRun(current, occurrenceAtMillis, ranAt, movedFromMillis = current.postponedFromMillis),
-                postponedFromMillis = null,
-            )
-            if (series != current) schedules.update(series)
-            val held = Schedule(
-                message = current.message, targetKind = current.targetKind, targetName = current.targetName, phoneE164 = current.phoneE164,
-                isLocked = current.isLocked, firstAtMillis = occurrenceAtMillis, zoneId = current.zoneId,
-                recurrence = RecurrenceCodec.encode(Recurrence.Once), nextAtMillis = null, createdAtMillis = ranAt.toEpochMilli(),
-                lastRunAtMillis = ranAt.toEpochMilli(), lastResult = "${SendStatus.MISSED.name}: $detail", lastStatus = SendStatus.MISSED,
-                recipientId = current.recipientId, attention = Attention.MISSED, sourceScheduleId = current.id,
-            ).let { it.copy(id = schedules.insert(it)) }
-            logs.insert(SendLog(scheduleId = held.id, atMillis = ranAt.toEpochMilli(), status = SendStatus.MISSED, targetName = sentTo, detail = detail, occurrenceAtMillis = occurrenceAtMillis))
-            MissedRun(series, held)
+            holdAsCopy(current, occurrenceAtMillis, ranAt, Attention.MISSED, SendStatus.MISSED, detail, ran = true)
         }
+
+    override suspend fun duePeers(schedule: Schedule, occurrenceAtMillis: Long): List<Schedule> =
+        schedule.batchId
+            ?.let { batch -> schedules.getBatch(batch).filter { it.enabled && it.nextAtMillis == occurrenceAtMillis } }
+            ?.takeIf { peers -> peers.any { it.id == schedule.id } }
+            ?: listOf(schedule)
+
+    override suspend fun snooze(ids: List<Long>, occurrenceAtMillis: Long, to: Instant, ranAt: Instant): List<Schedule> = db.withTransaction {
+        ids.mapNotNull { id ->
+            val current = schedules.getById(id)?.takeIf { it.nextAtMillis == occurrenceAtMillis } ?: return@mapNotNull null
+            val moved = postpone(id, to, seen = current)?.after ?: return@mapNotNull null
+            logs.insert(SendLog(scheduleId = id, atMillis = ranAt.toEpochMilli(), status = SendStatus.SKIPPED, targetName = current.targetName, detail = SNOOZED, occurrenceAtMillis = occurrenceAtMillis))
+            moved
+        }
+    }
+
+    override suspend fun hold(ids: List<Long>, occurrenceAtMillis: Long, ranAt: Instant, detail: String): List<HeldRun> = db.withTransaction {
+        ids.mapNotNull { id ->
+            val current = schedules.getById(id)?.takeIf { it.nextAtMillis == occurrenceAtMillis } ?: return@mapNotNull null
+            if (current.rule != Recurrence.Once) {
+                return@mapNotNull holdAsCopy(current, occurrenceAtMillis, ranAt, Attention.HELD, SendStatus.SKIPPED, detail, ran = false)
+            }
+            // Waits itself, with no alarm: nothing is sent until the user picks a time.
+            val held = current.copy(nextAtMillis = null, attention = Attention.HELD)
+            schedules.update(held)
+            logs.insert(SendLog(scheduleId = id, atMillis = ranAt.toEpochMilli(), status = SendStatus.SKIPPED, targetName = current.targetName, detail = detail, occurrenceAtMillis = occurrenceAtMillis))
+            HeldRun(held, held)
+        }
+    }
+
+    /**
+     * Moves series [current] past [occurrenceAtMillis], as after any run, but its own last run and
+     * whatever it already waits on (an earlier failure, say) stay as they were. That occurrence's
+     * message waits on the user as a one-off copy of its own ([attention]), with its own history, so
+     * Send now, Postpone and Discard are the one-off ones. [ran] when [status] is that copy's run.
+     *
+     * The copies of one batch's occurrence are a batch of their own, named after the batch and the
+     * occurrence, so they stay one row, and share one countdown again once they are given a time.
+     */
+    private suspend fun holdAsCopy(
+        current: Schedule,
+        occurrenceAtMillis: Long,
+        ranAt: Instant,
+        attention: Attention,
+        status: SendStatus,
+        detail: String,
+        ran: Boolean,
+    ): HeldRun {
+        val usedUp = current.nextAtMillis == occurrenceAtMillis || current.postponedFromMillis != null
+        val series = if (!usedUp) current else current.copy(
+            nextAtMillis = nextAfterRun(current, occurrenceAtMillis, ranAt, movedFromMillis = current.postponedFromMillis),
+            postponedFromMillis = null,
+        )
+        if (series != current) schedules.update(series)
+        val held = Schedule(
+            message = current.message, targetKind = current.targetKind, targetName = current.targetName, phoneE164 = current.phoneE164,
+            isLocked = current.isLocked, firstAtMillis = occurrenceAtMillis, zoneId = current.zoneId,
+            recurrence = RecurrenceCodec.encode(Recurrence.Once), nextAtMillis = null, createdAtMillis = ranAt.toEpochMilli(),
+            lastRunAtMillis = ranAt.toEpochMilli().takeIf { ran }, lastResult = "${status.name}: $detail".takeIf { ran },
+            lastStatus = status.takeIf { ran }, recipientId = current.recipientId, attention = attention, sourceScheduleId = current.id,
+            batchId = current.batchId?.let { "$it@$occurrenceAtMillis" },
+        ).let { it.copy(id = schedules.insert(it)) }
+        logs.insert(SendLog(scheduleId = held.id, atMillis = ranAt.toEpochMilli(), status = status, targetName = current.targetName, detail = detail, occurrenceAtMillis = occurrenceAtMillis))
+        return HeldRun(series, held)
+    }
 
     /**
      * A manual run doesn't decide whether the schedule needs attention, except that a real send by
@@ -359,6 +407,9 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
     suspend fun pruneLogs(olderThan: Instant) = logs.prune(olderThan.toEpochMilli())
 
     companion object {
+        /** In the history for a countdown's Snooze and Postpone… (features F1). */
+        private const val SNOOZED = "snoozed 5 min on the countdown"
+
         /** The status a result text starts with ("FAILED: search: …"), after "manual " for a run by hand. */
         fun statusFromResult(result: String?): SendStatus? = result?.removePrefix("manual ")?.let { text ->
             SendStatus.entries.firstOrNull { text == it.name || text.startsWith(it.name + ":") }

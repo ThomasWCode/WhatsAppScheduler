@@ -25,7 +25,16 @@ enum class SendKind {
  * up an occurrence (B01): the request is only carried out while the schedule's next occurrence is
  * still exactly that time. It is null for the other kinds, and for alarms armed before the key existed.
  */
-data class SendRequest(val scheduleId: Long, val kind: SendKind, val occurrenceAtMillis: Long? = null) {
+data class SendRequest(
+    val scheduleId: Long,
+    val kind: SendKind,
+    val occurrenceAtMillis: Long? = null,
+    /**
+     * When the send queue took it, which it notes. How late a scheduled send is is measured to then, so
+     * time spent behind another send (its countdown, a call, retries) doesn't count against its alarm.
+     */
+    val receivedAtMillis: Long? = null,
+) {
 
     /** Requests with equal keys are the same send, so at most one of them may be queued or running. */
     val dedupKey: Any get() = if (kind.consumesOccurrence) OccurrenceKey(scheduleId, occurrenceAtMillis) else ManualKey(scheduleId, kind)

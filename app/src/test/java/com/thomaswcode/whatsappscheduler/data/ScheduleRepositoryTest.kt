@@ -77,6 +77,53 @@ class ScheduleRepositoryTest {
     }
 
     @Test
+    fun theCountdownsSnoozeAndPostpone() = runTest {
+        // Snooze: five minutes on, logged, the series otherwise as it was.
+        val daily = saveDaily()
+        val later = nine.plus(Duration.ofMinutes(5))
+        val snoozed = repository.snooze(listOf(daily.id), nine.toEpochMilli(), later, nine).single()
+        assertEquals(later.toEpochMilli(), snoozed.nextAtMillis)
+        assertEquals(nine.toEpochMilli(), snoozed.postponedFromMillis)
+        assertNull(snoozed.lastStatus)
+        assertTrue(repository.snooze(listOf(daily.id), nine.toEpochMilli(), later, nine).isEmpty())
+        // Postpone… on a series: it goes on, and this occurrence waits on its own for a new time.
+        val held = repository.hold(listOf(daily.id), later.toEpochMilli(), later, "held for a new time").single()
+        assertNull(held.schedule.attention)
+        assertEquals(nine.plus(Duration.ofDays(1)).toEpochMilli(), repository.get(daily.id)!!.nextAtMillis)
+        assertEquals(Attention.HELD, held.held.attention)
+        assertNull(held.held.lastStatus)
+        assertNull(held.held.nextAtMillis)
+        assertEquals(daily.id, held.held.sourceScheduleId)
+        // A one-off waits itself.
+        val once = repository.save(daily.copy(id = 0, recurrence = "ONCE", firstAtMillis = nine.plus(Duration.ofDays(2)).toEpochMilli()), ranAt)
+        val heldOnce = repository.hold(listOf(once.id), once.nextAtMillis!!, nine.plus(Duration.ofDays(2)), "held for a new time").single()
+        assertEquals(heldOnce.schedule, heldOnce.held)
+        assertEquals(Attention.HELD, repository.get(once.id)!!.attention)
+        assertNull(repository.get(once.id)!!.nextAtMillis)
+    }
+
+    @Test
+    fun aBatchsHeldCopiesAreABatchOfTheirOwn() = runTest {
+        val before = nine.minus(Duration.ofHours(1))
+        val mum = repository.save(saveDaily().copy(batchId = "b"), before)
+        val dad = repository.save(saveDaily().copy(batchId = "b", targetName = "Dad"), before)
+        val (heldMum, heldDad) = repository.hold(listOf(mum.id, dad.id), nine.toEpochMilli(), ranAt, "held for a new time").map { it.held }
+        assertEquals("b@${nine.toEpochMilli()}", heldMum.batchId)
+        assertEquals(heldMum.batchId, heldDad.batchId)
+        // The series themselves stay in their own batch.
+        assertEquals("b", repository.get(mum.id)!!.batchId)
+    }
+
+    @Test
+    fun aBatchsMembersDueTogetherShareTheCountdown() = runTest {
+        val daily = saveDaily()
+        val a = repository.save(daily.copy(id = 0, batchId = "b"), ranAt)
+        val b = repository.save(daily.copy(id = 0, batchId = "b", targetName = "Dad"), ranAt)
+        assertEquals(setOf(a.id, b.id), repository.duePeers(a, a.nextAtMillis!!).map { it.id }.toSet())
+        assertEquals(listOf(daily.id), repository.duePeers(daily, daily.nextAtMillis!!).map { it.id })
+    }
+
+    @Test
     fun anOccurrenceEditedAwayIsntMissed() = runTest {
         val daily = saveDaily()
         // Edited to another time between the queue looking at it and holding it.
