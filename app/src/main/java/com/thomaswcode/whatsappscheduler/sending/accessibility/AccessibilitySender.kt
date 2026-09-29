@@ -61,7 +61,6 @@ class AccessibilitySender(
 
         // The app the user was in, to go back to afterwards (features F1).
         val returnTo = driver.foregroundPackage()
-        service.active.set(true)
         val before = wake.snapshot()
         val relock = before.wasLocked && settings.relockAfterSend
         try {
@@ -111,7 +110,6 @@ class AccessibilitySender(
             runCatching { tidyUp(driver, before, relock, unsentDraft = job.message.takeIf { result is SendResult.Failed }, returnTo = returnTo) }
             return result
         } finally {
-            service.active.set(false)
             wake.releaseActivity()
             wake.releaseWakeLock()
             // A PIN entry that unlocked the phone reset its failure counter, so the app's count starts over
@@ -137,7 +135,6 @@ class AccessibilitySender(
         val t = settings.stepTimeoutMs
         val driver = UiDriver(service, log, t)
         log.info("check: looking for '$name'")
-        service.active.set(true)
         return try {
             withTimeout(settings.jobTimeoutMs) {
                 val search = OpenChatBySearch(context, driver, log)
@@ -177,7 +174,6 @@ class AccessibilitySender(
             ChatCheck.Failed("it took too long")
         } finally {
             runCatching { leaveWhatsApp(driver, whatsapp) }
-            service.active.set(false)
         }
     }
 
