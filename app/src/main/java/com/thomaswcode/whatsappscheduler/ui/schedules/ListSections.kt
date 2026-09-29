@@ -111,6 +111,30 @@ fun statusLine(
     }
 }
 
+/**
+ * The list's items in order, by the keys the list screen gives them, so a row can be found to scroll
+ * to. The Sent section's rows are there only while it is open.
+ */
+fun ListSections.keys(sentOpen: Boolean): List<String> = buildList {
+    add("health")
+    if (isEmpty) add("empty")
+    listOf(Section.ATTENTION to attention, Section.UPCOMING to upcoming, Section.REPEATING to repeating).forEach { (section, groups) ->
+        if (groups.isNotEmpty()) {
+            add("header-$section")
+            groups.forEach { add("$section-${it.first().id}") }
+        }
+    }
+    if (sent.isNotEmpty()) {
+        add("header-SENT")
+        if (sentOpen) sent.forEach { add("SENT-${it.first().id}") }
+    }
+}
+
+/** The first section schedule [id] shows in, and its row's key there; null when it isn't in the list. */
+fun ListSections.rowOf(id: Long): Pair<Section, String>? =
+    listOf(Section.ATTENTION to attention, Section.UPCOMING to upcoming, Section.REPEATING to repeating, Section.SENT to sent)
+        .firstNotNullOfOrNull { (section, groups) -> groups.firstOrNull { group -> group.any { it.id == id } }?.let { section to "$section-${it.first().id}" } }
+
 /** "Mum", "Mum and Dad", or "Mum, Dad +1". */
 fun groupTitle(group: List<Schedule>): String = when (group.size) {
     1 -> group[0].targetName
