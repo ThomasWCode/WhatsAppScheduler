@@ -208,6 +208,10 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
     )
     val recents: StateFlow<List<Recipient>> = container.recipients.observeRecent().stateIn(viewModelScope, whileShown, emptyList())
 
+    /** The schedule is queued or being sent: deleting it now wouldn't stop that message (as on the list). */
+    val sending: StateFlow<Boolean> = container.sendState.state.map { scheduleId != 0L && it.isBusy(scheduleId) }
+        .stateIn(viewModelScope, whileShown, scheduleId != 0L && container.sendState.state.value.isBusy(scheduleId))
+
     /** The time, moving on each minute, so the rule's "next …" stays right while the editor is open. */
     val now: StateFlow<ZonedDateTime> = minuteClock().stateIn(viewModelScope, whileShown, openedAt)
 
@@ -304,6 +308,8 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
                 .onSuccess { conflict ->
                     if (conflict == null) {
                         if (form.recipient == original) form = form.copy(recipient = updated)
+                        // Saved already, with the recipient: nothing about it is left to lose on leaving.
+                        if (initial.recipient == original) initial = initial.copy(recipient = updated)
                     } else {
                         val what = if (updated.phoneE164 != null) "that number" else "that name"
                         error = "${conflict.displayName} already has $what. Choose ${conflict.displayName} instead."
@@ -330,6 +336,7 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
             }.onFailure { container.log.error("Removing a recipient failed", it) }
             saving = false
             if (form.recipient?.recipientId == id) form = form.copy(recipient = form.recipient?.copy(recipientId = null))
+            if (initial.recipient?.recipientId == id) initial = initial.copy(recipient = initial.recipient?.copy(recipientId = null))
         }
     }
 
@@ -393,17 +400,21 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
         }
     }
 
-    /** Delete, after the screen asked: the row, then its prompt and alarm. */
+    /** Delete, after the screen asked: the row and its history, as on the list, then its prompt and alarm. */
     fun delete() {
         val schedule = existing ?: return
         if (saving) return
+        if (container.sendState.state.value.isBusy(schedule.id)) {
+            error = "It's being sent right now. It can be deleted once that's done."
+            return
+        }
         saving = true
         viewModelScope.launch {
             val outcome = withContext(NonCancellable) {
                 runCatching {
                     // The row first: if that fails, the alarm must still be there. A stale alarm for a deleted
                     // row is harmless, as the send queue drops it.
-                    container.repository.delete(schedule)
+                    container.repository.deleteWithHistory(listOf(schedule.id))
                     runCatching { container.fallbackNotifier.cancel(schedule.id) }.onFailure { container.log.error("Clearing a prompt failed", it) }
                     runCatching { container.alarmScheduler.cancel(schedule.id) }.onFailure { container.log.error("Cancelling an alarm failed", it) }
                 }
