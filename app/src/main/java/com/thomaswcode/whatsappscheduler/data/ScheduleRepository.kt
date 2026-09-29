@@ -306,8 +306,10 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
 
     override suspend fun recordMissed(id: Long, occurrenceAtMillis: Long, detail: String, sentTo: String, ranAt: Instant): MissedRun? =
         db.withTransaction {
-            val current = schedules.getById(id)
-            if (current == null || current.rule == Recurrence.Once) {
+            // Only while the row still has that occurrence pending: one edited, moved or deleted since the
+            // queue looked at it isn't missed, and holding it would mark the user's new time as missed.
+            val current = schedules.getById(id)?.takeIf { it.nextAtMillis == occurrenceAtMillis } ?: return@withTransaction null
+            if (current.rule == Recurrence.Once) {
                 val stored = recordRun(id, occurrenceAtMillis, SendStatus.MISSED, detail, sentTo, ranAt) ?: return@withTransaction null
                 return@withTransaction MissedRun(stored, stored)
             }
