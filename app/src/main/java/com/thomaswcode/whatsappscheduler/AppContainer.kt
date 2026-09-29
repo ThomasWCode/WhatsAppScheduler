@@ -12,6 +12,7 @@ import com.thomaswcode.whatsappscheduler.data.settings.SettingsStore
 import com.thomaswcode.whatsappscheduler.scheduling.AlarmScheduler
 import com.thomaswcode.whatsappscheduler.sending.ChatChecker
 import com.thomaswcode.whatsappscheduler.sending.FallbackNotifier
+import com.thomaswcode.whatsappscheduler.sending.SentNotifier
 import com.thomaswcode.whatsappscheduler.sending.accessibility.AccessibilitySender
 import com.thomaswcode.whatsappscheduler.sending.Notifications
 import com.thomaswcode.whatsappscheduler.sending.PinGuard
@@ -43,6 +44,7 @@ class AppContainer(context: Context) {
     val sendState = SendStateHolder()
     val notifications: Notifications by lazy { Notifications(appContext) }
     val fallbackNotifier: FallbackNotifier by lazy { FallbackNotifier(appContext, notifications) }
+    val sentNotifier: SentNotifier by lazy { SentNotifier(appContext, notifications) }
     val log: AutomationLog by lazy { AutomationLog(appContext) }
     val alarmScheduler: AlarmScheduler by lazy { AlarmScheduler(appContext, repository, sendState, log) }
     /** Held by whatever drives WhatsApp, a send or a chat check, so the two never overlap. */

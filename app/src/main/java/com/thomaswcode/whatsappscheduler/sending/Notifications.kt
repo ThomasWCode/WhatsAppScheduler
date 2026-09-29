@@ -21,6 +21,10 @@ class Notifications(private val context: Context) {
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_FALLBACK, context.getString(R.string.notification_channel_fallback), NotificationManager.IMPORTANCE_HIGH)
         )
+        // Quiet: in the shade, no sound, no pop-up (features F2).
+        manager.createNotificationChannel(
+            NotificationChannel(CHANNEL_SENT, context.getString(R.string.notification_channel_sent), NotificationManager.IMPORTANCE_LOW)
+        )
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_UNLOCK, context.getString(R.string.notification_channel_unlock), NotificationManager.IMPORTANCE_HIGH).apply {
                 setSound(null, null)
@@ -60,6 +64,34 @@ class Notifications(private val context: Context) {
             .setAutoCancel(true)
             .build()
 
+    /** "Sent to Mum": opens the chat, and goes by itself after a day. */
+    fun sent(title: String, text: String, openChat: PendingIntent): Notification =
+        Notification.Builder(context, CHANNEL_SENT)
+            .setSmallIcon(R.drawable.ic_stat_send)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setContentIntent(openApp())
+            .addAction(Notification.Action.Builder(null, "Open chat", openChat).build())
+            .setGroup(GROUP_SENT)
+            .setAutoCancel(true)
+            .setTimeoutAfter(SENT_LIFETIME_MS)
+            .build()
+
+    fun sentSummary(text: String): Notification =
+        Notification.Builder(context, CHANNEL_SENT)
+            .setSmallIcon(R.drawable.ic_stat_send)
+            .setContentTitle(text)
+            .setGroup(GROUP_SENT)
+            .setGroupSummary(true)
+            .setAutoCancel(true)
+            .setTimeoutAfter(SENT_LIFETIME_MS)
+            .build()
+
+    /** How many "Sent" notifications are showing, not counting their summary. */
+    fun sentShowing(): Int = runCatching {
+        manager.activeNotifications.count { it.notification.group == GROUP_SENT && it.id != ID_SENT_SUMMARY }
+    }.getOrDefault(0)
+
     fun show(id: Int, notification: Notification) = manager.notify(id, notification)
 
     fun cancel(id: Int) = manager.cancel(id)
@@ -74,6 +106,12 @@ class Notifications(private val context: Context) {
         const val CHANNEL_SENDING = "sending"
         const val CHANNEL_FALLBACK = "fallback"
         const val CHANNEL_UNLOCK = "unlock"
+        const val CHANNEL_SENT = "sent"
+        const val GROUP_SENT = "sent"
+        const val ID_SENT_SUMMARY = 4
+        /** Well above the fallback prompts' ids ([ID_FALLBACK_BASE] + schedule id). */
+        const val ID_SENT_BASE = 500_000
+        const val SENT_LIFETIME_MS = 24 * 60 * 60 * 1000L
         const val ID_SENDING = 1
         const val ID_UNLOCK = 2
         const val ID_PIN_PAUSED = 3

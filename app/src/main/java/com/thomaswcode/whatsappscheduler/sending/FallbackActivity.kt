@@ -21,7 +21,7 @@ class FallbackActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val checkOnly = intent.action == ACTION_CHECK
+        val checkOnly = intent.action == ACTION_CHECK || intent.action == ACTION_OPEN
         val message = if (checkOnly) null else intent.getStringExtra(EXTRA_MESSAGE) ?: ""
         val phone = intent.getStringExtra(EXTRA_PHONE)
         val name = intent.getStringExtra(EXTRA_NAME) ?: ""
@@ -37,10 +37,11 @@ class FallbackActivity : Activity() {
         }
         val hint = when {
             open == null -> "WhatsApp not found." + if (message != null) " Message copied to clipboard." else ""
+            intent.action == ACTION_OPEN -> null
             checkOnly -> "Check whether your message to '$name' arrived before sending it again."
             else -> "Message copied. Open '$name' and paste if it is not pre-filled."
         }
-        Toast.makeText(this, hint, Toast.LENGTH_LONG).show()
+        hint?.let { Toast.makeText(this, it, Toast.LENGTH_LONG).show() }
         open?.let { startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
         finish()
     }
@@ -48,6 +49,7 @@ class FallbackActivity : Activity() {
     companion object {
         const val ACTION_SEND = "com.thomaswcode.whatsappscheduler.action.MANUAL_SEND"
         const val ACTION_CHECK = "com.thomaswcode.whatsappscheduler.action.CHECK_CHAT"
+        const val ACTION_OPEN = "com.thomaswcode.whatsappscheduler.action.OPEN_CHAT"
         const val EXTRA_MESSAGE = "message"
         const val EXTRA_PHONE = "phone"
         const val EXTRA_NAME = "name"
@@ -58,6 +60,12 @@ class FallbackActivity : Activity() {
         fun manualSend(context: Context, schedule: Schedule): Intent = Intent(context, FallbackActivity::class.java)
             .setAction(ACTION_SEND)
             .putExtra(EXTRA_MESSAGE, schedule.message)
+            .putExtra(EXTRA_PHONE, schedule.phoneE164)
+            .putExtra(EXTRA_NAME, schedule.targetName)
+
+        /** Just opens the chat, e.g. from the "Sent" notification. */
+        fun openChat(context: Context, schedule: Schedule): Intent = Intent(context, FallbackActivity::class.java)
+            .setAction(ACTION_OPEN)
             .putExtra(EXTRA_PHONE, schedule.phoneE164)
             .putExtra(EXTRA_NAME, schedule.targetName)
 
