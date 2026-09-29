@@ -25,7 +25,7 @@ class HeadsUpPrompt(
 
     override suspend fun ask(schedules: List<Schedule>, endsAtMillis: Long): HeadsUpChoice? {
         val first = schedules.first()
-        val answer = answers.expect()
+        val wait = answers.expect()
         val to = when (schedules.size) {
             1 -> first.targetName
             2 -> "${first.targetName} and ${schedules[1].targetName}"
@@ -38,20 +38,20 @@ class HeadsUpPrompt(
                 title = "Sending to $to",
                 text = text,
                 endsAtMillis = endsAtMillis,
-                sendNow = button(HeadsUpActionReceiver.ACTION_SEND_NOW),
-                snooze = button(HeadsUpActionReceiver.ACTION_SNOOZE),
-                postpone = button(HeadsUpActionReceiver.ACTION_POSTPONE),
+                sendNow = button(HeadsUpActionReceiver.ACTION_SEND_NOW, wait.token),
+                snooze = button(HeadsUpActionReceiver.ACTION_SNOOZE, wait.token),
+                postpone = button(HeadsUpActionReceiver.ACTION_POSTPONE, wait.token),
             ),
         )
         return try {
-            withTimeoutOrNull((endsAtMillis - System.currentTimeMillis()).coerceAtLeast(0)) { answer.await() }
+            withTimeoutOrNull((endsAtMillis - System.currentTimeMillis()).coerceAtLeast(0)) { wait.answer.await() }
         } finally {
-            answers.done(answer)
+            answers.done(wait)
             notifications.cancel(Notifications.ID_HEADS_UP)
         }
     }
 
-    private fun button(action: String): PendingIntent = PendingIntent.getBroadcast(
-        context, 0, HeadsUpActionReceiver.intent(context, action), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    private fun button(action: String, token: Long): PendingIntent = PendingIntent.getBroadcast(
+        context, 0, HeadsUpActionReceiver.intent(context, action, token), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 }

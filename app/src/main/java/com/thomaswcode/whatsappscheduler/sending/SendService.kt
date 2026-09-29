@@ -119,16 +119,16 @@ class SendService : LifecycleService() {
         }
     }
 
-    /** Opens the Postpone picker for a message held on the countdown; the user has just asked for it. */
-    private fun choosePostpone(schedule: Schedule) {
-        runCatching { startActivity(PostponeActivity.intent(this, schedule.id).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    /** Opens the Postpone picker for messages held on the countdown; the user has just asked for it. */
+    private fun choosePostpone(schedules: List<Schedule>) {
+        runCatching { startActivity(PostponeActivity.intent(this, schedules.map { it.id }).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
             .onFailure { container.log.error("Opening the Postpone picker failed", it) }
     }
 
     private class ServiceNotifier(
         private val notifications: Notifications,
         private val fallback: FallbackNotifier,
-        private val choosePostpone: (Schedule) -> Unit,
+        private val choosePostpone: (List<Schedule>) -> Unit,
         private val confirm: (Schedule, Boolean) -> Unit,
     ) : SendNotifier {
         override fun progress(text: String) = notifications.show(Notifications.ID_SENDING, notifications.sending(text))
@@ -141,9 +141,9 @@ class SendService : LifecycleService() {
         override fun uncertain(schedule: Schedule, occurrenceAtMillis: Long?, reason: String) = fallback.notifyUncertain(schedule, occurrenceAtMillis, reason)
         override fun pinPaused(reason: String) = fallback.notifyPinPaused(reason)
         override fun missed(schedule: Schedule, occurrenceAtMillis: Long) = fallback.notifyMissed(schedule, occurrenceAtMillis)
-        override fun held(schedule: Schedule) {
-            fallback.notifyHeld(schedule)
-            choosePostpone(schedule)
+        override fun held(schedules: List<Schedule>) {
+            schedules.forEach(fallback::notifyHeld)
+            choosePostpone(schedules)
         }
     }
 

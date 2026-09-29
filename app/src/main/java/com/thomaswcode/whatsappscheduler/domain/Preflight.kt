@@ -18,7 +18,7 @@ object Preflight {
      * was missed is taken at once instead, while the send is still ahead.
      */
     fun checkAt(occurrenceAtMillis: Long, nowMillis: Long, catchUp: Boolean = false): Long? =
-        (occurrenceAtMillis - LEAD.toMillis()).takeIf { it > nowMillis }
+        (occurrenceAtMillis - LEAD.toMillis()).takeIf { it >= nowMillis }
             ?: nowMillis.takeIf { catchUp && occurrenceAtMillis > nowMillis }
 
     /**
