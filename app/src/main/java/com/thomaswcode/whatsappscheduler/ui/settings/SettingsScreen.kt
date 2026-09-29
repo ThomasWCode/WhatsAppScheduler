@@ -2,6 +2,7 @@ package com.thomaswcode.whatsappscheduler.ui.settings
 
 import android.app.Activity
 import android.text.format.DateFormat
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -91,7 +92,16 @@ fun SettingsScreen(
 
     fun update(transform: (Settings) -> Settings) = vm.update(transform)
 
-    Scaffold(topBar = { BackBar("Settings", onBack) }) { padding ->
+    // A field being edited saves as it loses focus, so it loses it before the screen is left, by the
+    // back arrow, Back or a Diagnostics link, rather than going with the screen unsaved (B13).
+    val focus = LocalFocusManager.current
+    fun leave(to: () -> Unit) {
+        focus.clearFocus()
+        to()
+    }
+    BackHandler { leave(onBack) }
+
+    Scaffold(topBar = { BackBar("Settings", onBack = { leave(onBack) }) }) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).imePadding().padding(16.dp).verticalScroll(rememberScrollState())) {
             Text("Secrets", style = MaterialTheme.typography.titleMedium)
             Text(
@@ -149,9 +159,9 @@ fun SettingsScreen(
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
             // Logs moved here from the list's top bar (R7): Needs attention now brings failures to you.
             CollapsibleSection("Diagnostics", "Setup checklist, logs, the UI inspector and re-arming alarms.") {
-                Button(onClick = onSetup, modifier = Modifier.fillMaxWidth()) { Text("Setup checklist") }
-                OutlinedButton(onClick = onLogs, modifier = Modifier.fillMaxWidth()) { Text("Logs: sends and automation trace") }
-                OutlinedButton(onClick = onInspector, modifier = Modifier.fillMaxWidth()) { Text("UI inspector (capture WhatsApp view ids)") }
+                Button(onClick = { leave(onSetup) }, modifier = Modifier.fillMaxWidth()) { Text("Setup checklist") }
+                OutlinedButton(onClick = { leave(onLogs) }, modifier = Modifier.fillMaxWidth()) { Text("Logs: sends and automation trace") }
+                OutlinedButton(onClick = { leave(onInspector) }, modifier = Modifier.fillMaxWidth()) { Text("UI inspector (capture WhatsApp view ids)") }
                 OutlinedButton(
                     onClick = vm::rearmAlarms,
                     modifier = Modifier.fillMaxWidth(),
