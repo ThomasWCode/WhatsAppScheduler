@@ -64,8 +64,11 @@ fun AppNav(container: AppContainer, destination: MutableStateFlow<String?>) {
     // at once per launch, not again after a rotation.
     var setupLookedAt by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        if (setupLookedAt || openedFor != null) return@LaunchedEffect
+        if (setupLookedAt) return@LaunchedEffect
+        // Recorded first, also when skipped: after a rotation the destination is gone, and the checklist
+        // mustn't then open over the screen the notification asked for.
         setupLookedAt = true
+        if (openedFor != null) return@LaunchedEffect
         if (container.settings.current().onboardingDone) return@LaunchedEffect
         val hasPin = container.secrets.hasPin().first()
         // The service may not have connected yet this soon after the app started: only whether it is on counts here.
