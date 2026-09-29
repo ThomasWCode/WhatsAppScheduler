@@ -2,6 +2,7 @@ package com.thomaswcode.whatsappscheduler.sending.accessibility
 
 import android.content.Context
 import android.content.Intent
+import android.text.format.DateFormat
 import com.thomaswcode.whatsappscheduler.data.settings.SecretStore
 import com.thomaswcode.whatsappscheduler.data.settings.SettingsStore
 import com.thomaswcode.whatsappscheduler.domain.ChatCheck
@@ -45,7 +46,7 @@ class AccessibilitySender(
             ?: return SendResult.Failed(PRECHECK, "Accessibility service is not running")
         val whatsapp = installedWhatsApp() ?: return SendResult.Failed(PRECHECK, "WhatsApp is not installed", retryable = false)
         val settings = settingsStore.current()
-        val pinBlock = pinGuard.block()?.describe()
+        val pinBlock = pinGuard.block()?.describe(is24Hour = DateFormat.is24HourFormat(context))
         // Checked on every send, including ones that won't need the PIN: a daily limit expires by
         // itself, and its "paused" notice must not outlive it just because the phone was unlocked.
         if (pinBlock == null) notifications.cancel(Notifications.ID_PIN_PAUSED)

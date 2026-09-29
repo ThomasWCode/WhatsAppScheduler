@@ -192,7 +192,8 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
             if (!draft.isEditing) TextButton(onClick = vm::repeat, enabled = !vm.saving) { Text("Repeat…") }
             Spacer(Modifier.weight(1f).width(8.dp))
             Button(
-                onClick = vm::schedule,
+                // The confirmation says the time the phone's way, as the sheet does.
+                onClick = { vm.schedule(timeFormat) },
                 enabled = !vm.saving && draft.recipients.isNotEmpty() && draft.message.isNotBlank() && sendable,
             ) {
                 Text(
