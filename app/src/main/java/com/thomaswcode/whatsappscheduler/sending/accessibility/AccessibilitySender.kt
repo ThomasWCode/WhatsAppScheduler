@@ -59,10 +59,10 @@ class AccessibilitySender(
         val target = job.target
         log.info("job ${job.scheduleId} attempt ${job.attempt}: to '${target.name}' kind=${target.kind} locked=${target.isLocked} dryRun=${job.dryRun}")
 
-        // The app the user was in, to go back to afterwards (features F1).
-        val returnTo = driver.foregroundPackage()
         service.active.set(true)
         val before = wake.snapshot()
+        // The app the user was in, to go back to afterwards (features F1); not asked on a locked phone.
+        val returnTo = if (before.wasLocked) null else frontApp(driver)
         val relock = before.wasLocked && settings.relockAfterSend
         try {
             withTimeout(settings.jobTimeoutMs) {
@@ -223,6 +223,16 @@ class AccessibilitySender(
     }
 
     /**
+     * The app in front. Just after the countdown's notification goes, the window in front can be the
+     * system UI's, or none, for a moment: it waits briefly for an app's.
+     */
+    private suspend fun frontApp(driver: UiDriver): String? {
+        var front: String? = null
+        driver.waitUntil(FRONT_APP_WAIT_MS) { driver.foregroundPackage()?.takeIf { it != SYSTEM_UI }?.also { front = it } != null }
+        return front
+    }
+
+    /**
      * Brings back [pkg], the app the user was in before the send, with its task as it was (features
      * F1). False when that was the launcher, this app, the system UI or unknown, or it can't be
      * opened: then Home is the place to go.
@@ -254,6 +264,7 @@ class AccessibilitySender(
         /** Chat, search, search box, chat list, WhatsApp itself, and one spare. */
         const val MAX_BACKS = 6
         const val SYSTEM_UI = "com.android.systemui"
+        const val FRONT_APP_WAIT_MS = 2_000L
     }
 
     @Suppress("DEPRECATION")
