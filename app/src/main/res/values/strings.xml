@@ -7,5 +7,6 @@
     <string name="notification_channel_fallback">Needs your attention</string>
     <string name="notification_channel_unlock">Unlock for sending</string>
     <string name="notification_channel_sent">Sent</string>
+    <string name="notification_channel_heads_up">Before sending</string>
     <string name="share_target_label">Schedule on WhatsApp</string>
 </resources>

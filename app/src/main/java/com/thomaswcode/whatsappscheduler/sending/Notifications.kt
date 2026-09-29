@@ -22,6 +22,14 @@ class Notifications(private val context: Context) {
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_FALLBACK, context.getString(R.string.notification_channel_fallback), NotificationManager.IMPORTANCE_HIGH)
         )
+        // Pops up, so the countdown is seen, but with no sound: a short buzz at most (features F1).
+        manager.createNotificationChannel(
+            NotificationChannel(CHANNEL_HEADS_UP, context.getString(R.string.notification_channel_heads_up), NotificationManager.IMPORTANCE_HIGH).apply {
+                setSound(null, null)
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 120)
+            }
+        )
         // Quiet: in the shade, no sound, no pop-up (features F2).
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_SENT, context.getString(R.string.notification_channel_sent), NotificationManager.IMPORTANCE_LOW)
@@ -53,6 +61,31 @@ class Notifications(private val context: Context) {
             .setCategory(Notification.CATEGORY_ALARM)
             .setFullScreenIntent(fullScreen, true)
             .setOngoing(true)
+            .build()
+
+    /** The countdown before a scheduled send (features F1), counting down to [endsAtMillis]. */
+    fun headsUp(
+        title: String,
+        text: String,
+        endsAtMillis: Long,
+        sendNow: PendingIntent,
+        snooze: PendingIntent,
+        postpone: PendingIntent,
+    ): Notification =
+        Notification.Builder(context, CHANNEL_HEADS_UP)
+            .setSmallIcon(R.drawable.ic_stat_send)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setCategory(Notification.CATEGORY_REMINDER)
+            .setWhen(endsAtMillis)
+            .setShowWhen(true)
+            .setUsesChronometer(true)
+            .setChronometerCountDown(true)
+            .setOnlyAlertOnce(true)
+            .setTimeoutAfter((endsAtMillis - System.currentTimeMillis()).coerceAtLeast(1_000L))
+            .addAction(Notification.Action.Builder(null, "Send now", sendNow).build())
+            .addAction(Notification.Action.Builder(null, "Snooze 5 min", snooze).build())
+            .addAction(Notification.Action.Builder(null, "Postpone…", postpone).build())
             .build()
 
     /** On the "Needs your attention" channel (features F3), with the situation's buttons as [actions]. */
@@ -113,6 +146,23 @@ class Notifications(private val context: Context) {
 
     fun cancel(id: Int) = manager.cancel(id)
 
+    /**
+     * Whether a notification on [channel] would pop up over what is on screen: not when the app's
+     * notifications are off (on Android 13 and later, also when they were never allowed), nor when that
+     * channel is, or has been turned down to stay in the shade, nor when Do Not Disturb hides it.
+     */
+    fun popsUp(channel: String): Boolean {
+        if (!manager.areNotificationsEnabled()) return false
+        val found = manager.getNotificationChannel(channel)
+        if ((found?.importance ?: NotificationManager.IMPORTANCE_HIGH) < NotificationManager.IMPORTANCE_HIGH) return false
+        return when (manager.currentInterruptionFilter) {
+            NotificationManager.INTERRUPTION_FILTER_ALL, NotificationManager.INTERRUPTION_FILTER_UNKNOWN -> true
+            // Any Do Not Disturb mode: only a channel allowed to break through it is sure to be seen. An app
+            // can't tell whether the active mode would still let this one pop up, so it's taken not to.
+            else -> found?.canBypassDnd() == true
+        }
+    }
+
     fun isShowing(id: Int): Boolean = runCatching { manager.activeNotifications.any { it.id == id } }.getOrDefault(false)
 
     /** What notification [id] is about ([fallback]'s about), if it is showing. */
@@ -129,6 +179,8 @@ class Notifications(private val context: Context) {
         const val CHANNEL_FALLBACK = "fallback"
         const val CHANNEL_UNLOCK = "unlock"
         const val CHANNEL_SENT = "sent"
+        const val CHANNEL_HEADS_UP = "before_sending"
+        const val ID_HEADS_UP = 6
         private const val EXTRA_ABOUT = "com.thomaswcode.whatsappscheduler.about"
         const val GROUP_SENT = "sent"
         const val ID_SENT_SUMMARY = 4

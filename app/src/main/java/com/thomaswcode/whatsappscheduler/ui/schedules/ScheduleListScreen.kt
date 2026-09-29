@@ -508,9 +508,16 @@ private fun Avatar(name: String) {
     }
 }
 
-/** "Sending…" while any member is being sent, "Queued to send" while waiting its turn; null otherwise. */
+/**
+ * "Sending…" while any member is being sent, "About to send…" during its countdown or a wait before it,
+ * "Queued to send" while waiting its turn; null otherwise.
+ */
 internal fun busyText(group: List<Schedule>, state: SendState): String? = when {
-    group.any { it.id == state.currentId } -> if (state.phase == SendPhase.WAITING_TO_RETRY) "Waiting to try again…" else "Sending…"
+    group.any { it.id == state.currentId } -> when (state.phase) {
+        SendPhase.WAITING -> "About to send…"
+        SendPhase.WAITING_TO_RETRY -> "Waiting to try again…"
+        else -> "Sending…"
+    }
     group.any { state.isBusy(it.id) } -> "Queued to send"
     else -> null
 }

@@ -1,6 +1,7 @@
 package com.thomaswcode.whatsappscheduler.sending.accessibility
 
 import android.content.Context
+import android.content.Intent
 import com.thomaswcode.whatsappscheduler.data.settings.SecretStore
 import com.thomaswcode.whatsappscheduler.data.settings.SettingsStore
 import com.thomaswcode.whatsappscheduler.domain.ChatCheck
@@ -58,9 +59,13 @@ class AccessibilitySender(
         val target = job.target
         log.info("job ${job.scheduleId} attempt ${job.attempt}: to '${target.name}' kind=${target.kind} locked=${target.isLocked} dryRun=${job.dryRun}")
 
-        service.active.set(true)
         val before = wake.snapshot()
+        // The app the user was in, to go back to afterwards (features F1); not asked on a locked phone.
+        val returnTo = if (before.wasLocked) null else frontApp(driver)
         val relock = before.wasLocked && settings.relockAfterSend
+        // Only now, right before the try whose finally resets it: a send cancelled while looking for the
+        // app in front would otherwise leave the service listening.
+        service.active.set(true)
         try {
             withTimeout(settings.jobTimeoutMs) {
                 wake.ensureUnlocked(driver, before, pin, pinBlock, progress, t)
@@ -94,18 +99,18 @@ class AccessibilitySender(
             // Outside the job timeout, which can therefore only expire before the tap. Running out of
             // time after it would otherwise look like a failed send and be retried as a duplicate (B02).
             if (!job.dryRun) VerifySent(driver, log).run(job.message, t)
-            tidyUp(driver, before, relock, unsentDraft = null)
+            tidyUp(driver, before, relock, unsentDraft = null, returnTo = returnTo)
             log.info("job ${job.scheduleId}: ${if (job.dryRun) "dry run complete" else "sent"}")
             return if (job.dryRun) SendResult.DryRun else SendResult.Sent
         } catch (e: StepFailure) {
             val result = progress.classify(e.step, e.message ?: "failed", e.dump, e.retryable)
-            runCatching { tidyUp(driver, before, relock, unsentDraft = job.message.takeIf { result is SendResult.Failed }) }
+            runCatching { tidyUp(driver, before, relock, unsentDraft = job.message.takeIf { result is SendResult.Failed }, returnTo = returnTo) }
             return result
         } catch (e: TimeoutCancellationException) {
             val dump = runCatching { driver.dump() }.getOrNull()
             dump?.let { log.saveDump("job timeout", it) }
             val result = progress.classify("job", "Job exceeded ${settings.jobTimeoutMs}ms", dump, retryable = true)
-            runCatching { tidyUp(driver, before, relock, unsentDraft = job.message.takeIf { result is SendResult.Failed }) }
+            runCatching { tidyUp(driver, before, relock, unsentDraft = job.message.takeIf { result is SendResult.Failed }, returnTo = returnTo) }
             return result
         } finally {
             service.active.set(false)
@@ -205,7 +210,7 @@ class AccessibilitySender(
      * [unsentDraft] is cleared from the composer first, so a message pre-filled by the chat link
      * doesn't wait in WhatsApp as a draft that could be sent by accident later (I10).
      */
-    private suspend fun tidyUp(driver: UiDriver, before: UnlockOutcome, relock: Boolean, unsentDraft: String?) {
+    private suspend fun tidyUp(driver: UiDriver, before: UnlockOutcome, relock: Boolean, unsentDraft: String?, returnTo: String?) {
         unsentDraft?.let { clearDraft(driver, it) }
         // Out of the chat; out of any search a failure left open, which may hold the Chat Lock secret
         // code; and out of any Chat Lock prompt or secret-code sheet, which would derail the next attempt.
@@ -214,9 +219,43 @@ class AccessibilitySender(
         }
         if (relock || before.screenWasOff) {
             wake.relock(driver)
-        } else {
+        } else if (!reopen(returnTo)) {
             driver.home()
         }
+    }
+
+    /**
+     * The app in front, by its application window, so a keyboard being typed with isn't taken for it.
+     * Just after the countdown's notification goes there can be none for a moment, or only the system
+     * UI's: it waits briefly for an app's.
+     */
+    private suspend fun frontApp(driver: UiDriver): String? {
+        var front: String? = null
+        driver.waitUntil(FRONT_APP_WAIT_MS) { driver.foregroundAppPackage()?.takeIf { it != SYSTEM_UI }?.also { front = it } != null }
+        return front
+    }
+
+    /**
+     * Brings back [pkg], the app the user was in before the send, with its task as it was (features
+     * F1). False when that was the launcher, this app, the system UI or unknown, or it can't be
+     * opened: then Home is the place to go.
+     *
+     * WhatsApp itself can't be put back as it was: the send used its screens, and getting back the
+     * chat the user had open would mean finding it again by name, with Chat Lock and chats sharing a
+     * name in the way. It comes back at its chat list, which tidyUp has backed out to; the countdown
+     * said beforehand that a send was coming.
+     */
+    private fun reopen(pkg: String?): Boolean {
+        if (pkg == null || pkg == context.packageName || pkg == SYSTEM_UI) return false
+        val pm = context.packageManager
+        val launcher = pm.resolveActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)?.activityInfo?.packageName
+        if (pkg == launcher) return false
+        val launch = pm.getLaunchIntentForPackage(pkg) ?: return false
+        // Without RESET_TASK_IF_NEEDED its existing task comes back as it was, rather than restarting.
+        launch.flags = (launch.flags or Intent.FLAG_ACTIVITY_NEW_TASK) and Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED.inv()
+        return runCatching { context.startActivity(launch) }
+            .onSuccess { log.info("tidyUp: back to $pkg") }
+            .isSuccess
     }
 
     /** Only text that is exactly the scheduled message is cleared, never a draft of the user's own. */
@@ -232,6 +271,8 @@ class AccessibilitySender(
     private companion object {
         /** Chat, search, search box, chat list, WhatsApp itself, and one spare. */
         const val MAX_BACKS = 6
+        const val SYSTEM_UI = "com.android.systemui"
+        const val FRONT_APP_WAIT_MS = 2_000L
     }
 
     @Suppress("DEPRECATION")
