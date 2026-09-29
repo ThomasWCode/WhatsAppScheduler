@@ -488,6 +488,8 @@ private fun SendNowDialog(group: List<Schedule>, copyOnly: Boolean, onDismiss: (
     val explanation = when {
         copyOnly && recurring -> "This sends that message now. The series carries on as scheduled."
         next == null && recurring -> "This sends an extra copy. The schedule itself is not changed."
+        next == null && !recurring && plan.copies.size < group.size ->
+            "This sends it again only to ${groupTitle(group.filter { m -> plan.copies.any { it.scheduleId == m.id } })}, not to the others."
         next == null && schedule.attention == Attention.UNCERTAIN -> "It may already have gone out, so check the chat first. This sends it again."
         next == null && sentBefore -> "It has already been sent, so this sends it again."
         next == null -> "It wasn't sent at its time. This sends it now."
@@ -538,5 +540,18 @@ internal fun sendNowPlan(group: List<Schedule>): SendNowPlan {
         val pending = member.nextAtMillis?.takeIf { member.rule == Recurrence.Once || member.enabled }
         pending?.let { SendRequest(member.id, SendKind.SEND_NOW, it) }
     }
-    return SendNowPlan(early, group.map { SendRequest(it.id, SendKind.EXTRA_COPY) })
+    return SendNowPlan(early, copiesFor(group).map { SendRequest(it.id, SendKind.EXTRA_COPY) })
+}
+
+/**
+ * Who a copy of a one-off goes to: the members it didn't reach, so retrying one failure doesn't send
+ * the others a second message; failing that, the ones it may have reached (the prompt for those says
+ * to check the chat first); and everyone only when it reached them all, which is asking to send it
+ * again. A series' extra copy goes to everyone.
+ */
+internal fun copiesFor(group: List<Schedule>): List<Schedule> {
+    if (group.first().rule != Recurrence.Once) return group
+    val reached = group.filter { it.shownStatus == SendStatus.SENT }
+    val maybe = group.filter { it.shownStatus == SendStatus.UNCERTAIN }
+    return (group - (reached + maybe).toSet()).ifEmpty { maybe }.ifEmpty { group }
 }
