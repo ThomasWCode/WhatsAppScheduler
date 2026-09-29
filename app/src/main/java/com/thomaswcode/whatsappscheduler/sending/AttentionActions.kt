@@ -69,8 +69,12 @@ class AttentionActions(
      */
     suspend fun postpone(seen: Schedule, at: Instant): String? {
         if (!at.isAfter(clock.instant().plusSeconds(59))) return "Pick a time at least a minute from now."
-        if (sendState().isBusy(seen.id)) return "It's being sent now, so it wasn't moved."
-        val moved = repository.postponeAll(listOf(seen), at).orEmpty()
+        // Checked and moved while no send can be taking the row, as for Discard: a send queued just before
+        // is refused here, and one after reads the moved row, no longer the occurrence it was for.
+        val moved = admission.withLock {
+            if (sendState().isBusy(seen.id)) return "It's being sent now, so it wasn't moved."
+            repository.postponeAll(listOf(seen), at).orEmpty()
+        }
         if (moved.isEmpty()) return "It had just been sent or changed, so it wasn't moved."
         var armed = true
         moved.forEach { m ->
