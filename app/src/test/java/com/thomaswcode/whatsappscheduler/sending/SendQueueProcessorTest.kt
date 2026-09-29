@@ -393,6 +393,24 @@ class SendQueueProcessorTest {
     }
 
     @Test
+    fun aSeriesWhoseNextAlarmCantBeSetAfterPostponeSaysSo() = runTest {
+        store.put(daily())
+        alarms.failing = true
+        processor(FakeSender(), headsUp = FakeHeadsUp(choice = HeadsUpChoice.POSTPONE)).run { enqueue(scheduled()); drain() }
+        assertEquals(listOf("unarmed Mum", "held Mum"), notifier.events)
+        assertEquals(listOf(listOf(1_001L)), notifier.heldGroups)
+    }
+
+    @Test
+    fun postponeDuringACallThatBeganInTheCountdownOpensNoPicker() = runTest {
+        store.put(oneOff())
+        processor(FakeSender(), headsUp = FakeHeadsUp(choice = HeadsUpChoice.POSTPONE, callAfterFirstAsk = 1)).run { enqueue(scheduled()); drain() }
+        assertEquals(Attention.HELD, store.row(1).attention)
+        assertEquals(listOf("held Mum"), notifier.events)
+        assertTrue(notifier.heldGroups.isEmpty())
+    }
+
+    @Test
     fun postponingABatchOpensOnePicker() = runTest {
         store.put(oneOff(1).copy(batchId = "b"))
         store.put(oneOff(2).copy(batchId = "b", targetName = "Dad"))
@@ -634,8 +652,14 @@ class SendQueueProcessorTest {
 
         override suspend fun hold(id: Long, occurrenceAtMillis: Long, ranAt: Instant, detail: String): HeldRun? {
             val current = rows[id]?.takeIf { it.nextAtMillis == occurrenceAtMillis } ?: return null
-            val waiting = current.copy(nextAtMillis = null, attention = Attention.HELD).also(::put)
-            return HeldRun(waiting, waiting)
+            if (current.recurrence == "ONCE") {
+                val waiting = current.copy(nextAtMillis = null, attention = Attention.HELD).also(::put)
+                return HeldRun(waiting, waiting)
+            }
+            // A series goes on to its next day; the occurrence waits as a one-off copy of its own.
+            val series = current.copy(nextAtMillis = occurrenceAtMillis + Duration.ofDays(1).toMillis()).also(::put)
+            val copy = current.copy(id = 1_000 + id, recurrence = "ONCE", nextAtMillis = null, attention = Attention.HELD, sourceScheduleId = id).also(::put)
+            return HeldRun(series, copy)
         }
 
         override suspend fun recordMissed(id: Long, occurrenceAtMillis: Long, detail: String, sentTo: String, ranAt: Instant): HeldRun? {
@@ -676,6 +700,9 @@ class SendQueueProcessorTest {
         override fun held(schedules: List<Schedule>, pick: Boolean) {
             schedules.forEach { events += "held ${it.targetName}" }
             if (pick) heldGroups += schedules.map { it.id }
+        }
+        override fun unarmed(schedule: Schedule) {
+            events += "unarmed ${schedule.targetName}"
         }
 
         val missedIds = mutableListOf<Long>()
