@@ -26,6 +26,8 @@ class AlarmScheduler(
     private val repository: ScheduleRepository,
     private val sendState: SendStateHolder,
     private val log: TraceLog,
+    /** Removes a schedule's pre-flight warning unless it is about the send due at the time given (FallbackNotifier). */
+    private val clearWarning: (scheduleId: Long, unlessFor: Long?) -> Unit = { _, _ -> },
 ) : ScheduleAlarms {
     private val alarmManager get() = context.getSystemService(AlarmManager::class.java)
 
@@ -48,6 +50,8 @@ class AlarmScheduler(
             alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next, fire)
         }
         armPreflight(schedule.id, next)
+        // A warning about another time is about a send that is no longer due.
+        runCatching { clearWarning(schedule.id, next) }
     }
 
     fun cancel(scheduleId: Long) {
@@ -55,6 +59,8 @@ class AlarmScheduler(
         PendingIntent.getBroadcast(context, scheduleId.toInt(), fireIntent(scheduleId), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_NO_CREATE)
             ?.let(alarmManager::cancel)
         cancelPreflight(scheduleId)
+        // Nothing is due any more, so neither is a warning about it.
+        runCatching { clearWarning(scheduleId, null) }
     }
 
     /**

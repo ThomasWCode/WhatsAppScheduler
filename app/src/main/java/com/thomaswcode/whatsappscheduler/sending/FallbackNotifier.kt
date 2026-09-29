@@ -74,7 +74,8 @@ class FallbackNotifier(private val context: Context, private val notifications: 
 
     /**
      * What the pre-flight check found would make the send due at [occurrenceAtMillis] fail (features
-     * F5), with the way to fix it. It goes when that send is made, or once it can't matter any more.
+     * F5), with the way to fix it. It goes once that send is no longer due (it ran, or the schedule was
+     * moved, switched off or deleted), or an hour after it was due.
      */
     fun notifyWillFail(schedule: Schedule, occurrenceAtMillis: Long, problem: HealthItem) {
         val fix = when {
@@ -90,12 +91,20 @@ class FallbackNotifier(private val context: Context, private val notifications: 
             notifications.fallback(
                 "Your $at message to ${schedule.targetName} will fail", problem.message, tap,
                 listOfNotNull(problem.fixLabel?.let { "Fix" to tap }), lifetimeMs = untilSendIsOver.coerceAtLeast(WILL_FAIL_AFTERWARDS_MS),
+                aboutMillis = occurrenceAtMillis,
             ),
         )
     }
 
-    /** The pre-flight check found nothing wrong (any more). */
-    fun cancelWillFail(scheduleId: Long) = notifications.cancel(Notifications.ID_PREFLIGHT_BASE + scheduleId.toInt())
+    /**
+     * Removes the schedule's pre-flight warning: the check found nothing wrong (any more), or the send it
+     * was about is no longer due. One about the send due at [unlessFor] stays.
+     */
+    fun cancelWillFail(scheduleId: Long, unlessFor: Long? = null) {
+        val id = Notifications.ID_PREFLIGHT_BASE + scheduleId.toInt()
+        if (unlessFor != null && notifications.aboutOf(id) == unlessFor) return
+        notifications.cancel(id)
+    }
 
     fun notifyPinPaused(reason: String) {
         val open = PendingIntent.getActivity(
@@ -129,17 +138,14 @@ class FallbackNotifier(private val context: Context, private val notifications: 
         }
     }
 
-    /** Removes the schedule's prompt, which is stale once it has been sent, edited or deleted (B10), and any pre-flight warning. */
-    fun cancel(scheduleId: Long) {
-        notifications.cancel(Notifications.ID_FALLBACK_BASE + scheduleId.toInt())
-        cancelWillFail(scheduleId)
-    }
+    /**
+     * Removes the schedule's prompt, which is stale once it has been sent, edited or deleted (B10). A
+     * pre-flight warning is about its next send, not this, and goes with that send (AlarmScheduler).
+     */
+    fun cancel(scheduleId: Long) = notifications.cancel(Notifications.ID_FALLBACK_BASE + scheduleId.toInt())
 
-    /** A prompt about how the send went also answers a pre-flight warning for it, which goes. */
-    private fun show(schedule: Schedule, title: String, text: String, tap: PendingIntent, actions: List<Pair<String, PendingIntent>>) {
-        cancelWillFail(schedule.id)
+    private fun show(schedule: Schedule, title: String, text: String, tap: PendingIntent, actions: List<Pair<String, PendingIntent>>) =
         notifications.show(Notifications.ID_FALLBACK_BASE + schedule.id.toInt(), notifications.fallback(title, text, tap, actions))
-    }
 
     /**
      * Postpone… for a one-off. A series' missed occurrence isn't moved from here: Postpone moves a
