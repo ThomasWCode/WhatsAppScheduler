@@ -9,4 +9,73 @@
     <string name="notification_channel_sent">Sent</string>
     <string name="notification_channel_heads_up">Before sending</string>
     <string name="share_target_label">Schedule on WhatsApp</string>
+
+    <!-- Shared actions and labels -->
+    <string name="action_undo">Undo</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_discard">Discard</string>
+    <string name="action_check">Check</string>
+    <string name="action_resume">Resume</string>
+    <string name="action_postpone_ellipsis">Postpone…</string>
+    <string name="action_send_now">Send now</string>
+    <string name="action_send_now_ellipsis">Send now…</string>
+    <string name="action_send_again">Send again</string>
+    <string name="action_send_again_ellipsis">Send again…</string>
+    <string name="action_send_early">Send early</string>
+    <string name="action_send_a_copy">Send a copy</string>
+    <string name="action_test_dry_run">Test (dry run)</string>
+    <string name="action_open_chat">Open chat</string>
+    <string name="action_mark_as_sent">Mark as sent</string>
+    <string name="settings_title">Settings</string>
+    <string name="new_message">New message</string>
+    <string name="chat_lock">Chat Lock</string>
+    <string name="group">Group</string>
+    <string name="error_with_reason">%1$s (%2$s).</string>
+    <string name="pick_a_later_minute">Pick a time at least a minute from now.</string>
+    <string name="being_sent_not_moved">It\'s being sent now, so it wasn\'t moved.</string>
+
+    <!-- Schedule list -->
+    <string name="list_empty">No scheduled messages yet. Tap New message to add one.</string>
+    <string name="list_section_attention">Needs attention</string>
+    <string name="list_section_upcoming">Upcoming</string>
+    <string name="list_section_repeating">Repeating</string>
+    <string name="list_section_sent">Sent (%1$d)</string>
+    <string name="list_show_sent">Show sent</string>
+    <string name="list_hide_sent">Hide sent</string>
+    <string name="list_repeat_to">Repeat to %1$s</string>
+    <string name="list_more_for">More for %1$s</string>
+    <string name="list_check_chats_offer">Check %1$s in WhatsApp now?</string>
+    <string name="list_being_sent_cant_change">It\'s being sent now. You can change it once that has finished.</string>
+    <string name="list_moved_to">Moved to %1$s</string>
+    <string name="list_busy_about_to_send">About to send…</string>
+    <string name="list_busy_waiting_to_retry">Waiting to try again…</string>
+    <string name="list_busy_sending">Sending…</string>
+    <string name="list_busy_queued">Queued to send</string>
+    <string name="list_deleted">Deleted: %1$s</string>
+    <string name="list_discarded">Discarded: %1$s</string>
+    <string name="list_dismissed">Dismissed: %1$s</string>
+    <string name="list_couldnt_delete">Couldn\'t delete</string>
+    <string name="list_couldnt_undo">Couldn\'t undo</string>
+    <string name="list_couldnt_dismiss">Couldn\'t dismiss</string>
+    <string name="list_couldnt_postpone">Couldn\'t postpone</string>
+    <string name="list_couldnt_mark_sent">Couldn\'t mark it as sent</string>
+    <string name="list_changed_not_moved">It had just been sent or changed, so it wasn\'t moved.</string>
+    <string name="list_moved_unarmed">%1$s, but its alarm couldn\'t be set: use Re-arm all alarms in Settings</string>
+    <string name="list_being_sent_cant_move_back">It\'s being sent now, so it can\'t be moved back.</string>
+    <string name="list_not_moved_back">It has been sent, changed or is about to be sent, so it wasn\'t moved back.</string>
+    <string name="list_moved_back_unarmed">Moved back, but its alarm couldn\'t be set: use Re-arm all alarms in Settings.</string>
+
+    <!-- Send now dialog -->
+    <string name="send_now_title">Send to %1$s now?</string>
+    <string name="send_now_quote">\"%1$s\"</string>
+    <string name="send_now_series_carries_on">This sends that message now. The series carries on as scheduled.</string>
+    <string name="send_now_extra_copy">This sends an extra copy. The schedule itself is not changed.</string>
+    <string name="send_now_only_to">This sends it again only to %1$s, not to the others.</string>
+    <string name="send_now_may_have_gone">It may already have gone out, so check the chat first. This sends it again.</string>
+    <string name="send_now_sent_before">It has already been sent, so this sends it again.</string>
+    <string name="send_now_missed">It wasn\'t sent at its time. This sends it now.</string>
+    <string name="send_now_early_or_copy">Send the %1$s message early, or send an extra copy and keep that one as it is.</string>
+    <string name="send_now_instead_partial">It will be sent now instead of at %1$s, to the recipients it hasn\'t gone to yet.</string>
+    <string name="send_now_instead">It will be sent now instead of at %1$s.</string>
 </resources>

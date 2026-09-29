@@ -1,6 +1,7 @@
 package com.thomaswcode.whatsappscheduler
 
 import android.content.Context
+import androidx.annotation.StringRes
 import com.thomaswcode.whatsappscheduler.data.Housekeeping
 import com.thomaswcode.whatsappscheduler.data.RecipientRepository
 import com.thomaswcode.whatsappscheduler.data.ScheduleRepository
@@ -36,6 +37,9 @@ import kotlinx.coroutines.sync.withLock
 class AppContainer(context: Context) {
 
     private val appContext = context.applicationContext
+
+    /** Text from strings.xml, for code without a Context of its own, such as the view models. */
+    fun text(@StringRes id: Int, vararg args: Any): String = appContext.getString(id, *args)
 
     val database: AppDatabase by lazy { AppDatabase.build(appContext) }
     val repository: ScheduleRepository by lazy { ScheduleRepository(database) }

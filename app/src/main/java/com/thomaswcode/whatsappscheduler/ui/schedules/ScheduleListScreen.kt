@@ -2,6 +2,7 @@ package com.thomaswcode.whatsappscheduler.ui.schedules
 
 import android.content.Intent
 import android.widget.Toast
+import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -64,6 +65,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -74,6 +77,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.thomaswcode.whatsappscheduler.AppContainer
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.data.db.Attention
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.data.db.SendStatus
@@ -120,6 +124,8 @@ fun ScheduleListScreen(
     quick: QuickScheduleViewModel = viewModel(factory = QuickScheduleViewModel.factory(container)),
 ) {
     val context = LocalContext.current
+    // For text needed outside composition (events, callbacks): follows configuration changes, unlike context.
+    val resources = LocalResources.current
     val schedules by vm.schedules.collectAsStateWithLifecycle()
     val sections = remember(schedules) { ListSections.of(schedules) }
     val latestRuns by vm.latestRuns.collectAsStateWithLifecycle()
@@ -172,9 +178,12 @@ fun ScheduleListScreen(
                     val undo = event.createdIds
                     // Chats found by name, new just now: offered a check once, all together, after the Undo has gone.
                     val offer = event.checkOffers.takeIf { it.isNotEmpty() }?.let { chats ->
-                        ScheduleListViewModel.FollowUp("Check ${QuickScheduleViewModel.quoted(chats)} in WhatsApp now?", "Check") { quick.checkChats(chats) }
+                        ScheduleListViewModel.FollowUp(
+                            resources.getString(R.string.list_check_chats_offer, QuickScheduleViewModel.quoted(chats)),
+                            resources.getString(R.string.action_check),
+                        ) { quick.checkChats(chats) }
                     }
-                    if (undo != null) announce(event.summary, "Undo", offer) { quick.undo(undo) } else announce(event.summary, followUp = offer)
+                    if (undo != null) announce(event.summary, resources.getString(R.string.action_undo), offer) { quick.undo(undo) } else announce(event.summary, followUp = offer)
                 }
                 // A toast, not the snackbar: the result usually arrives with the sheet open, which covers it.
                 is QuickEvent.Checked -> Toast.makeText(context, event.message, Toast.LENGTH_LONG).show()
@@ -187,9 +196,9 @@ fun ScheduleListScreen(
     LaunchedEffect(vm) {
         vm.eventFlow.collect { event ->
             when (event) {
-                is ListEvent.Deleted -> announce(event.summary, "Undo") { vm.undoDelete(event.removed, event.prompted) }
-                is ListEvent.Dismissed -> announce(event.summary, "Undo") { vm.undoDismiss(event.previous, event.prompted) }
-                is ListEvent.Postponed -> announce(event.summary, "Undo") { vm.undoPostpone(event.moved, event.prompted) }
+                is ListEvent.Deleted -> announce(event.summary, resources.getString(R.string.action_undo)) { vm.undoDelete(event.removed, event.prompted) }
+                is ListEvent.Dismissed -> announce(event.summary, resources.getString(R.string.action_undo)) { vm.undoDismiss(event.previous, event.prompted) }
+                is ListEvent.Postponed -> announce(event.summary, resources.getString(R.string.action_undo)) { vm.undoPostpone(event.moved, event.prompted) }
                 is ListEvent.Failed -> announce(event.message)
             }
         }
@@ -221,14 +230,14 @@ fun ScheduleListScreen(
         ScheduleRow(
             group = group,
             outlined = group.any { it.id == outlined },
-            line = busy ?: statusLine(section, group, now, latestRuns, timeFormat),
+            line = busy?.let { stringResource(it) } ?: statusLine(section, group, now, latestRuns, timeFormat),
             busy = busy != null,
             needsYou = section == Section.ATTENTION,
             switchedOn = if (section == Section.REPEATING) first.enabled else null,
             onSwitch = { vm.setEnabled(group, it) },
             onOpen = when {
                 // B08: what is being sent can't be changed under the send.
-                busy != null -> { { announce("It's being sent now. You can change it once that has finished.") } }
+                busy != null -> { { announce(resources.getString(R.string.list_being_sent_cant_change)) } }
                 // Sent: the main action is to send it again (§8). A one-off opens the quick sheet (§6).
                 section == Section.SENT -> { { quick.openSendAgain(group) } }
                 once -> { { quick.openEdit(group) } }
@@ -238,39 +247,44 @@ fun ScheduleListScreen(
                 Section.ATTENTION -> listOfNotNull(
                     // A series' missed occurrence can't be moved yet: it would move the series' next one. One that
                     // may have gone out is checked first (Open chat), not sent again later.
-                    if (once && first.attention != Attention.UNCERTAIN) "Postpone…" to postpone else null,
-                    "Send now…" to { askToSend(group, copyOnly = !once) },
-                    "Test (dry run)" to test,
-                    if (once) "Delete" to { vm.delete(group) } else null,
+                    if (once && first.attention != Attention.UNCERTAIN) stringResource(R.string.action_postpone_ellipsis) to postpone else null,
+                    stringResource(R.string.action_send_now_ellipsis) to { askToSend(group, copyOnly = !once) },
+                    stringResource(R.string.action_test_dry_run) to test,
+                    if (once) stringResource(R.string.action_delete) to { vm.delete(group) } else null,
                 )
                 Section.UPCOMING -> listOfNotNull(
-                    "Postpone…" to postpone,
-                    "Send now…" to { askToSend(group) },
-                    "Test (dry run)" to test,
+                    stringResource(R.string.action_postpone_ellipsis) to postpone,
+                    stringResource(R.string.action_send_now_ellipsis) to { askToSend(group) },
+                    stringResource(R.string.action_test_dry_run) to test,
                     // One-offs have no switch (R4); one switched off before that can still be resumed.
-                    if (!first.enabled) "Resume" to { vm.setEnabled(group, true) } else null,
-                    "Delete" to { vm.delete(group) },
+                    if (!first.enabled) stringResource(R.string.action_resume) to { vm.setEnabled(group, true) } else null,
+                    stringResource(R.string.action_delete) to { vm.delete(group) },
                 )
                 Section.REPEATING -> listOfNotNull(
-                    if (canPostpone) "Postpone…" to postpone else null,
-                    "Send now…" to { askToSend(group) },
-                    "Test (dry run)" to test,
-                    "Delete" to { vm.delete(group) },
+                    if (canPostpone) stringResource(R.string.action_postpone_ellipsis) to postpone else null,
+                    stringResource(R.string.action_send_now_ellipsis) to { askToSend(group) },
+                    stringResource(R.string.action_test_dry_run) to test,
+                    stringResource(R.string.action_delete) to { vm.delete(group) },
                 )
-                Section.SENT -> listOf("Send again…" to { quick.openSendAgain(group) }, "Delete" to { vm.delete(group) })
+                Section.SENT -> listOf(
+                    stringResource(R.string.action_send_again_ellipsis) to { quick.openSendAgain(group) },
+                    stringResource(R.string.action_delete) to { vm.delete(group) },
+                )
             },
             actions = when {
-                section == Section.SENT -> listOf("Send again…" to { quick.openSendAgain(group) })
+                section == Section.SENT -> listOf(stringResource(R.string.action_send_again_ellipsis) to { quick.openSendAgain(group) })
                 section != Section.ATTENTION -> emptyList()
                 first.attention == Attention.UNCERTAIN -> listOf(
-                    "Open chat" to { runCatching { context.startActivity(FallbackActivity.checkChat(context, first).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } },
-                    "Mark as sent" to { vm.markSent(group) },
-                    "Send again" to { askToSend(group, copyOnly = !once) },
+                    stringResource(R.string.action_open_chat) to {
+                        runCatching { context.startActivity(FallbackActivity.checkChat(context, first).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    },
+                    stringResource(R.string.action_mark_as_sent) to { vm.markSent(group) },
+                    stringResource(R.string.action_send_again) to { askToSend(group, copyOnly = !once) },
                 )
                 else -> listOfNotNull(
-                    "Send now" to { askToSend(group, copyOnly = !once) },
-                    if (once) "Postpone…" to postpone else null,
-                    "Discard" to { vm.discard(group) },
+                    stringResource(R.string.action_send_now) to { askToSend(group, copyOnly = !once) },
+                    if (once) stringResource(R.string.action_postpone_ellipsis) to postpone else null,
+                    stringResource(R.string.action_discard) to { vm.discard(group) },
                 )
             },
             // In Needs attention a swipe discards: for a series that means this occurrence, not the series.
@@ -286,17 +300,17 @@ fun ScheduleListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("WhatsApp Scheduler") },
+                title = { Text(stringResource(R.string.app_name)) },
                 // Logs live under Settings → Diagnostics now (R7); failures surface in Needs attention.
-                actions = { IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, contentDescription = "Settings") } },
+                actions = { IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings_title)) } },
             )
         },
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = quick::openNew,
                 // Material's extended FAB takes its accessible name from the icon, not the text (I11).
-                icon = { Icon(Icons.Default.Edit, contentDescription = "New message") },
-                text = { Text("New message") },
+                icon = { Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.new_message)) },
+                text = { Text(stringResource(R.string.new_message)) },
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -315,7 +329,7 @@ fun ScheduleListScreen(
             if (sections.isEmpty) {
                 item(key = "empty") {
                     Text(
-                        "No scheduled messages yet. Tap New message to add one.",
+                        stringResource(R.string.list_empty),
                         style = MaterialTheme.typography.bodyLarge,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth().padding(vertical = 64.dp),
@@ -323,18 +337,20 @@ fun ScheduleListScreen(
                 }
             }
             listOf(
-                Triple(Section.ATTENTION, "Needs attention", sections.attention),
-                Triple(Section.UPCOMING, "Upcoming", sections.upcoming),
-                Triple(Section.REPEATING, "Repeating", sections.repeating),
+                Triple(Section.ATTENTION, R.string.list_section_attention, sections.attention),
+                Triple(Section.UPCOMING, R.string.list_section_upcoming, sections.upcoming),
+                Triple(Section.REPEATING, R.string.list_section_repeating, sections.repeating),
             ).forEach { (section, title, groups) ->
                 if (groups.isNotEmpty()) {
-                    item(key = "header-$section") { SectionHeader(title) }
+                    item(key = "header-$section") { SectionHeader(stringResource(title)) }
                     // Keyed per section: a series that needs attention is in two sections at once.
                     items(groups, key = { "$section-${it.first().id}" }) { group -> row(section, group, Modifier.animateItem()) }
                 }
             }
             if (sections.sent.isNotEmpty()) {
-                item(key = "header-SENT") { SectionHeader("Sent (${sections.sent.size})", expanded = sentOpen) { sentOpen = !sentOpen } }
+                item(key = "header-SENT") {
+                    SectionHeader(stringResource(R.string.list_section_sent, sections.sent.size), expanded = sentOpen) { sentOpen = !sentOpen }
+                }
                 if (sentOpen) items(sections.sent, key = { "SENT-${it.first().id}" }) { group -> row(Section.SENT, group, Modifier.animateItem()) }
             }
         }
@@ -358,7 +374,7 @@ fun ScheduleListScreen(
             schedule = group.first(),
             now = now,
             onDismiss = vm::cancelPostpone,
-            onMove = { at -> vm.postpone(at, "Moved to " + FriendlyTime.dayAndTime(at.atZone(now.zone), now, timeFormat)) },
+            onMove = { at -> vm.postpone(at, resources.getString(R.string.list_moved_to, FriendlyTime.dayAndTime(at.atZone(now.zone), now, timeFormat))) },
         )
     }
 
@@ -381,7 +397,10 @@ private fun SectionHeader(title: String, expanded: Boolean? = null, onToggle: ((
             modifier = Modifier.weight(1f).semantics { heading() },
         )
         if (expanded != null) {
-            Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = if (expanded) "Hide sent" else "Show sent")
+            Icon(
+                if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = stringResource(if (expanded) R.string.list_hide_sent else R.string.list_show_sent),
+            )
         }
     }
 }
@@ -424,7 +443,7 @@ private fun ScheduleRow(
             // Normally the row is gone by now; if it stays (the delete failed), it comes back into place.
             scope.launch { swipe.reset() }
         },
-        backgroundContent = { SwipeBackground(swipe.dismissDirection, if (needsYou) "Discard" else "Delete") },
+        backgroundContent = { SwipeBackground(swipe.dismissDirection, stringResource(if (needsYou) R.string.action_discard else R.string.action_delete)) },
     ) {
         Card(
             onClick = onOpen,
@@ -438,9 +457,11 @@ private fun ScheduleRow(
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (group.any { it.isLocked }) Icon(Icons.Default.Lock, contentDescription = "Chat Lock", modifier = Modifier.size(16.dp).padding(end = 2.dp))
+                            if (group.any { it.isLocked }) {
+                                Icon(Icons.Default.Lock, contentDescription = stringResource(R.string.chat_lock), modifier = Modifier.size(16.dp).padding(end = 2.dp))
+                            }
                             if (group.size == 1 && first.targetKind == TargetKind.GROUP) {
-                                Icon(Icons.Default.Group, contentDescription = "Group", modifier = Modifier.size(16.dp).padding(end = 2.dp))
+                                Icon(Icons.Default.Group, contentDescription = stringResource(R.string.group), modifier = Modifier.size(16.dp).padding(end = 2.dp))
                             }
                             Text(groupTitle(group), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
@@ -458,14 +479,17 @@ private fun ScheduleRow(
                         Text(first.message, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                     if (switchedOn != null) {
+                        val repeatTo = stringResource(R.string.list_repeat_to, groupTitle(group))
                         Switch(
                             checked = switchedOn,
                             onCheckedChange = if (busy) null else onSwitch,
-                            modifier = Modifier.padding(start = 4.dp).semantics { contentDescription = "Repeat to ${groupTitle(group)}" },
+                            modifier = Modifier.padding(start = 4.dp).semantics { contentDescription = repeatTo },
                         )
                     }
                     Box {
-                        IconButton(onClick = { menuOpen = true }, enabled = !busy) { Icon(Icons.Default.MoreVert, contentDescription = "More for ${groupTitle(group)}") }
+                        IconButton(onClick = { menuOpen = true }, enabled = !busy) {
+                            Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.list_more_for, groupTitle(group)))
+                        }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                             menu.forEach { (label, action) ->
                                 DropdownMenuItem(text = { Text(label) }, onClick = { menuOpen = false; action() }, enabled = !busy)
@@ -519,13 +543,14 @@ private fun Avatar(name: String) {
  * "Sending…" while any member is being sent, "About to send…" during its countdown or a wait before it,
  * "Queued to send" while waiting its turn; null otherwise.
  */
-internal fun busyText(group: List<Schedule>, state: SendState): String? = when {
+@StringRes
+internal fun busyText(group: List<Schedule>, state: SendState): Int? = when {
     group.any { it.id == state.currentId } -> when (state.phase) {
-        SendPhase.WAITING -> "About to send…"
-        SendPhase.WAITING_TO_RETRY -> "Waiting to try again…"
-        else -> "Sending…"
+        SendPhase.WAITING -> R.string.list_busy_about_to_send
+        SendPhase.WAITING_TO_RETRY -> R.string.list_busy_waiting_to_retry
+        else -> R.string.list_busy_sending
     }
-    group.any { state.isBusy(it.id) } -> "Queued to send"
+    group.any { state.isBusy(it.id) } -> R.string.list_busy_queued
     else -> null
 }
 
@@ -545,40 +570,47 @@ private fun SendNowDialog(group: List<Schedule>, copyOnly: Boolean, onDismiss: (
     val sentBefore = schedule.attention == Attention.UNCERTAIN || (schedule.attention == null && schedule.shownStatus == SendStatus.SENT)
     val stampOf = rememberStampFormat()
     val explanation = when {
-        copyOnly && recurring -> "This sends that message now. The series carries on as scheduled."
-        next == null && recurring -> "This sends an extra copy. The schedule itself is not changed."
+        copyOnly && recurring -> stringResource(R.string.send_now_series_carries_on)
+        next == null && recurring -> stringResource(R.string.send_now_extra_copy)
         next == null && !recurring && plan.copies.size < group.size ->
-            "This sends it again only to ${groupTitle(group.filter { m -> plan.copies.any { it.scheduleId == m.id } })}, not to the others."
-        next == null && schedule.attention == Attention.UNCERTAIN -> "It may already have gone out, so check the chat first. This sends it again."
-        next == null && sentBefore -> "It has already been sent, so this sends it again."
-        next == null -> "It wasn't sent at its time. This sends it now."
-        recurring -> "Send the ${stampOf(next)} message early, or send an extra copy and keep that one as it is."
-        (early?.size ?: 0) < group.size -> "It will be sent now instead of at ${stampOf(next)}, to the recipients it hasn't gone to yet."
-        else -> "It will be sent now instead of at ${stampOf(next)}."
+            stringResource(R.string.send_now_only_to, groupTitle(group.filter { m -> plan.copies.any { it.scheduleId == m.id } }))
+        next == null && schedule.attention == Attention.UNCERTAIN -> stringResource(R.string.send_now_may_have_gone)
+        next == null && sentBefore -> stringResource(R.string.send_now_sent_before)
+        next == null -> stringResource(R.string.send_now_missed)
+        recurring -> stringResource(R.string.send_now_early_or_copy, stampOf(next))
+        (early?.size ?: 0) < group.size -> stringResource(R.string.send_now_instead_partial, stampOf(next))
+        else -> stringResource(R.string.send_now_instead, stampOf(next))
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Send to ${groupTitle(group)} now?") },
+        title = { Text(stringResource(R.string.send_now_title, groupTitle(group))) },
         text = {
             Column {
-                Text("\"${schedule.message.take(120)}${if (schedule.message.length > 120) "…" else ""}\"", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    stringResource(R.string.send_now_quote, schedule.message.take(120) + if (schedule.message.length > 120) "…" else ""),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
                 Spacer(Modifier.height(8.dp))
                 Text(explanation, style = MaterialTheme.typography.bodySmall)
             }
         },
         confirmButton = {
             when {
-                early != null && recurring -> TextButton(onClick = { onSend(early) }) { Text("Send early") }
-                early != null -> TextButton(onClick = { onSend(early) }) { Text("Send now") }
+                early != null && recurring -> TextButton(onClick = { onSend(early) }) { Text(stringResource(R.string.action_send_early)) }
+                early != null -> TextButton(onClick = { onSend(early) }) { Text(stringResource(R.string.action_send_now)) }
                 else -> TextButton(onClick = { onSend(plan.copies) }) {
-                    Text(if (recurring && !copyOnly) "Send a copy" else if (sentBefore) "Send again" else "Send now")
+                    Text(
+                        stringResource(
+                            if (recurring && !copyOnly) R.string.action_send_a_copy else if (sentBefore) R.string.action_send_again else R.string.action_send_now,
+                        ),
+                    )
                 }
             }
         },
         dismissButton = {
             Row {
-                if (early != null && recurring) TextButton(onClick = { onSend(plan.copies) }) { Text("Send a copy") }
-                TextButton(onClick = onDismiss) { Text("Cancel") }
+                if (early != null && recurring) TextButton(onClick = { onSend(plan.copies) }) { Text(stringResource(R.string.action_send_a_copy)) }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
             }
         },
     )
