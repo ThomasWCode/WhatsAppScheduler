@@ -430,7 +430,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
             val outcome = withContext(NonCancellable) {
                 runCatching {
                     // Once per chat, however the recipients were stored, so one chat can't get the message twice.
-                    val resolved = d.recipients.map { container.recipients.resolve(it) }.distinctBy { it.phoneE164 ?: "${it.kind}:${it.chatName.trim().lowercase()}" }
+                    val resolved = d.recipients.map { container.recipients.resolve(it) }.distinctBy { it.phoneE164 ?: "name:${it.chatName.trim().lowercase()}" }
                     val members = d.editingIds.mapNotNull { container.repository.get(it) }
                     val template = Schedule(
                         message = d.message.trim(), targetKind = TargetKind.CONTACT, targetName = "", phoneE164 = null, isLocked = false,

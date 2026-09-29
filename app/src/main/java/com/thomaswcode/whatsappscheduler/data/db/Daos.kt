@@ -100,11 +100,12 @@ interface RecipientDao {
     suspend fun otherByPhone(phoneE164: String, exceptId: Long): Recipient?
 
     /**
-     * Recipients found by chat name (groups, and contacts without a number). The name is matched in
-     * Kotlin (RecipientRepository): SQLite's NOCASE only folds ASCII, so "Équipe" wouldn't match "équipe".
+     * Recipients found by chat name: groups, and contacts without a number, which WhatsApp's search
+     * treats alike. The name is matched in Kotlin (RecipientRepository): SQLite's NOCASE only folds
+     * ASCII, so "Équipe" wouldn't match "équipe".
      */
-    @Query("SELECT * FROM recipients WHERE phoneE164 IS NULL AND kind = :kind ORDER BY id")
-    suspend fun namedOfKind(kind: TargetKind): List<Recipient>
+    @Query("SELECT * FROM recipients WHERE phoneE164 IS NULL ORDER BY id")
+    suspend fun named(): List<Recipient>
 
     @Insert
     suspend fun insert(recipient: Recipient): Long

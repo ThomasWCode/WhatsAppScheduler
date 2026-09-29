@@ -99,10 +99,11 @@ fun List<RecipientDraft>.distinctChats(): List<RecipientDraft> =
 
 /**
  * True when [other] would be the same chat as this draft: same stored recipient, same number, or same
- * named chat whatever the case, since WhatsApp's search falls back to a case-insensitive match.
+ * named chat whatever the case, since WhatsApp's search falls back to a case-insensitive match, and
+ * whatever the kind, since a group and a contact without a number are both found by that search.
  */
 fun RecipientDraft.sameChatAs(other: RecipientDraft): Boolean = when {
     recipientId != null && recipientId == other.recipientId -> true
     phoneE164 != null -> phoneE164 == other.phoneE164
-    else -> other.phoneE164 == null && kind == other.kind && chatName.trim().equals(other.chatName.trim(), ignoreCase = true)
+    else -> other.phoneE164 == null && chatName.trim().equals(other.chatName.trim(), ignoreCase = true)
 }

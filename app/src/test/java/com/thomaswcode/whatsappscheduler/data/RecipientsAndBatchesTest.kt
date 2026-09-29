@@ -129,6 +129,12 @@ class RecipientsAndBatchesTest {
     }
 
     @Test
+    fun aNamedChatIsOneRecipientWhateverItsKind() = runTest {
+        val stored = recipients.resolve(RecipientDraft(TargetKind.CONTACT, "Sam's flat"))
+        assertEquals(stored.id, recipients.resolve(RecipientDraft(TargetKind.GROUP, "sam's flat")).id)
+    }
+
+    @Test
     fun editedDetailsReachPendingSchedulesButNotSentOnes() = runTest {
         val m = recipients.resolve(mum)
         val pending = schedules.saveBatch(template(), listOf(m), now = now).saved.single()
