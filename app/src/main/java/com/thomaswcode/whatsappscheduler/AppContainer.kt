@@ -24,6 +24,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** Hand-wired dependency container; the app is small enough not to need a DI framework. */
 class AppContainer(context: Context) {
@@ -56,4 +57,19 @@ class AppContainer(context: Context) {
 
     /** Queues a send through the foreground service. */
     fun send(request: SendRequest) = SendService.enqueue(appContext, request)
+
+    private val linking = Mutex()
+
+    /**
+     * Links schedules from before recipients existed to recipients, once per install. It runs when the
+     * app starts, whichever screen it starts on (the Share sheet too), and is awaited before a
+     * recipient is removed: removing one unlinks its schedules, and linking afterwards would take them
+     * for old ones and bring the recipient back.
+     */
+    suspend fun linkRecipientsOnce() = linking.withLock {
+        if (!settings.recipientsLinked()) {
+            recipients.linkUnlinkedSchedules()
+            settings.markRecipientsLinked()
+        }
+    }
 }

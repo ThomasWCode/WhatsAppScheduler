@@ -134,6 +134,14 @@ class RecipientsAndBatchesTest {
     }
 
     @Test
+    fun aChipNotLinkedYetIsFoundAsTheStoredRecipient() = runTest {
+        val saved = recipients.resolve(mum)
+        // The number typed again, or picked before the lookup finished: no id yet, but the same chat.
+        assertEquals(saved.id, recipients.existing(RecipientDraft(TargetKind.CONTACT, "07400 123456?", phoneE164 = "+447400123456"))?.id)
+        assertNull(recipients.existing(RecipientDraft(TargetKind.CONTACT, "Someone new", phoneE164 = "+447400123499")))
+    }
+
+    @Test
     fun aGroupTypedInAnotherCaseIsTheSavedOne() = runTest {
         val saved = recipients.resolve(crew)
         assertEquals(saved.id, recipients.resolve(RecipientDraft(TargetKind.GROUP, "work crew")).id)
