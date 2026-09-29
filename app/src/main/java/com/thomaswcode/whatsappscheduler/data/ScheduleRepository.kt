@@ -35,7 +35,6 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
     private val recipients = db.recipientDao()
 
     fun observeSchedules(): Flow<List<Schedule>> = schedules.observeAll()
-    fun observeSchedule(id: Long): Flow<Schedule?> = schedules.observeById(id)
     fun observeLogs(limit: Int = 200): Flow<List<SendLog>> = logs.observeRecent(limit)
 
     suspend fun all(): List<Schedule> = schedules.getAll()
