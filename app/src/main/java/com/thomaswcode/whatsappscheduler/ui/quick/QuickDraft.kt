@@ -1,5 +1,6 @@
 package com.thomaswcode.whatsappscheduler.ui.quick
 
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
 import com.thomaswcode.whatsappscheduler.data.RecipientDraft
 import com.thomaswcode.whatsappscheduler.data.db.Recipient
@@ -73,6 +74,12 @@ data class QuickDraft(
 val RecipientsSaver = listSaver<List<RecipientDraft>, ArrayList<String>>(
     save = { chats -> chats.map { it.toStrings() } },
     restore = { saved -> saved.map(::recipientFrom) },
+)
+
+/** One chat, or none, in Bundle-safe form: e.g. whose details dialog is open, kept across a rotation. */
+val RecipientSaver = Saver<RecipientDraft?, ArrayList<String>>(
+    save = { it?.toStrings() },
+    restore = { recipientFrom(it) },
 )
 
 private fun RecipientDraft.toStrings(): ArrayList<String> =

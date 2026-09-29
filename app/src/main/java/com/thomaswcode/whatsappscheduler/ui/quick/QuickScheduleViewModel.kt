@@ -354,12 +354,12 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
             }
             saving = false
             outcome
-                .onSuccess { conflict ->
-                    if (conflict == null) {
-                        applyToDraft()
-                    } else {
+                .onSuccess { saved ->
+                    if (saved is DetailsSaved.Refused) {
                         val what = if (updated.phoneE164 != null) "that number" else "that name"
-                        error = "${conflict.displayName} already has $what. Choose ${conflict.displayName} instead."
+                        error = "${saved.existing.displayName} already has $what. Choose ${saved.existing.displayName} instead."
+                    } else {
+                        applyToDraft()
                     }
                 }
                 .onFailure {

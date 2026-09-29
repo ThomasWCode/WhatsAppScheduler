@@ -115,15 +115,27 @@ suspend fun AppContainer.recipientDraftFor(schedule: Schedule): RecipientDraft =
     schedule.recipientId?.let { recipients.get(it) }?.toDraft()
         ?: RecipientDraft(schedule.targetKind, schedule.targetName, phoneE164 = schedule.phoneE164, isLocked = schedule.isLocked)
 
+/** What saving recipient details did. */
+sealed interface DetailsSaved {
+    /** Saved to the stored recipient, and its pending schedules. */
+    data object Stored : DetailsSaved
+
+    /** Nothing is stored for the chat yet: the details go with its chip until the message is saved. */
+    data object NotStored : DetailsSaved
+
+    /** Refused: [existing] already is the chat the edit points to. */
+    data class Refused(val existing: Recipient) : DetailsSaved
+}
+
 /**
  * Recipient details (quick-schedule.md §3) saved to the stored recipient, which also updates its
- * pending schedules. Returns the recipient that already is that chat when the edit would make two of
- * one; null when saved, or when nothing is stored yet (the draft carries the details until then).
+ * pending schedules; or not, when nothing is stored for the chat yet, or another recipient already is
+ * the chat the edit points to.
  */
-suspend fun AppContainer.saveRecipientDetails(original: RecipientDraft, updated: RecipientDraft): Recipient? {
+suspend fun AppContainer.saveRecipientDetails(original: RecipientDraft, updated: RecipientDraft): DetailsSaved {
     // Also a chip not linked to it yet (a number typed, a lookup still running): saving would resolve it
     // to the stored recipient anyway, and the edit must land there.
-    val stored = recipients.existing(original) ?: return null
+    val stored = recipients.existing(original) ?: return DetailsSaved.NotStored
     // Only what the user changed: a chip that isn't linked yet may not know the stored name or Chat Lock,
     // and saving the dialog unchanged mustn't wipe them.
     val edited = stored.copy(
@@ -132,7 +144,7 @@ suspend fun AppContainer.saveRecipientDetails(original: RecipientDraft, updated:
         isLocked = if (updated.isLocked != original.isLocked) updated.isLocked else stored.isLocked,
     )
     // Refused rather than leaving two stored identities for one chat.
-    recipients.sameChatElsewhere(edited)?.let { return it }
+    recipients.sameChatElsewhere(edited)?.let { return DetailsSaved.Refused(it) }
     // Pending schedules just changed target: re-armed from the stored rows, and a Tap to send prompt they
     // had would open the chat as it was.
     recipients.updateDetails(edited).forEach { changed ->
@@ -141,5 +153,5 @@ suspend fun AppContainer.saveRecipientDetails(original: RecipientDraft, updated:
         runCatching { fallbackNotifier.cancel(changed.id) }.onFailure { log.error("Clearing a stale prompt failed", it) }
         runCatching { alarmScheduler.sync(changed) }.onFailure { log.error("Re-arming after a details edit failed", it) }
     }
-    return null
+    return DetailsSaved.Stored
 }
