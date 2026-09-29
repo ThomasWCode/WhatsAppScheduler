@@ -15,6 +15,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.thomaswcode.whatsappscheduler.AppContainer
 import com.thomaswcode.whatsappscheduler.data.RecipientDraft
 import com.thomaswcode.whatsappscheduler.data.ScheduleRepository
+import com.thomaswcode.whatsappscheduler.data.SentWhileEditing
 import com.thomaswcode.whatsappscheduler.data.contacts.ContactHit
 import com.thomaswcode.whatsappscheduler.data.db.Recipient
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
@@ -195,11 +196,30 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
                 message = schedule.message,
                 time = schedule.nextAtMillis?.let(TimeChoice::Exact),
                 editingIds = members.map { it.id },
+                editingRuns = members.map { it.lastRunAtMillis ?: -1L },
             )
             query = ""
             error = null
             visible = true
         }
+    }
+
+    /**
+     * Members that went out (or may have) while the sheet was open: nothing was saved, and they leave
+     * the edit, chips and all, so saving again changes only what is still to go. Sending it to them
+     * again is then a choice the user makes by adding them back.
+     */
+    private fun sentWhileEditing(sent: List<Schedule>) {
+        val ids = sent.map { it.id }.toSet()
+        val chats = sent.map { RecipientDraft(it.targetKind, it.targetName, phoneE164 = it.phoneE164, recipientId = it.recipientId) }
+        val kept = draft.editingIds.indices.filter { draft.editingIds[it] !in ids }
+        draft = draft.copy(
+            recipients = draft.recipients.filterNot { chip -> chats.any { chip.sameChatAs(it) } },
+            editingIds = kept.map { draft.editingIds[it] },
+            editingRuns = if (draft.editingRuns.size == draft.editingIds.size) kept.map { draft.editingRuns[it] } else emptyList(),
+        )
+        error = "It went to ${sent.joinToString { it.targetName }} while you were editing, so nothing was saved." +
+            if (draft.isEditing) " Save again to change the rest." else ""
     }
 
     /** Swiping the sheet away keeps the draft for the next time it opens. */
@@ -417,11 +437,11 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
                         firstAtMillis = at.toInstant().toEpochMilli(), zoneId = ZoneId.systemDefault().id,
                         recurrence = RecurrenceCodec.encode(Recurrence.Once), nextAtMillis = null,
                     )
-                    val change = container.repository.saveBatch(template, resolved, members)
+                    val change = container.repository.saveBatch(template, resolved, members, lastRunsSeen = d.lastRunsSeen())
                     // The rows exist from here on: if arming them fails, Save again must update these rows
                     // rather than add a second batch, which would send the message twice.
                     committed = true
-                    draft = draft.copy(editingIds = change.saved.map { it.id })
+                    draft = draft.copy(editingIds = change.saved.map { it.id }, editingRuns = change.saved.map { it.lastRunAtMillis ?: -1L })
                     // Removed members first, each on its own: their rows are gone, so a retry couldn't find
                     // them again, and a Tap to send left behind would offer the old message to them.
                     change.deleted.forEach { removed ->
@@ -451,6 +471,10 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
                     visible = false
                 }
                 .onFailure {
+                    if (it is SentWhileEditing) {
+                        sentWhileEditing(it.members)
+                        return@onFailure
+                    }
                     container.log.error("Quick schedule failed", it)
                     val reason = it.message ?: it.javaClass.simpleName
                     error = if (committed) "Saved, but its alarm couldn't be set ($reason). Tap Save to try again." else "Couldn't save ($reason). Try again."

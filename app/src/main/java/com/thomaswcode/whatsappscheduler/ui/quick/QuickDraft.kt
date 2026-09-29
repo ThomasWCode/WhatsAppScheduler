@@ -24,7 +24,13 @@ data class QuickDraft(
     val time: TimeChoice? = null,
     /** The one-off, or the members of a batch, being edited; empty for a new message. */
     val editingIds: List<Long> = emptyList(),
+    /** Each of [editingIds]' last run when the edit began (-1 for none), so one sent meanwhile is noticed. */
+    val editingRuns: List<Long> = emptyList(),
 ) {
+    /** [editingRuns] by member, for ScheduleRepository.saveBatch; none when they don't line up. */
+    fun lastRunsSeen(): Map<Long, Long?> =
+        if (editingRuns.size != editingIds.size) emptyMap() else editingIds.zip(editingRuns) { id, run -> id to run.takeIf { it >= 0 } }.toMap()
+
     val isEditing: Boolean get() = editingIds.isNotEmpty()
 
     companion object {
@@ -42,6 +48,7 @@ data class QuickDraft(
                         null -> ""
                     },
                     ArrayList(draft.editingIds),
+                    ArrayList(draft.editingRuns),
                 )
             },
             restore = { values ->
@@ -66,6 +73,7 @@ data class QuickDraft(
                         }
                     },
                     editingIds = values[3] as List<Long>,
+                    editingRuns = (values.getOrNull(4) as? List<Long>).orEmpty(),
                 )
             },
         )

@@ -32,8 +32,10 @@ class QuickDraftTest {
             message = "Stand-up moved to 10",
             time = TimeChoice.Chip(TimeChip.Kind.entries.first()),
             editingIds = listOf(7L, 8L),
+            editingRuns = listOf(-1L, 1_790_000_000_000L),
         )
         assertEquals(draft, roundTrip(draft))
+        assertEquals(mapOf(7L to null, 8L to 1_790_000_000_000L), draft.lastRunsSeen())
         val exact = QuickDraft(message = "Hi", time = TimeChoice.Exact(1_790_000_000_000L))
         assertEquals(exact, roundTrip(exact))
         assertEquals(QuickDraft(), roundTrip(QuickDraft()))
