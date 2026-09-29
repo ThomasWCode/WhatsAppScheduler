@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -50,12 +51,21 @@ object Routes {
 fun AppNav(container: AppContainer, destination: MutableStateFlow<String?>) {
     val nav = rememberNavController()
     val requested by destination.collectAsState()
+    // A row a notification asked to show (features F2); the list scrolls to it and clears this.
+    val focusRow = remember { MutableStateFlow<Long?>(null) }
     LaunchedEffect(requested) {
         when (val target = requested ?: return@LaunchedEffect) {
             MainActivity.DESTINATION_SETTINGS -> nav.navigate(Routes.SETTINGS) { launchSingleTop = true }
-            // A new schedule pre-filled from outside (Repeat… in the Share sheet). The launcher activity is
-            // exported, so anything else is ignored, and a malformed route mustn't crash the app.
-            else -> if (target == "edit/0" || target.startsWith("edit/0?")) runCatching { nav.navigate(target) }
+            // The launcher activity is exported, so anything else is ignored, and a malformed route mustn't
+            // crash the app.
+            else -> when {
+                target.startsWith(MainActivity.DESTINATION_ROW) -> target.removePrefix(MainActivity.DESTINATION_ROW).toLongOrNull()?.let { id ->
+                    nav.popBackStack(Routes.LIST, inclusive = false)
+                    focusRow.value = id
+                }
+                // A new schedule pre-filled from outside (Repeat… in the Share sheet).
+                target == "edit/0" || target.startsWith("edit/0?") -> runCatching { nav.navigate(target) }
+            }
         }
         destination.value = null
     }
@@ -67,6 +77,7 @@ fun AppNav(container: AppContainer, destination: MutableStateFlow<String?>) {
                 onRepeat = { nav.navigate(Routes.repeat(it)) },
                 onSettings = { nav.navigate(Routes.SETTINGS) },
                 onSetup = { nav.navigate(Routes.SETUP) },
+                focusRow = focusRow,
             )
         }
         // The editor's ViewModel reads "id" from its SavedStateHandle, which carries the route's arguments.

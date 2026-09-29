@@ -36,7 +36,7 @@ Unit tests (`./gradlew test`) cover the quick sheet's time chips and friendly ti
 | 30 | Settings → Keep sent messages for → 7 days, with a one-off sent more than 7 days ago; go back to the list (and again after switching away and back with 30 days → 7 days) | The one-off is gone from Sent at once; Logs → Sends still lists its send. |
 | 31 | In the sheet, long-press a group's chip → Check this chat now; then a made-up group name | WhatsApp opens, searches, opens the group and backs out to the app; a toast says it was found, and the details show "✓ Found in WhatsApp's search …". The made-up name gives "Couldn't find …". Nothing is typed in either. |
 | 32 | Settings → Test mode on; check the list, wait an hour (or set the phone clock on), check again | While on, the list and the sheet show "Test mode is on until …" in red with Turn off; afterwards it is off by itself and messages send again. "Until turned off" keeps it on. |
-| 33 | A message sent for real, then a test run (⋯ → Test) | "Sent to …" with the time and the first line, and Open chat; then "Dry run: not sent to …". Both quiet, grouped when several, gone after a day. With Notify after each send off, only the dry-run one shows. |
+| 33 | A message sent for real, then a test run (⋯ → Test); tap the "Sent to …" notification's body | "Sent to …" with the time and the first line, and Open chat; then "Dry run: not sent to …". Both quiet, gone after a day; several of either are grouped, real sends and test runs apart ("Sent to 3 chats", "Dry run: not sent to 3 chats"). Tapping the body opens the list on that row, outlined for a moment. With Notify after each send off, only the dry-run one shows. |
 
 Useful commands:
 

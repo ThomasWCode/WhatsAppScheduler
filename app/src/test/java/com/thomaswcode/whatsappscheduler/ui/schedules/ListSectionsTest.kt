@@ -28,6 +28,24 @@ class ListSectionsTest {
     )
 
     @Test
+    fun aRowIsFoundToScrollTo() {
+        val soon = schedule(2, "Mum")
+        val sent = schedule(5, "Sam", next = null).copy(lastRunAtMillis = ms("2026-09-27T09:00"), lastStatus = SendStatus.SENT)
+        val batch = listOf(schedule(8, "Dad", next = null, batch = "b"), schedule(9, "Gran", next = null, batch = "b"))
+            .map { it.copy(lastRunAtMillis = ms("2026-09-27T10:00"), lastStatus = SendStatus.SENT) }
+        val sections = ListSections.of(listOf(soon, sent) + batch)
+        assertEquals(Section.UPCOMING to "UPCOMING-2", sections.rowOf(2))
+        // A batch's row goes by its first member.
+        assertEquals(Section.SENT to "SENT-8", sections.rowOf(9))
+        assertEquals(null, sections.rowOf(42))
+        // Where it is in the list: the Sent rows only once that section is open.
+        assertEquals(-1, sections.keys(sentOpen = false).indexOf("SENT-8"))
+        val keys = sections.keys(sentOpen = true)
+        assertEquals(listOf("health", "header-UPCOMING", "UPCOMING-2", "header-SENT"), keys.take(4))
+        assertTrue("SENT-8" in keys && "SENT-5" in keys)
+    }
+
+    @Test
     fun eachScheduleGoesWhereItBelongs() {
         val later = schedule(1, "Dad", next = "2026-09-29T09:00")
         val soon = schedule(2, "Mum")
