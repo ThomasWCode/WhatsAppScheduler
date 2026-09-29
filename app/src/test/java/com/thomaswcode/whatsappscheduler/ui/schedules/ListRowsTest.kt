@@ -1,5 +1,8 @@
 package com.thomaswcode.whatsappscheduler.ui.schedules
 
+import android.content.Context
+import androidx.annotation.StringRes
+import androidx.test.core.app.ApplicationProvider
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.data.db.SendStatus
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
@@ -11,8 +14,16 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+// Robolectric for the resources: busyText names a string, and the test reads what it says.
+@RunWith(RobolectricTestRunner::class)
 class ListRowsTest {
+
+    private val context = ApplicationProvider.getApplicationContext<Context>()
+
+    private fun say(@StringRes id: Int?): String? = id?.let(context::getString)
 
     private fun schedule(id: Long, name: String = "Mum", next: Long? = 1_000L, recurrence: String = "ONCE") = Schedule(
         id = id, message = "Lunch?", targetKind = TargetKind.CONTACT, targetName = name, phoneE164 = null, isLocked = false,
@@ -40,9 +51,9 @@ class ListRowsTest {
     fun rowsBeingSentSaySo() {
         val mum = schedule(1)
         val dad = schedule(2, "Dad")
-        assertEquals("Sending…", busyText(listOf(mum, dad), SendState(currentId = 2, phase = SendPhase.SENDING)))
-        assertEquals("Waiting to try again…", busyText(listOf(mum), SendState(currentId = 1, phase = SendPhase.WAITING_TO_RETRY)))
-        assertEquals("Queued to send", busyText(listOf(mum), SendState(queuedIds = listOf(1))))
+        assertEquals("Sending…", say(busyText(listOf(mum, dad), SendState(currentId = 2, phase = SendPhase.SENDING))))
+        assertEquals("Waiting to try again…", say(busyText(listOf(mum), SendState(currentId = 1, phase = SendPhase.WAITING_TO_RETRY))))
+        assertEquals("Queued to send", say(busyText(listOf(mum), SendState(queuedIds = listOf(1)))))
         assertNull(busyText(listOf(mum), SendState(currentId = 5, queuedIds = listOf(6))))
     }
 

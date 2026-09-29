@@ -32,11 +32,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.thomaswcode.whatsappscheduler.AppContainer
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.sending.accessibility.WaAccessibilityService
 import com.thomaswcode.whatsappscheduler.ui.BackBar
 
@@ -70,13 +73,12 @@ fun SetupScreen(container: AppContainer, onBack: () -> Unit) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    Scaffold(topBar = { BackBar("Setup checklist", onBack) }) { padding ->
+    Scaffold(topBar = { BackBar(stringResource(R.string.settings_setup_checklist), onBack) }) { padding ->
         LazyColumn(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
             item {
                 val missing = items.count { it.group == SetupGroup.REQUIRED && it.state == CheckState.MISSING }
                 Text(
-                    if (missing == 0) "Everything required is done: messages can go by themselves."
-                    else "$missing required ${if (missing == 1) "item is" else "items are"} still to do before messages can go by themselves.",
+                    if (missing == 0) stringResource(R.string.setup_all_done) else pluralStringResource(R.plurals.setup_missing, missing, missing),
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(vertical = 12.dp),
                 )
@@ -86,8 +88,8 @@ fun SetupScreen(container: AppContainer, onBack: () -> Unit) {
                 if (inGroup.isEmpty()) return@forEach
                 item(key = "group-${group.name}") {
                     Column(modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)) {
-                        Text(group.title, style = MaterialTheme.typography.titleMedium)
-                        Text(group.blurb, style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(group.title), style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(group.blurb), style = MaterialTheme.typography.bodySmall)
                     }
                 }
                 items(inGroup, key = { it.key }) { item -> SetupCard(item) }
@@ -108,19 +110,21 @@ private fun SetupCard(item: SetupItem) {
                 CheckState.MANUAL -> Icons.Default.Info to MaterialTheme.colorScheme.outline
             }
             // Said, not only shown by colour.
-            val said = when (item.state) {
-                CheckState.OK -> "Done"
-                CheckState.MISSING -> "To do"
-                CheckState.MANUAL -> "Check by hand"
-            }
+            val said = stringResource(
+                when (item.state) {
+                    CheckState.OK -> R.string.setup_state_done
+                    CheckState.MISSING -> R.string.setup_state_to_do
+                    CheckState.MANUAL -> R.string.setup_state_manual
+                },
+            )
             Icon(icon, contentDescription = said, tint = tint)
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(item.title, style = MaterialTheme.typography.titleSmall)
-                Text(item.why, style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(item.title), style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(item.why), style = MaterialTheme.typography.bodySmall)
                 item.action?.let { intent ->
                     TextButton(onClick = { runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }) {
-                        Text(item.actionLabel)
+                        Text(stringResource(item.actionLabel))
                     }
                 }
             }

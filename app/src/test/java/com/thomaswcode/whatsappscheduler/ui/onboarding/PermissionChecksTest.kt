@@ -1,5 +1,7 @@
 package com.thomaswcode.whatsappscheduler.ui.onboarding
 
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -7,11 +9,13 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
-// Robolectric for the Intent each item carries.
+// Robolectric for the Intent each item carries, and for reading what an item says.
 @RunWith(RobolectricTestRunner::class)
 class PermissionChecksTest {
 
-    private fun item(key: String, state: CheckState, group: SetupGroup) = SetupItem(key, key, "", state, null, group = group)
+    private val context = ApplicationProvider.getApplicationContext<Context>()
+
+    private fun item(key: String, state: CheckState, group: SetupGroup) = SetupItem(key, 0, 0, state, null, group = group)
 
     @Test
     fun onlyRequiredItemsBlockSending() {
@@ -26,7 +30,7 @@ class PermissionChecksTest {
         assertEquals(CheckState.MISSING, PermissionChecks.accessibility(enabled = false, running = false).state)
         val notRunning = PermissionChecks.accessibility(enabled = true, running = false)
         assertEquals(CheckState.MISSING, notRunning.state)
-        assertEquals("Accessibility service running", notRunning.title)
+        assertEquals("Accessibility service running", context.getString(notRunning.title))
         assertEquals(CheckState.OK, PermissionChecks.accessibility(enabled = true, running = true).state)
     }
 }

@@ -1,5 +1,6 @@
 package com.thomaswcode.whatsappscheduler.ui.schedules
 
+import androidx.annotation.StringRes
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.listSaver
@@ -13,6 +14,7 @@ import androidx.lifecycle.viewmodel.compose.saveable
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.thomaswcode.whatsappscheduler.AppContainer
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.data.RecipientDraft
 import com.thomaswcode.whatsappscheduler.data.contacts.ContactHit
 import com.thomaswcode.whatsappscheduler.data.db.Recipient
@@ -47,13 +49,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** The full editor's repeat rules; Once only for a one-off opened here, which the quick sheet otherwise edits. */
-enum class RuleKind(val label: String) {
-    ONCE("Once"),
-    DAILY("Daily"),
-    WEEKLY("Weekly"),
-    MONTHLY("Monthly"),
-    HOURS("Every few hours"),
-    DAYS("Every few days"),
+enum class RuleKind(@StringRes val label: Int) {
+    ONCE(R.string.rule_once),
+    DAILY(R.string.rule_daily),
+    WEEKLY(R.string.rule_weekly),
+    MONTHLY(R.string.rule_monthly),
+    HOURS(R.string.rule_hours),
+    DAYS(R.string.rule_days),
 }
 
 /** Everything typed into the full editor, kept as plain values so it can be saved across recreation (B17). */
@@ -81,17 +83,17 @@ data class EditorForm(
     }
 
     /**
-     * What stands in the way of saving, by field (improvements I7). The screen shows a rule's as they are
-     * typed, and the rest once Save has been tried, rather than scolding an empty form.
+     * What stands in the way of saving, by field (improvements I7), as string resources. The screen shows
+     * a rule's as they are typed, and the rest once Save has been tried, rather than scolding an empty form.
      */
-    fun problems(): Map<Field, String> = buildMap {
-        if (recipient == null) put(Field.RECIPIENT, "Choose who it's for.")
-        if (message.isBlank()) put(Field.MESSAGE, "Enter a message.")
+    fun problems(): Map<Field, Int> = buildMap {
+        if (recipient == null) put(Field.RECIPIENT, R.string.problem_choose_recipient)
+        if (message.isBlank()) put(Field.MESSAGE, R.string.problem_enter_message)
         when (ruleKind) {
-            RuleKind.WEEKLY -> if (weekdays.isEmpty()) put(Field.RULE, "Pick at least one day.")
-            RuleKind.MONTHLY -> if (monthDay.toIntOrNull() !in 1..31) put(Field.RULE, "A day from 1 to 31.")
-            RuleKind.HOURS -> if ((every.toIntOrNull() ?: 0) < 1) put(Field.RULE, "At least 1 hour.")
-            RuleKind.DAYS -> if ((every.toIntOrNull() ?: 0) < 1) put(Field.RULE, "At least 1 day.")
+            RuleKind.WEEKLY -> if (weekdays.isEmpty()) put(Field.RULE, R.string.problem_pick_a_day)
+            RuleKind.MONTHLY -> if (monthDay.toIntOrNull() !in 1..31) put(Field.RULE, R.string.problem_month_day)
+            RuleKind.HOURS -> if ((every.toIntOrNull() ?: 0) < 1) put(Field.RULE, R.string.problem_hours)
+            RuleKind.DAYS -> if ((every.toIntOrNull() ?: 0) < 1) put(Field.RULE, R.string.problem_days)
             RuleKind.ONCE, RuleKind.DAILY -> Unit
         }
     }
@@ -277,7 +279,7 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
     /** A contact result or one from the system picker; someone already saved is taken as that recipient. */
     fun add(hit: ContactHit) {
         val picked = when (val input = RecipientInput.fromContact(hit, countryIso)) {
-            is RecipientInput.Refused -> return run { error = input.reason }
+            is RecipientInput.Refused -> return run { error = container.text(input.reason, input.number) }
             is RecipientInput.Chosen -> input.recipient
         }
         choose(picked)
@@ -287,7 +289,7 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
     fun addTyped(text: String) {
         val typed = when (val input = RecipientInput.fromTyped(text, countryIso)) {
             null -> return
-            is RecipientInput.Refused -> return run { error = input.reason }
+            is RecipientInput.Refused -> return run { error = container.text(input.reason, input.number) }
             is RecipientInput.Chosen -> input.recipient
         }
         choose(typed)
@@ -319,8 +321,8 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
                 .onSuccess { saved ->
                     when (saved) {
                         is DetailsSaved.Refused -> {
-                            val what = if (updated.phoneE164 != null) "that number" else "that name"
-                            error = "${saved.existing.displayName} already has $what. Choose ${saved.existing.displayName} instead."
+                            val already = if (updated.phoneE164 != null) R.string.recipient_already_has_number else R.string.recipient_already_has_name
+                            error = container.text(already, saved.existing.displayName)
                         }
                         else -> {
                             if (form.recipient == original) form = form.copy(recipient = updated)
@@ -335,7 +337,7 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
                 }
                 .onFailure {
                     container.log.error("Saving recipient details failed", it)
-                    error = "Couldn't save the details (${it.message ?: it.javaClass.simpleName}). Try again."
+                    error = container.text(R.string.recipient_details_save_failed, it.message ?: it.javaClass.simpleName)
                 }
         }
     }
@@ -355,7 +357,7 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
             }.onFailure { container.log.error("Removing a recipient failed", it) }
             savingDetails = false
             if (removed.isFailure) {
-                error = "Couldn't remove ${recipient.displayName} from recents. Try again."
+                error = container.text(R.string.recipient_remove_failed, recipient.displayName)
                 return@launch
             }
             if (form.recipient?.recipientId == id) form = form.copy(recipient = form.recipient?.copy(recipientId = null))
@@ -372,7 +374,7 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
         val rule = f.rule()
         val firstAt = ZonedDateTime.of(f.date, f.time, zone).toInstant()
         if (rule == Recurrence.Once && !firstAt.isAfter(Instant.now())) {
-            error = "A one-off message must be in the future."
+            error = container.text(R.string.editor_once_in_past)
             return
         }
         error = null
@@ -426,9 +428,9 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
                         // The row is saved: the form is what is stored now, so leaving loses nothing, and there is
                         // nothing to discard. Save again only tries the alarm again.
                         initial = f
-                        error = "Saved, but its alarm couldn't be set ($reason). Tap Save to try again."
+                        error = container.text(R.string.saved_unarmed, reason)
                     } else {
-                        error = "Couldn't save ($reason). Try again."
+                        error = container.text(R.string.save_failed, reason)
                     }
                     saving = false
                 }
@@ -440,7 +442,7 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
         val schedule = existing ?: return
         if (busy) return
         if (container.sendState.state.value.isBusy(schedule.id)) {
-            error = "It's being sent right now. It can be deleted once that's done."
+            error = container.text(R.string.editor_being_sent)
             return
         }
         saving = true
@@ -458,7 +460,7 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
                 .onSuccess { doneEvents.trySend(Unit) }
                 .onFailure {
                     container.log.error("Deleting schedule failed", it)
-                    error = "Couldn't delete (${it.message ?: it.javaClass.simpleName}). Try again."
+                    error = container.text(R.string.delete_failed, it.message ?: it.javaClass.simpleName)
                     saving = false
                 }
         }

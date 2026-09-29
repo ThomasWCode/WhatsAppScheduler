@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.thomaswcode.whatsappscheduler.AppContainer
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.data.settings.Settings
 import com.thomaswcode.whatsappscheduler.domain.PinFailures
 import kotlinx.coroutines.flow.SharingStarted
@@ -54,11 +55,11 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             val stillBlocked = container.pinGuard.block()
             status = if (stillBlocked == null) {
                 container.fallbackNotifier.cancelPinPaused()
-                "PIN stored"
+                container.text(R.string.settings_pin_saved)
             } else {
                 val reason = stillBlocked.describe(is24Hour = is24Hour)
                 container.fallbackNotifier.notifyPinPaused(reason)
-                "PIN stored. $reason"
+                container.text(R.string.settings_pin_saved_paused, reason)
             }
             onDone()
         }
@@ -68,7 +69,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch {
             container.secrets.setPin(null)
             container.fallbackNotifier.cancelPinPaused()
-            status = "PIN removed: sends that need to unlock the phone will fail"
+            status = container.text(R.string.settings_pin_removed)
             onDone()
         }
     }
@@ -83,7 +84,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     fun rearmAlarms() {
         viewModelScope.launch {
             container.alarmScheduler.rescheduleAll()
-            status = "Alarms re-armed"
+            status = container.text(R.string.settings_alarms_rearmed)
         }
     }
 

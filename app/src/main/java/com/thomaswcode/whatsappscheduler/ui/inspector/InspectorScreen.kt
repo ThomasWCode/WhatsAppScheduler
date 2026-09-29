@@ -27,10 +27,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.thomaswcode.whatsappscheduler.AppContainer
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.sending.accessibility.UiDriver
 import com.thomaswcode.whatsappscheduler.sending.accessibility.WaAccessibilityService
 import com.thomaswcode.whatsappscheduler.ui.BackBar
@@ -49,12 +51,10 @@ fun InspectorScreen(container: AppContainer, onBack: () -> Unit) {
     var countdown by remember { mutableStateOf<Int?>(null) }
     var dump by remember { mutableStateOf(container.log.lastDump()) }
 
-    Scaffold(topBar = { BackBar("UI inspector", onBack) }) { padding ->
+    val shareDump = stringResource(R.string.inspector_share_dump)
+    Scaffold(topBar = { BackBar(stringResource(R.string.inspector_title), onBack) }) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
-            Text(
-                "Tap Capture, then within 8 seconds open the screen you want to inspect (a WhatsApp chat, the search results, the Locked chats prompt, or lock the phone and wake it to the PIN pad). The tree of every window is saved here and shown below.",
-                style = MaterialTheme.typography.bodySmall,
-            )
+            Text(stringResource(R.string.inspector_help), style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(8.dp))
             Row(modifier = Modifier.padding(vertical = 8.dp)) {
                 Button(
@@ -69,21 +69,21 @@ fun InspectorScreen(container: AppContainer, onBack: () -> Unit) {
                             dump = container.log.lastDump()
                         }
                     },
-                ) { Text(countdown?.let { "Capturing in $it…" } ?: "Capture in 8 s") }
+                ) { Text(countdown?.let { stringResource(R.string.inspector_capturing, it) } ?: stringResource(R.string.inspector_capture)) }
                 Spacer(Modifier.width(8.dp))
                 OutlinedButton(
                     enabled = dump.isNotBlank(),
                     onClick = {
                         val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, dump)
-                        context.startActivity(Intent.createChooser(send, "Share dump"))
+                        context.startActivity(Intent.createChooser(send, shareDump))
                     },
-                ) { Text("Share") }
+                ) { Text(stringResource(R.string.action_share)) }
             }
-            Text("A capture contains chat names and message previews: think before sharing it.", style = MaterialTheme.typography.bodySmall)
-            if (service == null) Text("Accessibility service is not enabled.", color = MaterialTheme.colorScheme.error)
+            Text(stringResource(R.string.inspector_warning), style = MaterialTheme.typography.bodySmall)
+            if (service == null) Text(stringResource(R.string.inspector_no_service), color = MaterialTheme.colorScheme.error)
             SelectionContainer {
                 Text(
-                    dump.ifBlank { "No capture yet." },
+                    dump.ifBlank { stringResource(R.string.inspector_no_capture) },
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
                     lineHeight = 12.sp,

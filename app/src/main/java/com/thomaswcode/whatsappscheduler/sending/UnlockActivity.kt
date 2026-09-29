@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.WindowManager
 import android.widget.TextView
+import com.thomaswcode.whatsappscheduler.R
 import kotlinx.coroutines.CompletableDeferred
 
 /**
@@ -21,7 +22,7 @@ class UnlockActivity : Activity() {
         setTurnScreenOn(true)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(TextView(this).apply {
-            text = "Sending scheduled WhatsApp message…"
+            text = getString(R.string.unlock_sending)
             gravity = Gravity.CENTER
             setPadding(48, 48, 48, 48)
         })

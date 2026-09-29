@@ -23,12 +23,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.domain.FriendlyTime
 import com.thomaswcode.whatsappscheduler.domain.Postponing
 import com.thomaswcode.whatsappscheduler.ui.quick.QuickScheduleViewModel
 import com.thomaswcode.whatsappscheduler.ui.quick.rememberTimeFormat
+import com.thomaswcode.whatsappscheduler.ui.rememberTexts
+import com.thomaswcode.whatsappscheduler.util.Texts
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -61,29 +65,33 @@ fun PostponeDialog(schedule: Schedule, now: ZonedDateTime, onDismiss: () -> Unit
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Postpone") },
+        title = { Text(stringResource(R.string.postpone_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Due ${FriendlyTime.dayAndTime(due, now, timeFormat)}", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.postpone_due, FriendlyTime.dayAndTime(due, now, timeFormat)), style = MaterialTheme.typography.bodyMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { pickingDate = true }) { Text(at.format(DateTimeFormatter.ofPattern("EEE d MMM"))) }
                     OutlinedButton(onClick = { pickingTime = true }) { Text(timeFormat(at.toLocalTime())) }
                 }
                 if (sendable) {
                     Text(
-                        "Moves to ${FriendlyTime.dayAndTime(at, now, timeFormat)} · ${FriendlyTime.relative(at.toInstant(), now.toInstant())}",
+                        stringResource(R.string.postpone_moves_to, FriendlyTime.dayAndTime(at, now, timeFormat), FriendlyTime.relative(at.toInstant(), now.toInstant())),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 } else {
-                    Text("Pick a time at least a minute from now.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.pick_a_later_minute), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
                 }
                 if (skipped.isNotEmpty()) {
-                    Text("This also skips ${skippedText(skipped, now, timeFormat)}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
+                    Text(
+                        stringResource(R.string.postpone_also_skips, skippedText(skipped, now, rememberTexts(), timeFormat)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                    )
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { onMove(at.toInstant()) }, enabled = sendable && !unchanged) { Text("Move") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(onClick = { onMove(at.toInstant()) }, enabled = sendable && !unchanged) { Text(stringResource(R.string.action_move)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
     )
 
     if (pickingDate) {
@@ -104,9 +112,9 @@ fun PostponeDialog(schedule: Schedule, now: ZonedDateTime, onDismiss: () -> Unit
                 TextButton(onClick = {
                     state.selectedDateMillis?.let { epochDay = Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate().toEpochDay() }
                     pickingDate = false
-                }) { Text("OK") }
+                }) { Text(stringResource(R.string.action_ok)) }
             },
-            dismissButton = { TextButton(onClick = { pickingDate = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { pickingDate = false }) { Text(stringResource(R.string.action_cancel)) } },
         ) { DatePicker(state = state) }
     }
     if (pickingTime) {
@@ -117,9 +125,9 @@ fun PostponeDialog(schedule: Schedule, now: ZonedDateTime, onDismiss: () -> Unit
                 TextButton(onClick = {
                     minuteOfDay = state.hour * 60 + state.minute
                     pickingTime = false
-                }) { Text("OK") }
+                }) { Text(stringResource(R.string.action_ok)) }
             },
-            dismissButton = { TextButton(onClick = { pickingTime = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { pickingTime = false }) { Text(stringResource(R.string.action_cancel)) } },
             text = { TimePicker(state = state) },
         )
     }
@@ -149,13 +157,13 @@ internal fun postponeStart(due: ZonedDateTime, now: ZonedDateTime): ZonedDateTim
  * "Tue 09:00", "Tue 09:00 and Wed 09:00", or "Tue 09:00, Wed 09:00 and 3 more"; "at least" when the
  * list reached [Postponing.LIMIT] and may have been cut short.
  */
-internal fun skippedText(skipped: List<Instant>, now: ZonedDateTime, time: (LocalTime) -> String = { it.toString() }): String {
+internal fun skippedText(skipped: List<Instant>, now: ZonedDateTime, texts: Texts, time: (LocalTime) -> String = { it.toString() }): String {
     fun day(at: Instant) = FriendlyTime.dayAndTime(at.atZone(now.zone), now, time)
-    val atLeast = if (skipped.size >= Postponing.LIMIT) "at least " else ""
+    val more = if (skipped.size >= Postponing.LIMIT) R.plurals.names_at_least_more else R.plurals.names_more
     return when (skipped.size) {
         0 -> ""
         1 -> day(skipped[0])
-        2 -> "${day(skipped[0])} and ${day(skipped[1])}"
-        else -> "${day(skipped[0])}, ${day(skipped[1])} and $atLeast${skipped.size - 2} more"
+        2 -> texts.get(R.string.names_two, day(skipped[0]), day(skipped[1]))
+        else -> texts.plural(more, skipped.size - 2, day(skipped[0]), day(skipped[1]), skipped.size - 2)
     }
 }

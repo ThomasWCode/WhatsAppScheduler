@@ -1,5 +1,6 @@
 package com.thomaswcode.whatsappscheduler.ui.schedules
 
+import androidx.annotation.StringRes
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -11,6 +12,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.thomaswcode.whatsappscheduler.AppContainer
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.data.DeletedSchedules
 import com.thomaswcode.whatsappscheduler.data.LatestRuns
 import com.thomaswcode.whatsappscheduler.data.db.Attention
@@ -130,7 +132,7 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     /** Swipe or Delete: the schedules go, with their history, and Undo can bring them back. */
-    fun delete(group: List<Schedule>, verb: String = "Deleted") {
+    fun delete(group: List<Schedule>, @StringRes verb: Int = R.string.list_deleted) {
         viewModelScope.launch {
             val ids = group.map { it.id }
             val prompted = ids.filter(container.fallbackNotifier::isShowing).toSet()
@@ -148,9 +150,9 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
                 }
             }
                 .onSuccess { removed ->
-                    if (removed.schedules.isNotEmpty()) events.trySend(ListEvent.Deleted("$verb: " + groupTitle(removed.schedules), removed, prompted))
+                    if (removed.schedules.isNotEmpty()) events.trySend(ListEvent.Deleted(container.text(verb, groupTitle(removed.schedules, container.texts)), removed, prompted))
                 }
-                .onFailure { fail("Couldn't delete", it) }
+                .onFailure { fail(R.string.list_couldnt_delete, it) }
         }
     }
 
@@ -163,7 +165,7 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
                         if (it.id in prompted) container.fallbackNotifier.notifyAttention(it, latestRuns.value[it.id]?.behind(it.attention))
                     }
                 }
-            }.onFailure { fail("Couldn't undo", it) }
+            }.onFailure { fail(R.string.list_couldnt_undo, it) }
         }
     }
 
@@ -173,7 +175,7 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
      */
     fun discard(group: List<Schedule>) {
         if (group.first().rule == Recurrence.Once) {
-            delete(group, verb = "Discarded")
+            delete(group, verb = R.string.list_discarded)
             return
         }
         viewModelScope.launch {
@@ -185,8 +187,8 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
                     container.fallbackNotifier.cancel(it)
                 }
             }
-                .onSuccess { events.trySend(ListEvent.Dismissed("Dismissed: " + groupTitle(group), previous, prompted)) }
-                .onFailure { fail("Couldn't dismiss", it) }
+                .onSuccess { events.trySend(ListEvent.Dismissed(container.text(R.string.list_dismissed, groupTitle(group, container.texts)), previous, prompted)) }
+                .onFailure { fail(R.string.list_couldnt_dismiss, it) }
         }
     }
 
@@ -197,7 +199,7 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
                     container.repository.setAttention(id, attention)
                     if (id in prompted) container.repository.get(id)?.let { container.fallbackNotifier.notifyAttention(it, latestRuns.value[id]?.behind(it.attention)) }
                 }
-            }.onFailure { fail("Couldn't undo", it) }
+            }.onFailure { fail(R.string.list_couldnt_undo, it) }
         }
     }
 
@@ -227,12 +229,12 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
         postponing = null
         // The dialog judged by the last minute tick; this is the moment it counts.
         if (!QuickScheduleViewModel.isSendable(at.atZone(ZoneId.systemDefault()), ZonedDateTime.now())) {
-            events.trySend(ListEvent.Failed("Pick a time at least a minute from now."))
+            events.trySend(ListEvent.Failed(container.text(R.string.pick_a_later_minute)))
             return
         }
         // Something being sent keeps its occurrence until it is recorded (B08).
         if (group.any { sendState.value.isBusy(it.id) }) {
-            events.trySend(ListEvent.Failed("It's being sent now, so it wasn't moved."))
+            events.trySend(ListEvent.Failed(container.text(R.string.being_sent_not_moved)))
             return
         }
         val prompted = group.filter { it.rule == Recurrence.Once }.map { it.id }.filter(container.fallbackNotifier::isShowing).toSet()
@@ -255,12 +257,12 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
             }
                 .onSuccess { (moved, unarmed) ->
                     when {
-                        moved.isEmpty() -> events.trySend(ListEvent.Failed("It had just been sent or changed, so it wasn't moved."))
-                        unarmed > 0 -> events.trySend(ListEvent.Postponed("$summary, but its alarm couldn't be set: $REARM", moved, prompted))
+                        moved.isEmpty() -> events.trySend(ListEvent.Failed(container.text(R.string.changed_not_moved)))
+                        unarmed > 0 -> events.trySend(ListEvent.Postponed(container.text(R.string.list_moved_unarmed, summary), moved, prompted))
                         else -> events.trySend(ListEvent.Postponed(summary, moved, prompted))
                     }
                 }
-                .onFailure { fail("Couldn't postpone", it) }
+                .onFailure { fail(R.string.list_couldnt_postpone, it) }
         }
     }
 
@@ -270,7 +272,7 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
      */
     fun undoPostpone(moved: List<com.thomaswcode.whatsappscheduler.data.Postponed>, prompted: Set<Long>) {
         if (moved.any { sendState.value.isBusy(it.after.id) }) {
-            events.trySend(ListEvent.Failed("It's being sent now, so it can't be moved back."))
+            events.trySend(ListEvent.Failed(container.text(R.string.list_being_sent_cant_move_back)))
             return
         }
         viewModelScope.launch {
@@ -289,11 +291,11 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
             }
                 .onSuccess { (restored, unarmed) ->
                     when {
-                        restored.isEmpty() -> events.trySend(ListEvent.Failed("It has been sent, changed or is about to be sent, so it wasn't moved back."))
-                        unarmed > 0 -> events.trySend(ListEvent.Failed("Moved back, but its alarm couldn't be set: $REARM."))
+                        restored.isEmpty() -> events.trySend(ListEvent.Failed(container.text(R.string.list_not_moved_back)))
+                        unarmed > 0 -> events.trySend(ListEvent.Failed(container.text(R.string.list_moved_back_unarmed)))
                     }
                 }
-                .onFailure { fail("Couldn't undo", it) }
+                .onFailure { fail(R.string.list_couldnt_undo, it) }
         }
     }
 
@@ -305,15 +307,16 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
                     container.repository.markSent(it.id)
                     container.fallbackNotifier.cancel(it.id)
                 }
-            }.onFailure { fail("Couldn't mark it as sent", it) }
+            }.onFailure { fail(R.string.list_couldnt_mark_sent, it) }
         }
     }
 
     fun send(request: SendRequest) = container.send(request)
 
-    private fun fail(what: String, error: Throwable) {
-        container.log.error(what, error)
-        events.trySend(ListEvent.Failed("$what (${error.message ?: error.javaClass.simpleName})."))
+    private fun fail(@StringRes what: Int, error: Throwable) {
+        val text = container.text(what)
+        container.log.error(text, error)
+        events.trySend(ListEvent.Failed(container.text(R.string.error_with_reason, text, error.message ?: error.javaClass.simpleName)))
     }
 
     /** "Turn off" on the test-mode warning (B11). */
@@ -322,9 +325,6 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     companion object {
-        /** What to do about an alarm that couldn't be set: the app re-arms every alarm only on a fresh start. */
-        private const val REARM = "use Re-arm all alarms in Settings"
-
         fun factory(container: AppContainer) = viewModelFactory { initializer { ScheduleListViewModel(container) } }
     }
 }

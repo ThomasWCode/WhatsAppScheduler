@@ -1,4 +1,10 @@
 <resources>
+    <!--
+        The app's user-facing text, by area (improvements I12). Screens read it with stringResource;
+        notifications, view models and the send queue through Texts or a Context. The sentences the
+        domain layer builds from parts (PlainResult, FriendlyTime, RuleSentence, QuickTimes, a rule's
+        label, the PIN pause) are still English in Kotlin: see docs/ARCHITECTURE.md.
+    -->
     <string name="app_name">WhatsApp Scheduler</string>
     <string name="accessibility_service_label">WhatsApp Scheduler auto-send</string>
     <string name="accessibility_service_description">Used only at the moment a scheduled message is due: unlocks the phone with the PIN you stored in this app, opens the WhatsApp chat you chose, enters your message and taps Send. It reads nothing at any other time and never sends data off the device.</string>
@@ -9,4 +15,435 @@
     <string name="notification_channel_sent">Sent</string>
     <string name="notification_channel_heads_up">Before sending</string>
     <string name="share_target_label">Schedule on WhatsApp</string>
+
+    <!-- Shared actions and labels -->
+    <string name="action_undo">Undo</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_discard">Discard</string>
+    <string name="action_check">Check</string>
+    <string name="action_resume">Resume</string>
+    <string name="action_postpone_ellipsis">Postpone…</string>
+    <string name="action_send_now">Send now</string>
+    <string name="action_send_now_ellipsis">Send now…</string>
+    <string name="action_send_again">Send again</string>
+    <string name="action_send_again_ellipsis">Send again…</string>
+    <string name="action_send_early">Send early</string>
+    <string name="action_send_a_copy">Send a copy</string>
+    <string name="action_test_dry_run">Test (dry run)</string>
+    <string name="action_open_chat">Open chat</string>
+    <string name="action_mark_as_sent">Mark as sent</string>
+    <string name="settings_title">Settings</string>
+    <string name="new_message">New message</string>
+    <string name="chat_lock">Chat Lock</string>
+    <string name="group">Group</string>
+    <string name="error_with_reason">%1$s (%2$s).</string>
+    <string name="pick_a_later_minute">Pick a time at least a minute from now.</string>
+    <string name="being_sent_not_moved">It\'s being sent now, so it wasn\'t moved.</string>
+
+    <!-- Schedule list -->
+    <string name="list_empty">No scheduled messages yet. Tap New message to add one.</string>
+    <string name="list_section_attention">Needs attention</string>
+    <string name="list_section_upcoming">Upcoming</string>
+    <string name="list_section_repeating">Repeating</string>
+    <string name="list_section_sent">Sent (%1$d)</string>
+    <string name="list_show_sent">Show sent</string>
+    <string name="list_hide_sent">Hide sent</string>
+    <string name="list_repeat_to">Repeat to %1$s</string>
+    <string name="list_more_for">More for %1$s</string>
+    <string name="list_check_chats_offer">Check %1$s in WhatsApp now?</string>
+    <string name="list_being_sent_cant_change">It\'s being sent now. You can change it once that has finished.</string>
+    <string name="moved_to">Moved to %1$s</string>
+    <string name="list_busy_about_to_send">About to send…</string>
+    <string name="list_busy_waiting_to_retry">Waiting to try again…</string>
+    <string name="list_busy_sending">Sending…</string>
+    <string name="list_busy_queued">Queued to send</string>
+    <string name="list_deleted">Deleted: %1$s</string>
+    <string name="list_discarded">Discarded: %1$s</string>
+    <string name="list_dismissed">Dismissed: %1$s</string>
+    <string name="list_couldnt_delete">Couldn\'t delete</string>
+    <string name="list_couldnt_undo">Couldn\'t undo</string>
+    <string name="list_couldnt_dismiss">Couldn\'t dismiss</string>
+    <string name="list_couldnt_postpone">Couldn\'t postpone</string>
+    <string name="list_couldnt_mark_sent">Couldn\'t mark it as sent</string>
+    <string name="changed_not_moved">It had just been sent or changed, so it wasn\'t moved.</string>
+    <string name="list_moved_unarmed">%1$s, but its alarm couldn\'t be set: use Re-arm all alarms in Settings</string>
+    <string name="list_being_sent_cant_move_back">It\'s being sent now, so it can\'t be moved back.</string>
+    <string name="list_not_moved_back">It has been sent, changed or is about to be sent, so it wasn\'t moved back.</string>
+    <string name="list_moved_back_unarmed">Moved back, but its alarm couldn\'t be set: use Re-arm all alarms in Settings.</string>
+
+    <!-- Send now dialog -->
+    <string name="send_now_title">Send to %1$s now?</string>
+    <string name="send_now_quote">\"%1$s\"</string>
+    <string name="send_now_series_carries_on">This sends that message now. The series carries on as scheduled.</string>
+    <string name="send_now_extra_copy">This sends an extra copy. The schedule itself is not changed.</string>
+    <string name="send_now_only_to">This sends it again only to %1$s, not to the others.</string>
+    <string name="send_now_may_have_gone">It may already have gone out, so check the chat first. This sends it again.</string>
+    <string name="send_now_sent_before">It has already been sent, so this sends it again.</string>
+    <string name="send_now_missed">It wasn\'t sent at its time. This sends it now.</string>
+    <string name="send_now_early_or_copy">Send the %1$s message early, or send an extra copy and keep that one as it is.</string>
+    <string name="send_now_instead_partial">It will be sent now instead of at %1$s, to the recipients it hasn\'t gone to yet.</string>
+    <string name="send_now_instead">It will be sent now instead of at %1$s.</string>
+
+    <!-- Quick sheet -->
+    <string name="action_save">Save</string>
+    <string name="action_next">Next</string>
+    <string name="action_ok">OK</string>
+    <string name="action_allow">Allow</string>
+    <string name="action_not_now">Not now</string>
+    <string name="quick_title_edit">Edit message</string>
+    <string name="message_label">Message</string>
+    <string name="quick_when">When</string>
+    <string name="quick_time_passed">That time has passed. Pick a later one.</string>
+    <string name="quick_sends_soon">Sends in under 2 minutes</string>
+    <string name="quick_repeat">Repeat…</string>
+    <string name="saving">Saving…</string>
+    <string name="quick_schedule">Schedule</string>
+    <string name="quick_schedule_at">Schedule · %1$s</string>
+    <string name="quick_pick_date_time">Pick date &amp; time…</string>
+    <string name="quick_went_while_editing">It went to %1$s while you were editing, so nothing was saved.</string>
+    <string name="quick_went_while_editing_save_again">It went to %1$s while you were editing, so nothing was saved. Save again to change the rest.</string>
+    <plurals name="quick_max_recipients">
+        <item quantity="one">One message can go to at most %1$d chat.</item>
+        <item quantity="other">One message can go to at most %1$d chats.</item>
+    </plurals>
+    <string name="quick_check_found">Found “%1$s” in WhatsApp.</string>
+    <string name="quick_check_not_found">Couldn\'t find “%1$s” in WhatsApp\'s search. Check the name is exactly as WhatsApp shows it.</string>
+    <string name="quick_check_failed">Couldn\'t check “%1$s”: WhatsApp didn\'t respond as expected. Logs under Settings → Diagnostics say where.</string>
+    <string name="problem_choose_recipient">Choose who it\'s for.</string>
+    <string name="problem_enter_message">Enter a message.</string>
+    <string name="problem_choose_time">Choose when to send it.</string>
+    <string name="quick_scheduled">Scheduled: %1$s · %2$s</string>
+    <string name="quick_saved">Saved: %1$s · %2$s</string>
+    <string name="saved_unarmed">Saved, but its alarm couldn\'t be set (%1$s). Tap Save to try again.</string>
+    <string name="save_failed">Couldn\'t save (%1$s). Try again.</string>
+    <string name="delete_failed">Couldn\'t delete (%1$s). Try again.</string>
+
+    <!-- Recipients -->
+    <string name="recipient_to">To</string>
+    <string name="recipient_me">Me</string>
+    <string name="recipient_search_hint">Search contacts or type a group…</string>
+    <string name="recipient_search_hint_single">Send it to someone else…</string>
+    <string name="recipient_search_hint_more">Add another…</string>
+    <string name="recipient_allow_contacts_hint">Allow contacts to search them here.</string>
+    <string name="recipient_pick_from_contacts">Pick from contacts</string>
+    <string name="recipient_number_on_whatsapp">%1$s · on WhatsApp</string>
+    <string name="recipient_group_or_chat_name">Group or chat name</string>
+    <string name="recipient_found_by_name">Found by name</string>
+    <string name="recipient_use_number">Use %1$s</string>
+    <string name="recipient_use_name">Use \"%1$s\" as a group or chat name</string>
+    <string name="recipient_opens_number">Opens the chat with this number</string>
+    <string name="recipient_found_by_exact_name">Found by this exact name in WhatsApp\'s search</string>
+    <string name="recipient_details_action">Details</string>
+    <string name="recipient_remove">Remove %1$s</string>
+    <string name="recipient_name_in_whatsapp">Name in WhatsApp</string>
+    <string name="recipient_name_in_whatsapp_help">Only if WhatsApp shows the chat under another name; used to find it without a number.</string>
+    <string name="recipient_number">Number</string>
+    <string name="recipient_number_help">Leave empty to find the chat by name.</string>
+    <string name="recipient_number_invalid">Not a valid number.</string>
+    <string name="recipient_behind_chat_lock">Behind Chat Lock</string>
+    <string name="recipient_behind_chat_lock_help">Adds the Locked chats steps when sending.</string>
+    <string name="recipient_found_at">✓ Found in WhatsApp\'s search %1$s</string>
+    <string name="recipient_save_to_check">Save to check the new details.</string>
+    <string name="recipient_check_now">Check this chat now</string>
+    <string name="recipient_remove_from_recents">Remove from recents</string>
+    <string name="recipient_contact_number_invalid">%1$s isn\'t a number WhatsApp can open. Edit the contact, or type the number with its country code.</string>
+    <string name="recipient_typed_number_invalid">%1$s isn\'t a number WhatsApp can open. Type it with its country code.</string>
+    <string name="recipient_already_has_number">%1$s already has that number. Choose %1$s instead.</string>
+    <string name="recipient_already_has_name">%1$s already has that name. Choose %1$s instead.</string>
+    <string name="recipient_details_save_failed">Couldn\'t save the details (%1$s). Try again.</string>
+    <string name="recipient_remove_failed">Couldn\'t remove %1$s from recents. Try again.</string>
+
+    <!-- Share target and Direct Share -->
+    <string name="share_check_title">Check in WhatsApp?</string>
+    <string name="share_check_text">Check %1$s in WhatsApp now? WhatsApp\'s search is run for the name while you watch; nothing is typed.</string>
+    <string name="share_shortcut_long_label">%1$s · Schedule on WhatsApp</string>
+
+    <!-- Editor -->
+    <string name="rule_once">Once</string>
+    <string name="rule_daily">Daily</string>
+    <string name="rule_weekly">Weekly</string>
+    <string name="rule_monthly">Monthly</string>
+    <string name="rule_hours">Every few hours</string>
+    <string name="rule_days">Every few days</string>
+    <string name="problem_pick_a_day">Pick at least one day.</string>
+    <string name="problem_month_day">A day from 1 to 31.</string>
+    <string name="problem_hours">At least 1 hour.</string>
+    <string name="problem_days">At least 1 day.</string>
+    <string name="editor_title_new">Repeating message</string>
+    <string name="editor_title_edit">Edit repeating message</string>
+    <string name="editor_being_sent">It\'s being sent right now. It can be deleted once that\'s done.</string>
+    <string name="editor_repeat">Repeat</string>
+    <string name="editor_month_day">Day of the month</string>
+    <string name="editor_every_hours">Every how many hours</string>
+    <string name="editor_every_days">Every how many days</string>
+    <string name="editor_from">From</string>
+    <string name="editor_starts">Starts</string>
+    <string name="editor_discard_title">Discard your changes?</string>
+    <string name="editor_discard_text">What you\'ve entered here won\'t be saved.</string>
+    <string name="editor_keep_editing">Keep editing</string>
+    <string name="editor_delete_title">Delete this repeating message?</string>
+    <string name="editor_delete_text">It won\'t be sent again.</string>
+    <string name="editor_once_in_past">A one-off message must be in the future.</string>
+
+    <!-- Postpone -->
+    <string name="action_move">Move</string>
+    <string name="postpone_title">Postpone</string>
+    <string name="postpone_due">Due %1$s</string>
+    <string name="postpone_moves_to">Moves to %1$s · %2$s</string>
+    <string name="postpone_also_skips">This also skips %1$s.</string>
+    <string name="already_deleted">It has been deleted.</string>
+
+    <!-- Settings -->
+    <string name="action_change">Change</string>
+    <string name="action_store">Store</string>
+    <string name="settings_secrets">Secrets</string>
+    <string name="settings_secrets_note">Stored encrypted with a hardware-backed key. This app decrypts them at send time, so anyone who controls this app on this phone can too.</string>
+    <string name="settings_pin_stored">Lock-screen PIN: stored</string>
+    <string name="settings_pin_not_stored">Lock-screen PIN: not stored</string>
+    <string name="settings_confirm_its_you">Confirm it\'s you</string>
+    <string name="settings_secret_stored">Chat Lock secret code: stored</string>
+    <string name="settings_secret_none">Chat Lock secret code: none</string>
+    <string name="settings_secret_note">Only needed if you hid the Locked chats folder behind a secret code.</string>
+    <string name="settings_sending">Sending</string>
+    <string name="settings_notify_title">Notify after each send</string>
+    <string name="settings_notify_text">A quiet \"Sent to …\" notification. Test runs always say they sent nothing.</string>
+    <string name="settings_morning_title">Morning time for quick chips</string>
+    <string name="settings_morning_text">Used by This morning, Tomorrow and Mon.</string>
+    <string name="settings_evening_title">Evening time for quick chips</string>
+    <string name="settings_evening_text">Used by Tonight.</string>
+    <string name="settings_relock_title">Re-lock the phone after sending</string>
+    <string name="settings_relock_text">Only when it was locked before.</string>
+    <string name="settings_test_mode">Test mode</string>
+    <string name="settings_advanced">Advanced</string>
+    <string name="settings_advanced_summary">Retries, timeouts, the grace window, the countdown, and more.</string>
+    <string name="settings_retries">Retries per message</string>
+    <string name="settings_retry_delay">Seconds between retries</string>
+    <string name="settings_step_timeout">Step timeout (ms)</string>
+    <string name="settings_job_timeout">Whole-send timeout (ms)</string>
+    <string name="settings_grace">Missed-send grace (minutes)</string>
+    <string name="settings_countdown">Countdown before sending, in use (seconds)</string>
+    <string name="settings_deep_link_title">Use phone-number link for locked contacts</string>
+    <string name="settings_deep_link_text">Faster path for locked contact chats; enable only if a dry run shows it works.</string>
+    <string name="settings_diagnostics">Diagnostics</string>
+    <string name="settings_diagnostics_summary">Setup checklist, logs, the UI inspector and re-arming alarms.</string>
+    <string name="settings_setup_checklist">Setup checklist</string>
+    <string name="settings_logs">Logs: sends and automation trace</string>
+    <string name="settings_inspector">UI inspector (capture WhatsApp view ids)</string>
+    <string name="settings_rearm">Re-arm all alarms</string>
+    <string name="settings_secret_title">Chat Lock secret code</string>
+    <string name="settings_secret_hint">Leave empty to remove</string>
+    <string name="settings_pin_change_pin">Change lock-screen PIN</string>
+    <string name="settings_pin_change_password">Change lock-screen password</string>
+    <string name="settings_pin_store_pin">Store lock-screen PIN</string>
+    <string name="settings_pin_store_password">Store lock-screen password</string>
+    <string name="settings_pin_kind_pin">PIN</string>
+    <string name="settings_pin_kind_password">Password</string>
+    <plurals name="settings_pin_min_length">
+        <item quantity="one">At least %1$d character</item>
+        <item quantity="other">At least %1$d characters</item>
+    </plurals>
+    <string name="settings_pin_exact">Exactly what you type on the lock screen</string>
+    <string name="settings_pin_again">Enter it again</string>
+    <string name="settings_pin_mismatch">Doesn\'t match</string>
+    <string name="settings_pin_rejects_pin">If the phone rejects it, automatic unlocking pauses until you store it again, so a wrong PIN is never typed twice.</string>
+    <string name="settings_pin_rejects_password">If the phone rejects it, automatic unlocking pauses until you store it again, so a wrong password is never typed twice.</string>
+    <string name="settings_pin_remove">Remove stored PIN</string>
+    <string name="settings_test_mode_title">Test mode (dry run)</string>
+    <string name="settings_test_mode_off">Runs every step and clears the message instead of sending it. For checking the app works.</string>
+    <string name="settings_test_mode_until_off">On until you turn it off: nothing is sent.</string>
+    <string name="settings_test_mode_until">On until %1$s: nothing is sent.</string>
+    <string name="settings_test_mode_hour">For 1 hour</string>
+    <string name="settings_test_mode_always">Until turned off</string>
+    <string name="settings_keep_title">Keep sent messages for</string>
+    <string name="settings_keep_text">Sent one-offs are cleared from the list after this; Logs keep their history for 90 days.</string>
+    <plurals name="settings_keep_days">
+        <item quantity="one">%1$d day</item>
+        <item quantity="other">%1$d days</item>
+    </plurals>
+    <string name="settings_keep_always">Always</string>
+    <string name="settings_own_number">Your own number</string>
+    <string name="settings_own_number_hint">For a Me chip in the quick sheet</string>
+    <string name="settings_own_number_help">Leave empty to hide the Me chip.</string>
+    <string name="settings_country">Default country for phone numbers (ISO)</string>
+    <string name="settings_country_error">Two letters, e.g. GB</string>
+    <string name="settings_range">%1$d–%2$d</string>
+    <string name="settings_section_open">Open %1$s</string>
+    <string name="settings_section_close">Close %1$s</string>
+    <string name="settings_pin_saved">PIN stored</string>
+    <string name="settings_pin_saved_paused">PIN stored. %1$s</string>
+    <string name="settings_pin_removed">PIN removed: sends that need to unlock the phone will fail</string>
+    <string name="settings_alarms_rearmed">Alarms re-armed</string>
+    <string name="auth_error_code">error %1$d</string>
+
+    <!-- Logs and the UI inspector -->
+    <string name="action_share">Share</string>
+    <string name="action_clear">Clear</string>
+    <string name="logs_title">Logs</string>
+    <string name="logs_filter_all">All</string>
+    <string name="logs_filter_sent">Sent</string>
+    <string name="logs_filter_failed">Failed</string>
+    <string name="logs_filter_missed">Missed</string>
+    <string name="logs_empty_all">Nothing has been sent yet. Every send and test run is recorded here.</string>
+    <string name="logs_empty_sent">Nothing has been sent yet.</string>
+    <string name="logs_empty_failed">No failed sends.</string>
+    <string name="logs_empty_missed">No missed sends.</string>
+    <string name="logs_tab_sends">Sends</string>
+    <string name="logs_tab_trace">Automation trace</string>
+    <string name="logs_show_in_list">Show in the list</string>
+    <string name="logs_by_hand">%1$s · by hand</string>
+    <string name="logs_trace_warning">The trace names chats: think before sharing it.</string>
+    <string name="logs_trace_empty">The trace is empty. Sends and chat checks write to it.</string>
+    <string name="logs_trace_subject">WhatsApp Scheduler trace</string>
+    <string name="logs_share_trace">Share trace</string>
+    <string name="inspector_title">UI inspector</string>
+    <string name="inspector_help">Tap Capture, then within 8 seconds open the screen you want to inspect (a WhatsApp chat, the search results, the Locked chats prompt, or lock the phone and wake it to the PIN pad). The tree of every window is saved here and shown below.</string>
+    <string name="inspector_capturing">Capturing in %1$d…</string>
+    <string name="inspector_capture">Capture in 8 s</string>
+    <string name="inspector_share_dump">Share dump</string>
+    <string name="inspector_warning">A capture contains chat names and message previews: think before sharing it.</string>
+    <string name="inspector_no_service">Accessibility service is not enabled.</string>
+    <string name="inspector_no_capture">No capture yet.</string>
+
+    <!-- Setup checklist -->
+    <string name="setup_group_required">Required</string>
+    <string name="setup_group_required_blurb">Automatic sending doesn\'t work without these.</string>
+    <string name="setup_group_recommended">Recommended</string>
+    <string name="setup_group_recommended_blurb">Sending works without these, but can be late, or go wrong unnoticed.</string>
+    <string name="setup_group_manual">By hand</string>
+    <string name="setup_group_manual_blurb">The app can\'t check these: do them once.</string>
+    <string name="action_open_settings">Open settings</string>
+    <string name="action_open_app_info">Open app info</string>
+    <string name="setup_whatsapp_title">WhatsApp installed</string>
+    <string name="setup_whatsapp_why">The official app is what gets automated.</string>
+    <string name="setup_overlay_title">Display over other apps</string>
+    <string name="setup_overlay_why">Required to bring WhatsApp to the front from the background.</string>
+    <string name="setup_notifications_title">Notifications allowed</string>
+    <string name="setup_notifications_why">For the countdown before a send, and for telling you when one couldn\'t go.</string>
+    <string name="setup_fullscreen_title">Full-screen notifications allowed</string>
+    <string name="setup_fullscreen_why">The other way the app wakes a locked phone\'s screen, if the first doesn\'t work.</string>
+    <string name="setup_battery_title">Battery: unrestricted</string>
+    <string name="setup_battery_why">Stops Android and One UI from deferring the alarm or killing the service.</string>
+    <string name="setup_samsung_title">Samsung: add to \"Never sleeping apps\"</string>
+    <string name="setup_samsung_why">Settings → Battery → Background usage limits → Never sleeping apps → add WhatsApp Scheduler. Also keep WhatsApp out of \"Deep sleeping apps\".</string>
+    <string name="setup_pin_title">Lock-screen PIN stored</string>
+    <string name="setup_pin_why">Your lock must be a PIN or password (pattern is not supported). Store it under Settings. If One UI\'s Auto factory reset is on, keep the stored PIN up to date: the app stops after one rejected unlock, but a wrong PIN still costs attempts.</string>
+    <string name="setup_pin_why_no_lock">No secure lock detected: nothing to store.</string>
+    <string name="setup_walock_title">WhatsApp app lock off</string>
+    <string name="setup_walock_why">WhatsApp → Settings → Privacy → App lock must be off. Chat Lock on individual chats is fine.</string>
+    <string name="setup_accessibility_enabled_title">Accessibility service enabled</string>
+    <string name="setup_accessibility_why">Lets the app tap Send, type the PIN on the lock screen and navigate WhatsApp. Idle otherwise.</string>
+    <string name="setup_accessibility_running_title">Accessibility service running</string>
+    <string name="setup_accessibility_running_why">It\'s switched on but not running, which One UI can leave it as after an update or a crash. Turn it off and on again.</string>
+    <string name="setup_all_done">Everything required is done: messages can go by themselves.</string>
+    <plurals name="setup_missing">
+        <item quantity="one">%1$d required item is still to do before messages can go by themselves.</item>
+        <item quantity="other">%1$d required items are still to do before messages can go by themselves.</item>
+    </plurals>
+    <string name="setup_state_done">Done</string>
+    <string name="setup_state_to_do">To do</string>
+    <string name="setup_state_manual">Check by hand</string>
+
+    <!-- Health strip -->
+    <string name="action_fix">Fix</string>
+    <string name="action_install">Install</string>
+    <string name="action_turn_off">Turn off</string>
+    <string name="health_ready">Auto-send ready</string>
+    <string name="health_service_not_running">Auto-send is switched on but not running. Turn it off and on again.</string>
+    <string name="health_service_off">Auto-send is off: the accessibility service isn\'t enabled.</string>
+    <string name="health_whatsapp_missing">WhatsApp isn\'t installed.</string>
+    <string name="health_overlay">\"Display over other apps\" is off, so WhatsApp can\'t be brought to the front.</string>
+    <string name="health_no_pin">No lock-screen PIN is stored, so a locked phone can\'t be unlocked to send.</string>
+    <string name="health_test_mode_until_off">Test mode is on until you turn it off: messages are typed but not sent.</string>
+    <string name="health_test_mode_until">Test mode is on until %1$s: messages are typed but not sent.</string>
+    <string name="health_full_screen">Full-screen notifications are off, so a locked phone may not wake up to send.</string>
+    <string name="health_notifications">Notifications are blocked, so a failed send can\'t ask you to finish it.</string>
+    <string name="health_battery">Battery use is restricted, so the phone may delay or stop sends.</string>
+
+    <!-- Notifications and sending -->
+    <string name="being_sent_now">It\'s being sent now.</string>
+    <string name="action_tap_to_send">Tap to send</string>
+    <string name="action_snooze_5">Snooze 5 min</string>
+    <string name="notif_preparing">Preparing…</string>
+    <string name="notif_unlock_title">Sending scheduled WhatsApp message</string>
+    <string name="notif_unlock_text">Unlocking to send…</string>
+    <string name="notif_heads_up_title">Sending to %1$s</string>
+    <plurals name="notif_heads_up_ticker">
+        <item quantity="one">%1$s in %2$d second</item>
+        <item quantity="other">%1$s in %2$d seconds</item>
+    </plurals>
+    <string name="notif_progress_sending">Sending to %1$s…</string>
+    <string name="notif_progress_attempt">Sending to %1$s, attempt %2$d of %3$d…</string>
+    <string name="notif_progress_retrying">Retrying %1$s in %2$d s…</string>
+    <string name="notif_progress_waiting_call">Waiting for the call to end…</string>
+    <string name="notif_progress_waiting_put_down">Waiting for the phone to be put down…</string>
+    <string name="notif_failed_title">Couldn\'t send to %1$s</string>
+    <string name="notif_failed_reason">Auto-send failed (%1$s)</string>
+    <string name="notif_failed_text">%1$s, so the message hasn\'t gone. Tap to open the chat with it ready.</string>
+    <string name="notif_failed_text_for">%1$s, so the message for %2$s hasn\'t gone. Tap to open the chat with it ready.</string>
+    <string name="notif_uncertain_title">May have been sent to %1$s: check the chat</string>
+    <string name="notif_uncertain_text">Auto-send was interrupted after tapping Send. Check the chat before sending it again.</string>
+    <string name="notif_uncertain_text_for">Auto-send for %1$s was interrupted after tapping Send. Check the chat before sending it again.</string>
+    <string name="notif_missed_title">Missed: your message to %1$s (%2$s)</string>
+    <string name="notif_missed_text">It wasn\'t sent because the phone was off or the app was stopped at that time. Tap to open the chat with the message ready.</string>
+    <string name="notif_held_title">Not sent: choose a new time for %1$s</string>
+    <string name="notif_unarmed_title">Your next message to %1$s may not go</string>
+    <string name="notif_unarmed_text">Its alarm couldn\'t be set. Open the app to set it again.</string>
+    <string name="notif_will_fail_title">Your %1$s message to %2$s will fail</string>
+    <string name="notif_pin_paused_title">Automatic sending paused: update your PIN</string>
+    <string name="notif_sent_title">Sent to %1$s</string>
+    <string name="notif_dry_run_title">Dry run: not sent to %1$s</string>
+    <string name="notif_sent_text">%1$s · %2$s</string>
+    <plurals name="notif_sent_summary">
+        <item quantity="one">Sent to %1$d chat</item>
+        <item quantity="other">Sent to %1$d chats</item>
+    </plurals>
+    <plurals name="notif_dry_run_summary">
+        <item quantity="one">Dry run: not sent to %1$d chat</item>
+        <item quantity="other">Dry run: not sent to %1$d chats</item>
+    </plurals>
+    <string name="attention_start_failed">Couldn\'t start sending (%1$s). Open the app to send it.</string>
+    <string name="attention_moved_unarmed">Moved, but its alarm couldn\'t be set: use Re-arm all alarms in Settings.</string>
+    <string name="fallback_whatsapp_not_found">WhatsApp not found.</string>
+    <string name="fallback_whatsapp_not_found_copied">WhatsApp not found. Message copied to clipboard.</string>
+    <string name="fallback_check_arrived">Check whether your message to \'%1$s\' arrived before sending it again.</string>
+    <string name="fallback_copied_open">Message copied. Open \'%1$s\' and paste if it is not pre-filled.</string>
+    <string name="fallback_clip_label">message</string>
+    <string name="unlock_sending">Sending scheduled WhatsApp message…</string>
+
+    <!-- Joined names and the list's status lines -->
+    <string name="action_back">Back</string>
+    <string name="names_two">%1$s and %2$s</string>
+    <string name="names_plus">%1$s, %2$s +%3$d</string>
+    <plurals name="names_more">
+        <item quantity="one">%1$s, %2$s and %3$d more</item>
+        <item quantity="other">%1$s, %2$s and %3$d more</item>
+    </plurals>
+    <plurals name="names_at_least_more">
+        <item quantity="one">%1$s, %2$s and at least %3$d more</item>
+        <item quantity="other">%1$s, %2$s and at least %3$d more</item>
+    </plurals>
+    <string name="quoted_name">“%1$s”</string>
+    <string name="status_missed">Missed · %1$s</string>
+    <string name="status_failed">%1$s · %2$s</string>
+    <string name="status_couldnt_send">Couldn\'t send</string>
+    <string name="status_uncertain">May have been sent · %1$s: check the chat</string>
+    <string name="status_held">Not sent: choose a new time</string>
+    <string name="status_finished">Finished</string>
+    <string name="status_paused">Paused · %1$s</string>
+    <string name="status_with_relative">%1$s · %2$s</string>
+    <string name="status_moved_from">%1$s · moved from %2$s</string>
+    <string name="status_zone">%1$s (%2$s %3$s time)</string>
+    <string name="status_series_paused">%1$s · paused</string>
+    <string name="status_series_finished">%1$s · finished</string>
+    <string name="status_series_next">%1$s · next %2$s</string>
+    <string name="status_not_sent_due">Not sent · was due %1$s</string>
+    <string name="status_sent_dry_run">Sent %1$s (dry run)</string>
+    <string name="status_sent">Sent %1$s</string>
+    <string name="status_finished_at">Finished %1$s</string>
+    <string name="quick_check_skipped_locked">Didn\'t check “%1$s”: it\'s behind Chat Lock now.</string>
+    <string name="quick_check_skipped_by_number">Didn\'t check “%1$s”: it\'s reached by its number now.</string>
+    <string name="quick_check_skipped_sending">Didn\'t check “%1$s”: a message is being sent.</string>
+    <string name="quick_check_skipped_service">Didn\'t check “%1$s”: auto-send isn\'t running.</string>
+    <string name="quick_check_skipped_whatsapp">Didn\'t check “%1$s”: WhatsApp isn\'t installed.</string>
 </resources>

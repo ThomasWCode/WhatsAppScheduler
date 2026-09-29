@@ -8,6 +8,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.SchedulerApp
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.sending.accessibility.Selectors
@@ -30,7 +31,7 @@ class FallbackActivity : Activity() {
         val message = if (checkOnly) null else intent.getStringExtra(EXTRA_MESSAGE) ?: ""
         val phone = intent.getStringExtra(EXTRA_PHONE)
         val name = intent.getStringExtra(EXTRA_NAME) ?: ""
-        message?.let { getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("message", it)) }
+        message?.let { getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText(getString(R.string.fallback_clip_label), it)) }
         val pkg = listOf(Selectors.WHATSAPP, Selectors.WHATSAPP_BUSINESS).firstOrNull { runCatching { packageManager.getPackageInfo(it, 0) }.isSuccess }
         val open = if (!phone.isNullOrBlank()) {
             val uri = Uri.parse("https://wa.me/${phone.filter { it.isDigit() }}").buildUpon()
@@ -41,10 +42,10 @@ class FallbackActivity : Activity() {
             pkg?.let { packageManager.getLaunchIntentForPackage(it) }
         }
         val hint = when {
-            open == null -> "WhatsApp not found." + if (message != null) " Message copied to clipboard." else ""
+            open == null -> getString(if (message != null) R.string.fallback_whatsapp_not_found_copied else R.string.fallback_whatsapp_not_found)
             intent.action == ACTION_OPEN -> null
-            checkOnly -> "Check whether your message to '$name' arrived before sending it again."
-            else -> "Message copied. Open '$name' and paste if it is not pre-filled."
+            checkOnly -> getString(R.string.fallback_check_arrived, name)
+            else -> getString(R.string.fallback_copied_open, name)
         }
         hint?.let { Toast.makeText(this, it, Toast.LENGTH_LONG).show() }
         open?.let { startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }

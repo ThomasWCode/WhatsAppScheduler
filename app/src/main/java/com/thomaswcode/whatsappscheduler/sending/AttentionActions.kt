@@ -1,9 +1,11 @@
 package com.thomaswcode.whatsappscheduler.sending
 
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.data.ScheduleRepository
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.domain.Recurrence
 import com.thomaswcode.whatsappscheduler.scheduling.ScheduleAlarms
+import com.thomaswcode.whatsappscheduler.util.Texts
 import java.time.Clock
 import java.time.Instant
 import kotlinx.coroutines.sync.Mutex
@@ -25,6 +27,8 @@ class AttentionActions(
     private val clock: Clock = Clock.systemDefaultZone(),
     /** Held by a send while it takes its row (SendQueueProcessor), so a discard can't slip in between. */
     private val admission: Mutex = Mutex(),
+    /** What each action tells the user, from strings.xml. */
+    private val texts: Texts,
 ) {
 
     /**
@@ -33,9 +37,9 @@ class AttentionActions(
      */
     suspend fun sendNow(id: Long): String? {
         repository.get(id) ?: return gone(id)
-        if (sendState().isBusy(id)) return BUSY
+        if (sendState().isBusy(id)) return busy
         // Started first: the notification stays if the send couldn't be, so the message isn't forgotten.
-        runCatching { send(SendRequest(id, SendKind.EXTRA_COPY)) }.onFailure { return "Couldn't start sending (${it.message ?: it.javaClass.simpleName}). Open the app to send it." }
+        runCatching { send(SendRequest(id, SendKind.EXTRA_COPY)) }.onFailure { return texts.get(R.string.attention_start_failed, it.message ?: it.javaClass.simpleName) }
         cancelPrompt(id)
         return null
     }
@@ -48,7 +52,7 @@ class AttentionActions(
         // Checked and done while no send can be taking the row: one queued before is refused here, and
         // one after finds the row gone rather than sending what the user has just discarded.
         val schedule = repository.get(id) ?: return gone(id)
-        if (sendState().isBusy(id)) return BUSY
+        if (sendState().isBusy(id)) return busy
         if (schedule.rule == Recurrence.Once) repository.delete(schedule) else repository.setAttention(id, null)
         cancelPrompt(id)
         null
@@ -57,7 +61,7 @@ class AttentionActions(
     /** Mark as sent: the user checked the chat and it went (B02). */
     suspend fun markSent(id: Long): String? {
         repository.get(id) ?: return gone(id)
-        if (sendState().isBusy(id)) return BUSY
+        if (sendState().isBusy(id)) return busy
         repository.markSent(id)
         cancelPrompt(id)
         return null
@@ -71,31 +75,29 @@ class AttentionActions(
 
     /** [postpone] for several held together, e.g. a batch its countdown held: all of them, or none. */
     suspend fun postpone(seen: List<Schedule>, at: Instant): String? {
-        if (seen.isEmpty()) return "It has been deleted."
-        if (!at.isAfter(clock.instant().plusSeconds(59))) return "Pick a time at least a minute from now."
+        if (seen.isEmpty()) return texts.get(R.string.already_deleted)
+        if (!at.isAfter(clock.instant().plusSeconds(59))) return texts.get(R.string.pick_a_later_minute)
         // Checked and moved while no send can be taking the row, as for Discard: a send queued just before
         // is refused here, and one after reads the moved row, no longer the occurrence it was for.
         val moved = admission.withLock {
-            if (seen.any { sendState().isBusy(it.id) }) return "It's being sent now, so it wasn't moved."
+            if (seen.any { sendState().isBusy(it.id) }) return texts.get(R.string.being_sent_not_moved)
             repository.postponeAll(seen, at).orEmpty()
         }
-        if (moved.isEmpty()) return "It had just been sent or changed, so it wasn't moved."
+        if (moved.isEmpty()) return texts.get(R.string.changed_not_moved)
         var armed = true
         moved.forEach { m ->
             // A one-off's notification was about the time it now leaves.
             if (m.after.rule == Recurrence.Once) cancelPrompt(m.after.id)
             runCatching { alarms.sync(m.after) }.onFailure { armed = false }
         }
-        return if (armed) null else "Moved, but its alarm couldn't be set: use Re-arm all alarms in Settings."
+        return if (armed) null else texts.get(R.string.attention_moved_unarmed)
     }
 
     /** Deleted since the notification was posted: nothing to do, and the notification goes. */
     private fun gone(id: Long): String {
         cancelPrompt(id)
-        return "It has been deleted."
+        return texts.get(R.string.already_deleted)
     }
 
-    private companion object {
-        const val BUSY = "It's being sent now."
-    }
+    private val busy: String get() = texts.get(R.string.being_sent_now)
 }

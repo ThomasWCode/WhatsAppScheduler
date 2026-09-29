@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.media.AudioManager
 import android.os.PowerManager
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -32,14 +33,14 @@ class HeadsUpPrompt(
         val wait = answers.expect()
         val to = when (schedules.size) {
             1 -> first.targetName
-            2 -> "${first.targetName} and ${schedules[1].targetName}"
-            else -> schedules.dropLast(1).joinToString { it.targetName } + " and " + schedules.last().targetName
+            2 -> context.getString(R.string.names_two, first.targetName, schedules[1].targetName)
+            else -> context.getString(R.string.names_two, schedules.dropLast(1).joinToString { it.targetName }, schedules.last().targetName)
         }
         val text = first.message.lineSequence().firstOrNull().orEmpty().let { if (it.length > 80) it.take(79) + "…" else it }
         notifications.show(
             Notifications.ID_HEADS_UP,
             notifications.headsUp(
-                title = "Sending to $to",
+                title = context.getString(R.string.notif_heads_up_title, to),
                 text = text,
                 endsAtMillis = endsAtMillis,
                 sendNow = button(HeadsUpActionReceiver.ACTION_SEND_NOW, wait.token),

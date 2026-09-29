@@ -62,6 +62,7 @@ Unit tests (`./gradlew test`) cover the quick sheet's time chips and friendly ti
 | 56 | Remove a chat from recents (its details), then share again | That chat is no longer offered. |
 | 57 | In the editor, change a recipient's details (tap the chip, Save) and press Back at once; on a fresh install, tap the editor's recipient search | Back waits for the save, then leaves, or asks first when the details are only in this form. The first tap on the search asks for contacts access. |
 | 58 | **Auto factory reset off first.** With One UI checking the PIN as soon as it is long enough (logcat: `verifyPassword by N digits pin option`), store a wrong PIN one digit longer than the real one and let a locked send run | One failed entry only (`failedAttempts` in logcat goes up by one): the digits left over after One UI's check aren't submitted as a second entry. |
+| 59 | After the text moved to strings.xml (I12): open each screen, dialog and sheet once, and trigger each kind of notification (a test run, a missed message, a countdown) | Everything reads as before: no resource names, no stray `%1$s`, the right plural ("1 chat", "3 chats"), apostrophes and quotes intact. |
 
 Useful commands:
 
