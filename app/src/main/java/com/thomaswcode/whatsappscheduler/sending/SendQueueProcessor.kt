@@ -14,6 +14,8 @@ import java.time.Instant
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -35,6 +37,8 @@ class SendQueueProcessor(
     private val settings: suspend () -> Settings,
     private val clock: Clock,
     private val jobGuard: JobGuard = JobGuard.None,
+    /** Shared with the attention notifications' Discard (AttentionActions), so the two can't interleave. */
+    private val admission: Mutex = Mutex(),
 ) {
     private val lock = Any()
     private val queue = ArrayDeque<SendRequest>()
@@ -71,7 +75,9 @@ class SendQueueProcessor(
     }
 
     private suspend fun send(request: SendRequest, settings: Settings) {
-        var schedule = store.get(request.scheduleId) ?: run {
+        // Taken while holding [admission]: the request is published as busy by now, so a discard either
+        // finished first (the row is gone) or will see it busy and leave it.
+        var schedule = admission.withLock { store.get(request.scheduleId) } ?: run {
             log.warn("Schedule ${request.scheduleId} no longer exists")
             return
         }
