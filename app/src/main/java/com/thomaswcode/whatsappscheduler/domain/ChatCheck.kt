@@ -14,6 +14,10 @@ sealed interface ChatCheck {
      */
     data class Failed(val reason: String) : ChatCheck
 
-    /** Nothing was tried, e.g. auto-send isn't running or a message is being sent. */
-    data class NotChecked(val reason: String) : ChatCheck
+    /**
+     * Nothing was tried, e.g. auto-send isn't running or a message is being sent. [stopsOthers] when
+     * whatever stopped it would stop the next check too; not when only this chat can't be checked, e.g.
+     * it has been put behind Chat Lock since the check was offered.
+     */
+    data class NotChecked(val reason: String, val stopsOthers: Boolean = true) : ChatCheck
 }

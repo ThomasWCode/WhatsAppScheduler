@@ -38,9 +38,7 @@ data class QuickDraft(
         val Saver = listSaver<QuickDraft, Any>(
             save = { draft ->
                 listOf(
-                    ArrayList(draft.recipients.map { r ->
-                        arrayListOf(r.kind.name, r.displayName, r.whatsappName ?: "", r.phoneE164 ?: "", r.isLocked.toString(), (r.recipientId ?: -1L).toString())
-                    }),
+                    ArrayList(draft.recipients.map { it.toStrings() }),
                     draft.message,
                     when (val t = draft.time) {
                         is TimeChoice.Chip -> "chip:${t.kind.name}"
@@ -54,16 +52,7 @@ data class QuickDraft(
             restore = { values ->
                 @Suppress("UNCHECKED_CAST")
                 QuickDraft(
-                    recipients = (values[0] as List<List<String>>).map { r ->
-                        RecipientDraft(
-                            kind = TargetKind.valueOf(r[0]),
-                            displayName = r[1],
-                            whatsappName = r[2].ifEmpty { null },
-                            phoneE164 = r[3].ifEmpty { null },
-                            isLocked = r[4].toBoolean(),
-                            recipientId = r[5].toLong().takeIf { it >= 0 },
-                        )
-                    },
+                    recipients = (values[0] as List<List<String>>).map(::recipientFrom),
                     message = values[1] as String,
                     time = (values[2] as String).let { t ->
                         when {
@@ -79,6 +68,24 @@ data class QuickDraft(
         )
     }
 }
+
+/** Chats in Bundle-safe form, e.g. a check offer the Share host must still ask after the process was killed. */
+val RecipientsSaver = listSaver<List<RecipientDraft>, ArrayList<String>>(
+    save = { chats -> chats.map { it.toStrings() } },
+    restore = { saved -> saved.map(::recipientFrom) },
+)
+
+private fun RecipientDraft.toStrings(): ArrayList<String> =
+    arrayListOf(kind.name, displayName, whatsappName ?: "", phoneE164 ?: "", isLocked.toString(), (recipientId ?: -1L).toString())
+
+private fun recipientFrom(r: List<String>) = RecipientDraft(
+    kind = TargetKind.valueOf(r[0]),
+    displayName = r[1],
+    whatsappName = r[2].ifEmpty { null },
+    phoneE164 = r[3].ifEmpty { null },
+    isLocked = r[4].toBoolean(),
+    recipientId = r[5].toLong().takeIf { it >= 0 },
+)
 
 /** A stored recipient as a draft, e.g. when its recent chip is tapped. */
 fun Recipient.toDraft(): RecipientDraft = RecipientDraft(kind, displayName, whatsappName, phoneE164, isLocked, id)

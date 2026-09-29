@@ -193,7 +193,10 @@ class SendQueueProcessor(
 
     /** Worst case for one job: every attempt running to its timeout, verification and tidying up, plus the retry delays. */
     private fun budgetMs(settings: Settings): Long {
-        val perAttempt = settings.jobTimeoutMs + settings.stepTimeoutMs + TIDY_UP_ALLOWANCE_MS
+        // Each attempt may first wait for a chat check holding the automation lock (LockedSender): as
+        // long as a check may take, and its backing out of WhatsApp.
+        val checkWait = settings.jobTimeoutMs + CHECK_EXIT_ALLOWANCE_MS
+        val perAttempt = checkWait + settings.jobTimeoutMs + settings.stepTimeoutMs + TIDY_UP_ALLOWANCE_MS
         return (settings.retryCount + 1) * perAttempt + settings.retryCount * settings.retryDelaySeconds * 1000L + MARGIN_MS
     }
 
@@ -214,6 +217,8 @@ class SendQueueProcessor(
         /** How early an alarm without an occurrence key may fire and still count as due. */
         const val LEGACY_ALARM_SLACK_MS = 60_000L
         private const val TIDY_UP_ALLOWANCE_MS = 10_000L
+        /** A check backs out of WhatsApp in at most six tries of a two-second look and a Back press. */
+        private const val CHECK_EXIT_ALLOWANCE_MS = 20_000L
         private const val MARGIN_MS = 60_000L
     }
 }
