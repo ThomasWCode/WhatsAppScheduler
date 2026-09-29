@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.thomaswcode.whatsappscheduler.SchedulerApp
+import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.sending.accessibility.WaAccessibilityService
 import com.thomaswcode.whatsappscheduler.ui.health.HealthCheck
 import com.thomaswcode.whatsappscheduler.ui.health.HealthProblem
@@ -28,7 +29,7 @@ class PreflightReceiver : BroadcastReceiver() {
             try {
                 val schedule = container.repository.get(id)
                 // Only for the occurrence it was set for: one moved, edited or switched off since has its own.
-                if (schedule == null || !schedule.enabled || schedule.nextAtMillis != occurrence) return@launch
+                if (schedule == null || !stillDue(schedule, occurrence)) return@launch
                 val problem = HealthCheck.evaluate(
                     context,
                     serviceConnected = WaAccessibilityService.instance.value != null,
@@ -36,11 +37,16 @@ class PreflightReceiver : BroadcastReceiver() {
                     pinBlock = container.pinGuard.block(),
                     dryRunUntilMillis = null,
                 ).firstOrNull { it.problem.blocksSending && it.problem != HealthProblem.DRY_RUN }
+                // The checks take a moment: a schedule moved, edited or switched off meanwhile has had its
+                // warnings cleared already, and mustn't get one about a send that is no longer due.
+                if (!stillDue(container.repository.get(id), occurrence)) return@launch
                 if (problem == null) {
                     container.fallbackNotifier.cancelWillFail(id)
                 } else {
                     container.log.warn("Pre-flight for schedule $id: ${problem.message}")
                     container.fallbackNotifier.notifyWillFail(schedule, occurrence, problem)
+                    // And one changed just as it was posted: taken back.
+                    if (!stillDue(container.repository.get(id), occurrence)) container.fallbackNotifier.cancelWillFail(id)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -51,6 +57,9 @@ class PreflightReceiver : BroadcastReceiver() {
             }
         }
     }
+
+    private fun stillDue(schedule: Schedule?, occurrence: Long): Boolean =
+        schedule != null && schedule.enabled && schedule.nextAtMillis == occurrence
 
     companion object {
         const val ACTION_PREFLIGHT = "com.thomaswcode.whatsappscheduler.PREFLIGHT"
