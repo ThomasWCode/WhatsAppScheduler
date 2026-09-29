@@ -23,6 +23,8 @@ class HeadsUpPrompt(
         it == AudioManager.MODE_IN_CALL || it == AudioManager.MODE_IN_COMMUNICATION
     }
 
+    override fun canShow(): Boolean = notifications.canShow(Notifications.CHANNEL_HEADS_UP)
+
     override suspend fun ask(schedules: List<Schedule>, endsAtMillis: Long): HeadsUpChoice? {
         val first = schedules.first()
         val wait = answers.expect()

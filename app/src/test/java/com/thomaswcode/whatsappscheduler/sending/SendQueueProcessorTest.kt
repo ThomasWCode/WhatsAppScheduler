@@ -295,6 +295,54 @@ class SendQueueProcessorTest {
     }
 
     @Test
+    fun whenACallCutsShortEveryCountdownItIsSnoozedNotSentAsTheLastEnds() = runTest {
+        store.put(oneOff())
+        val sender = FakeSender()
+        val countdown = FakeHeadsUp(callDuringEveryAsk = 2)
+        processor(sender, headsUp = countdown).run { enqueue(scheduled()); drain() }
+        assertEquals(3, countdown.asked.size)
+        assertTrue(sender.jobs.isEmpty())
+        assertEquals(clock.instant().plus(Duration.ofMinutes(5)).toEpochMilli(), store.row(1).nextAtMillis)
+    }
+
+    @Test
+    fun withNoCountdownToShowItWaitsForThePhoneToBePutDown() = runTest {
+        store.put(oneOff())
+        val sender = FakeSender()
+        val countdown = FakeHeadsUp(canShow = false, inUseLooks = 3)
+        processor(sender, headsUp = countdown).run { enqueue(scheduled()); drain() }
+        assertTrue(countdown.asked.isEmpty())
+        // In use at two looks, 15 s apart, then put down.
+        assertEquals(30_000L, testScheduler.currentTime)
+        assertEquals(1, sender.jobs.size)
+    }
+
+    @Test
+    fun withNoCountdownToShowAPhoneInUseForHalfAnHourHoldsIt() = runTest {
+        store.put(oneOff())
+        val sender = FakeSender()
+        processor(sender, headsUp = FakeHeadsUp(canShow = false)).run { enqueue(scheduled()); drain() }
+        assertTrue(sender.jobs.isEmpty())
+        assertEquals(30 * 60_000L, testScheduler.currentTime)
+        assertEquals(Attention.HELD, store.row(1).attention)
+        assertEquals(listOf("held Mum"), notifier.events)
+    }
+
+    @Test
+    fun aBatchLetThroughIsSentEvenWhenTheOthersAlarmsComeLate() = runTest {
+        store.put(oneOff(1).copy(batchId = "b"))
+        store.put(oneOff(2).copy(batchId = "b", targetName = "Dad"))
+        val sender = FakeSender()
+        val countdown = FakeHeadsUp()
+        val processor = processor(sender, headsUp = countdown)
+        // Only the first alarm has come when the countdown runs; the other's comes after the queue has emptied.
+        processor.run { enqueue(scheduled(1)); drain() }
+        processor.run { enqueue(scheduled(2)); drain() }
+        assertEquals(listOf(listOf(1L, 2L)), countdown.asked)
+        assertEquals(listOf(1L, 2L), sender.jobs.map { it.scheduleId })
+    }
+
+    @Test
     fun postponingABatchOpensOnePicker() = runTest {
         store.put(oneOff(1).copy(batchId = "b"))
         store.put(oneOff(2).copy(batchId = "b", targetName = "Dad"))
@@ -593,13 +641,21 @@ class SendQueueProcessorTest {
         private val choice: HeadsUpChoice? = null,
         /** A call starts during the first countdown and lasts this many looks. */
         private val callAfterFirstAsk: Int = 0,
+        /** A call starts during every countdown and lasts this many looks. */
+        private val callDuringEveryAsk: Int = 0,
+        /** Notifications are on, so a countdown can be seen. */
+        private val canShow: Boolean = true,
+        /** In use for this many looks, then put down. */
+        private var inUseLooks: Int = Int.MAX_VALUE,
     ) : HeadsUp {
         val asked = mutableListOf<List<Long>>()
-        override fun inUse() = inUse
+        override fun inUse() = inUse && inUseLooks-- > 0
         override fun inCall() = calls-- > 0
+        override fun canShow() = canShow
         override suspend fun ask(schedules: List<Schedule>, endsAtMillis: Long): HeadsUpChoice? {
             asked += schedules.map { it.id }
             if (asked.size == 1) calls = callAfterFirstAsk
+            if (callDuringEveryAsk > 0) calls = callDuringEveryAsk
             return choice
         }
     }
