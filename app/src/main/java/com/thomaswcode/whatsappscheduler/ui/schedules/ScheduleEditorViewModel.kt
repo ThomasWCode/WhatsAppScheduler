@@ -55,6 +55,17 @@ data class EditorForm(
     /** The user typed the name here, rather than it coming from the schedule or the contact picker. */
     val nameTyped: Boolean = false,
 ) {
+    /**
+     * With a contact from the system picker, [number] as it will be saved. A name typed here for the
+     * contact already chosen stands; any other name goes with the contact it came with, so it can't be
+     * remembered as the new one's WhatsApp name.
+     */
+    fun picked(number: String, displayName: String, countryIso: String): EditorForm {
+        val sameContact = phone.isNotBlank() && (PhoneNormaliser.toE164(phone, countryIso) ?: phone) == number
+        val keep = nameTyped && sameContact && name.isNotBlank() && name != pickedName
+        return copy(phone = number, name = if (keep) name else displayName, pickedName = displayName, nameTyped = keep)
+    }
+
     fun rule(): Recurrence = when (ruleKind) {
         RuleKind.ONCE -> Recurrence.Once
         RuleKind.DAILY -> Recurrence.Daily
@@ -186,15 +197,8 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
 
     /** Fills in a contact picked from the system picker. */
     fun contactPicked(rawNumber: String, displayName: String) = update {
-        copy(
-            // Kept as picked when it doesn't parse, so the field shows why it can't be saved.
-            phone = PhoneNormaliser.toE164(rawNumber, countryIso) ?: rawNumber,
-            // Replaced unless the user typed a name themselves: one loaded with the schedule belongs to
-            // the contact being replaced.
-            name = if (!nameTyped || name.isBlank() || name == pickedName) displayName else name,
-            pickedName = displayName,
-            nameTyped = nameTyped && name.isNotBlank() && name != pickedName,
-        )
+        // Kept as picked when it doesn't parse, so the field shows why it can't be saved.
+        picked(PhoneNormaliser.toE164(rawNumber, countryIso) ?: rawNumber, displayName, countryIso)
     }
 
     fun save() {
