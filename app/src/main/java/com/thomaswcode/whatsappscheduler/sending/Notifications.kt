@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.Bundle
 import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.ui.MainActivity
 
@@ -55,7 +56,16 @@ class Notifications(private val context: Context) {
             .build()
 
     /** On the "Needs your attention" channel (features F3), with the situation's buttons as [actions]. */
-    fun fallback(title: String, text: String, tap: PendingIntent, actions: List<Pair<String, PendingIntent>> = emptyList()): Notification =
+    fun fallback(
+        title: String,
+        text: String,
+        tap: PendingIntent,
+        actions: List<Pair<String, PendingIntent>> = emptyList(),
+        /** How long it may stay when nothing else removes it; for as long as needed when null. */
+        lifetimeMs: Long? = null,
+        /** What it is about, kept on it (not shown) so it can be told from one about something else. */
+        about: String? = null,
+    ): Notification =
         Notification.Builder(context, CHANNEL_FALLBACK)
             .setSmallIcon(R.drawable.ic_stat_send)
             .setContentTitle(title)
@@ -64,6 +74,8 @@ class Notifications(private val context: Context) {
             .setContentIntent(tap)
             .setAutoCancel(true)
             .apply { actions.forEach { (label, intent) -> addAction(Notification.Action.Builder(null, label, intent).build()) } }
+            .apply { lifetimeMs?.let(::setTimeoutAfter) }
+            .apply { about?.let { addExtras(Bundle().apply { putString(EXTRA_ABOUT, it) }) } }
             .build()
 
     /**
@@ -103,6 +115,11 @@ class Notifications(private val context: Context) {
 
     fun isShowing(id: Int): Boolean = runCatching { manager.activeNotifications.any { it.id == id } }.getOrDefault(false)
 
+    /** What notification [id] is about ([fallback]'s about), if it is showing. */
+    fun aboutOf(id: Int): String? = runCatching {
+        manager.activeNotifications.firstOrNull { it.id == id }?.notification?.extras?.getString(EXTRA_ABOUT)
+    }.getOrNull()
+
     private fun openApp(): PendingIntent = PendingIntent.getActivity(
         context, 0, Intent(context, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     )
@@ -112,6 +129,7 @@ class Notifications(private val context: Context) {
         const val CHANNEL_FALLBACK = "fallback"
         const val CHANNEL_UNLOCK = "unlock"
         const val CHANNEL_SENT = "sent"
+        private const val EXTRA_ABOUT = "com.thomaswcode.whatsappscheduler.about"
         const val GROUP_SENT = "sent"
         const val ID_SENT_SUMMARY = 4
         /** Test runs are grouped apart, so a collapsed group can't read "Sent" over messages that weren't (B11). */
@@ -126,5 +144,7 @@ class Notifications(private val context: Context) {
         const val ID_UNLOCK = 2
         const val ID_PIN_PAUSED = 3
         const val ID_FALLBACK_BASE = 1000
+        /** A pre-flight warning (features F5), apart from [ID_FALLBACK_BASE] so it can't replace a prompt about an earlier occurrence. */
+        const val ID_PREFLIGHT_BASE = 300_000
     }
 }

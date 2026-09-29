@@ -3,11 +3,15 @@ package com.thomaswcode.whatsappscheduler.sending
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.text.format.DateFormat
 import com.thomaswcode.whatsappscheduler.data.db.Attention
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
+import com.thomaswcode.whatsappscheduler.domain.Preflight
 import com.thomaswcode.whatsappscheduler.domain.Recurrence
+import com.thomaswcode.whatsappscheduler.ui.health.HealthItem
 import com.thomaswcode.whatsappscheduler.ui.MainActivity
 import java.time.Instant
+import java.util.Date
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -69,6 +73,40 @@ class FallbackNotifier(private val context: Context, private val notifications: 
         ),
     )
 
+    /**
+     * What the pre-flight check found would make the send due at [occurrenceAtMillis] fail (features
+     * F5), with the way to fix it. It goes once that send is no longer due (it ran, or the schedule was
+     * moved, switched off or deleted), or an hour after it was due.
+     */
+    fun notifyWillFail(schedule: Schedule, occurrenceAtMillis: Long, problem: HealthItem) {
+        val fix = when {
+            problem.problem.fixedInAppSettings -> MainActivity.intent(context, MainActivity.DESTINATION_SETTINGS)
+            problem.fix != null -> Intent(problem.fix).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            else -> MainActivity.rowIntent(context, schedule.id)
+        }
+        val tap = PendingIntent.getActivity(context, schedule.id.toInt(), fix, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val at = DateFormat.getTimeFormat(context).format(Date(occurrenceAtMillis))
+        val untilSendIsOver = occurrenceAtMillis - System.currentTimeMillis() + WILL_FAIL_AFTERWARDS_MS
+        notifications.show(
+            Notifications.ID_PREFLIGHT_BASE + schedule.id.toInt(),
+            notifications.fallback(
+                "Your $at message to ${schedule.targetName} will fail", problem.message, tap,
+                listOfNotNull(problem.fixLabel?.let { "Fix" to tap }), lifetimeMs = untilSendIsOver.coerceAtLeast(WILL_FAIL_AFTERWARDS_MS),
+                about = Preflight.warningKey(occurrenceAtMillis, schedule.targetName),
+            ),
+        )
+    }
+
+    /**
+     * Removes the schedule's pre-flight warning: the check found nothing wrong (any more), or the send it
+     * was about is no longer due. One still [unlessAbout] ([Preflight.warningKey]) stays.
+     */
+    fun cancelWillFail(scheduleId: Long, unlessAbout: String? = null) {
+        val id = Notifications.ID_PREFLIGHT_BASE + scheduleId.toInt()
+        if (unlessAbout != null && notifications.aboutOf(id) == unlessAbout) return
+        notifications.cancel(id)
+    }
+
     fun notifyPinPaused(reason: String) {
         val open = PendingIntent.getActivity(
             context, REQUEST_PIN_PAUSED,
@@ -101,7 +139,10 @@ class FallbackNotifier(private val context: Context, private val notifications: 
         }
     }
 
-    /** Removes the schedule's prompt, which is stale once it has been sent, edited or deleted (B10). */
+    /**
+     * Removes the schedule's prompt, which is stale once it has been sent, edited or deleted (B10). A
+     * pre-flight warning is about its next send, not this, and goes with that send (AlarmScheduler).
+     */
     fun cancel(scheduleId: Long) = notifications.cancel(Notifications.ID_FALLBACK_BASE + scheduleId.toInt())
 
     private fun show(schedule: Schedule, title: String, text: String, tap: PendingIntent, actions: List<Pair<String, PendingIntent>>) =
@@ -145,5 +186,7 @@ class FallbackNotifier(private val context: Context, private val notifications: 
     private companion object {
         val stampFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE d MMM HH:mm")
         const val REQUEST_PIN_PAUSED = -2
+        /** A pre-flight warning stays this long after its send was due, unless that send removes it first. */
+        const val WILL_FAIL_AFTERWARDS_MS = 60 * 60 * 1000L
     }
 }

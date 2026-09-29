@@ -9,6 +9,7 @@ import com.thomaswcode.whatsappscheduler.data.db.SendLog
 import com.thomaswcode.whatsappscheduler.data.db.SendStatus
 import com.thomaswcode.whatsappscheduler.domain.Recurrence
 import com.thomaswcode.whatsappscheduler.domain.RecurrenceCalculator
+import com.thomaswcode.whatsappscheduler.domain.RecurrenceCodec
 import java.time.Instant
 import java.time.ZoneId
 import java.util.UUID
@@ -302,6 +303,35 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
             lastResult = result, lastStatus = status, attention = attention, postponedFromMillis = postponedFrom,
         )
     }
+
+    override suspend fun recordMissed(id: Long, occurrenceAtMillis: Long, detail: String, sentTo: String, ranAt: Instant): MissedRun? =
+        db.withTransaction {
+            // Only while the row still has that occurrence pending: one edited, moved or deleted since the
+            // queue looked at it isn't missed, and holding it would mark the user's new time as missed.
+            val current = schedules.getById(id)?.takeIf { it.nextAtMillis == occurrenceAtMillis } ?: return@withTransaction null
+            if (current.rule == Recurrence.Once) {
+                val stored = recordRun(id, occurrenceAtMillis, SendStatus.MISSED, detail, sentTo, ranAt) ?: return@withTransaction null
+                return@withTransaction MissedRun(stored, stored)
+            }
+            // The series goes on past the occurrence, as after any run, but its own last run and whatever it
+            // already waits on (an earlier failure, say) stay as they were: the missed message is held on its
+            // own, with its own run and history, so Send now, Postpone and Discard are the one-off ones.
+            val usedUp = current.nextAtMillis == occurrenceAtMillis || current.postponedFromMillis != null
+            val series = if (!usedUp) current else current.copy(
+                nextAtMillis = nextAfterRun(current, occurrenceAtMillis, ranAt, movedFromMillis = current.postponedFromMillis),
+                postponedFromMillis = null,
+            )
+            if (series != current) schedules.update(series)
+            val held = Schedule(
+                message = current.message, targetKind = current.targetKind, targetName = current.targetName, phoneE164 = current.phoneE164,
+                isLocked = current.isLocked, firstAtMillis = occurrenceAtMillis, zoneId = current.zoneId,
+                recurrence = RecurrenceCodec.encode(Recurrence.Once), nextAtMillis = null, createdAtMillis = ranAt.toEpochMilli(),
+                lastRunAtMillis = ranAt.toEpochMilli(), lastResult = "${SendStatus.MISSED.name}: $detail", lastStatus = SendStatus.MISSED,
+                recipientId = current.recipientId, attention = Attention.MISSED, sourceScheduleId = current.id,
+            ).let { it.copy(id = schedules.insert(it)) }
+            logs.insert(SendLog(scheduleId = held.id, atMillis = ranAt.toEpochMilli(), status = SendStatus.MISSED, targetName = sentTo, detail = detail, occurrenceAtMillis = occurrenceAtMillis))
+            MissedRun(series, held)
+        }
 
     /**
      * A manual run doesn't decide whether the schedule needs attention, except that a real send by
