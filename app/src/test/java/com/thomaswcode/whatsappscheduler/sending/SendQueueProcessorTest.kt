@@ -285,6 +285,24 @@ class SendQueueProcessorTest {
     }
 
     @Test
+    fun aCallDuringTheCountdownIsWaitedOutAndTheCountdownRunsAgain() = runTest {
+        store.put(oneOff())
+        val sender = FakeSender()
+        val countdown = FakeHeadsUp(callAfterFirstAsk = 2)
+        processor(sender, headsUp = countdown).run { enqueue(scheduled()); drain() }
+        assertEquals(2, countdown.asked.size)
+        assertEquals(1, sender.jobs.size)
+    }
+
+    @Test
+    fun postponingABatchOpensOnePicker() = runTest {
+        store.put(oneOff(1).copy(batchId = "b"))
+        store.put(oneOff(2).copy(batchId = "b", targetName = "Dad"))
+        processor(FakeSender(), headsUp = FakeHeadsUp(choice = HeadsUpChoice.POSTPONE)).run { enqueue(scheduled(1)); enqueue(scheduled(2)); drain() }
+        assertEquals(listOf(listOf(1L, 2L)), notifier.heldGroups)
+    }
+
+    @Test
     fun aBatchDueTogetherGetsOneCountdown() = runTest {
         store.put(oneOff(1).copy(batchId = "b"))
         store.put(oneOff(2).copy(batchId = "b", targetName = "Dad"))
@@ -544,8 +562,10 @@ class SendQueueProcessorTest {
         override fun pinPaused(reason: String) {
             events += "pinPaused"
         }
-        override fun held(schedule: Schedule) {
-            events += "held ${schedule.targetName}"
+        val heldGroups = mutableListOf<List<Long>>()
+        override fun held(schedules: List<Schedule>) {
+            schedules.forEach { events += "held ${it.targetName}" }
+            heldGroups += schedules.map { it.id }
         }
 
         val missedIds = mutableListOf<Long>()
@@ -556,12 +576,19 @@ class SendQueueProcessorTest {
     }
 
     /** In use unless told otherwise; in a call for the first [calls] looks; answers [choice] (null: runs out). */
-    private class FakeHeadsUp(var inUse: Boolean = true, private var calls: Int = 0, private val choice: HeadsUpChoice? = null) : HeadsUp {
+    private class FakeHeadsUp(
+        var inUse: Boolean = true,
+        private var calls: Int = 0,
+        private val choice: HeadsUpChoice? = null,
+        /** A call starts during the first countdown and lasts this many looks. */
+        private val callAfterFirstAsk: Int = 0,
+    ) : HeadsUp {
         val asked = mutableListOf<List<Long>>()
         override fun inUse() = inUse
         override fun inCall() = calls-- > 0
         override suspend fun ask(schedules: List<Schedule>, endsAtMillis: Long): HeadsUpChoice? {
             asked += schedules.map { it.id }
+            if (asked.size == 1) calls = callAfterFirstAsk
             return choice
         }
     }
