@@ -49,6 +49,7 @@ class SendService : LifecycleService() {
             settings = { c.settings.current() },
             clock = Clock.systemDefaultZone(),
             jobGuard = WakeLockGuard(getSystemService(PowerManager::class.java)),
+            admission = c.sendAdmission,
         )
     }
 

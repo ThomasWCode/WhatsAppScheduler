@@ -54,7 +54,8 @@ class Notifications(private val context: Context) {
             .setOngoing(true)
             .build()
 
-    fun fallback(title: String, text: String, tap: PendingIntent): Notification =
+    /** On the "Needs your attention" channel (features F3), with the situation's buttons as [actions]. */
+    fun fallback(title: String, text: String, tap: PendingIntent, actions: List<Pair<String, PendingIntent>> = emptyList()): Notification =
         Notification.Builder(context, CHANNEL_FALLBACK)
             .setSmallIcon(R.drawable.ic_stat_send)
             .setContentTitle(title)
@@ -62,6 +63,7 @@ class Notifications(private val context: Context) {
             .setStyle(Notification.BigTextStyle().bigText(text))
             .setContentIntent(tap)
             .setAutoCancel(true)
+            .apply { actions.forEach { (label, intent) -> addAction(Notification.Action.Builder(null, label, intent).build()) } }
             .build()
 
     /**
