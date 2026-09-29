@@ -145,6 +145,20 @@ class RecipientsAndBatchesTest {
     fun aGroupTypedInAnotherCaseIsTheSavedOne() = runTest {
         val saved = recipients.resolve(crew)
         assertEquals(saved.id, recipients.resolve(RecipientDraft(TargetKind.GROUP, "work crew")).id)
+        // Beyond ASCII too, which SQLite's NOCASE wouldn't fold.
+        val equipe = recipients.resolve(RecipientDraft(TargetKind.GROUP, "Équipe", isLocked = true))
+        assertEquals(equipe.id, recipients.resolve(RecipientDraft(TargetKind.GROUP, "équipe")).id)
+        assertEquals(equipe.id, recipients.sameChatElsewhere(saved.copy(displayName = "ÉQUIPE"))?.id)
+    }
+
+    @Test
+    fun aSeriesThatMayHaveBeenSentKeepsItsCheckPrompt() = runTest {
+        val m = recipients.resolve(mum)
+        val daily = schedules.saveBatch(template(), listOf(m), now = now).saved.single().let { schedules.save(it.copy(recurrence = "DAILY"), now) }
+        schedules.recordRun(daily.id, daily.nextAtMillis!!, SendStatus.UNCERTAIN, "verify: Timed out", "Mum", tomorrowNine.plusSeconds(30))
+        val changed = recipients.updateDetails(m.copy(phoneE164 = "+447400123459"))
+        assertTrue("its prompt stays: the chat to check is the old one", changed.none { it.id == daily.id })
+        assertEquals("its next sends use the new number", "+447400123459", schedules.get(daily.id)!!.phoneE164)
     }
 
     @Test

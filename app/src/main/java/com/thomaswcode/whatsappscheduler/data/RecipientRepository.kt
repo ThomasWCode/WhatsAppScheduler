@@ -62,13 +62,20 @@ class RecipientRepository(private val db: AppDatabase) {
      */
     suspend fun sameChatElsewhere(recipient: Recipient): Recipient? =
         recipient.phoneE164?.let { recipients.otherByPhone(it, recipient.id) }
-            ?: if (recipient.phoneE164 == null) recipients.otherByChatName(recipient.kind, recipient.chatName, recipient.id) else null
+            ?: if (recipient.phoneE164 == null) byChatName(recipient.kind, recipient.chatName, except = recipient.id) else null
 
     /** The stored recipient [draft] already is, if any, without creating one: by id, number, or chat name. */
     suspend fun existing(draft: RecipientDraft): Recipient? =
         draft.recipientId?.let { recipients.get(it) }
             ?: draft.phoneE164?.let { recipients.byPhone(it) }
-            ?: if (draft.phoneE164 == null) recipients.byChatName(draft.kind, draft.chatName) else null
+            ?: if (draft.phoneE164 == null) byChatName(draft.kind, draft.chatName) else null
+
+    /**
+     * A recipient found by chat name, whatever the case: WhatsApp's search falls back to a
+     * case-insensitive match, so "book club" is the same chat as "Book Club", and "équipe" as "Équipe".
+     */
+    private suspend fun byChatName(kind: TargetKind, chatName: String, except: Long? = null): Recipient? =
+        recipients.namedOfKind(kind).firstOrNull { it.id != except && it.chatName.trim().equals(chatName.trim(), ignoreCase = true) }
 
     suspend fun markUsed(ids: Collection<Long>, at: Instant = Instant.now()) = db.withTransaction {
         ids.forEach { recipients.markUsed(it, at.toEpochMilli()) }

@@ -123,8 +123,9 @@ fun RecipientField(
             if (!contactsAllowed) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
                     Text("Allow contacts to search them here.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                    TextButton(onClick = onAllowContacts) { Text("Allow") }
-                    TextButton(onClick = onPickContact) { Text("Pick from contacts") }
+                    // Off while saving: a contact picked then would come back after the draft was cleared.
+                    TextButton(onClick = onAllowContacts, enabled = enabled) { Text("Allow") }
+                    TextButton(onClick = onPickContact, enabled = enabled) { Text("Pick from contacts") }
                 }
             }
             contactHits.forEach { hit ->
