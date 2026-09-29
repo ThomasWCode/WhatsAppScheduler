@@ -8,6 +8,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
+import com.thomaswcode.whatsappscheduler.SchedulerApp
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.sending.accessibility.Selectors
 
@@ -21,6 +22,10 @@ class FallbackActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Sending by hand deals with the prompt: gone, as when its body is tapped, and so from its button too.
+        if (intent.action == ACTION_SEND) {
+            intent.getLongExtra(EXTRA_SCHEDULE_ID, -1L).takeIf { it >= 0 }?.let { SchedulerApp.container(this).fallbackNotifier.cancel(it) }
+        }
         val checkOnly = intent.action == ACTION_CHECK || intent.action == ACTION_OPEN
         val message = if (checkOnly) null else intent.getStringExtra(EXTRA_MESSAGE) ?: ""
         val phone = intent.getStringExtra(EXTRA_PHONE)
@@ -53,12 +58,14 @@ class FallbackActivity : Activity() {
         const val EXTRA_MESSAGE = "message"
         const val EXTRA_PHONE = "phone"
         const val EXTRA_NAME = "name"
+        const val EXTRA_SCHEDULE_ID = "scheduleId"
 
         // The two differ in action as well as extras, because extras alone don't tell PendingIntents apart.
 
         /** Tap to send: the message on the clipboard and the chat opened with it. */
         fun manualSend(context: Context, schedule: Schedule): Intent = Intent(context, FallbackActivity::class.java)
             .setAction(ACTION_SEND)
+            .putExtra(EXTRA_SCHEDULE_ID, schedule.id)
             .putExtra(EXTRA_MESSAGE, schedule.message)
             .putExtra(EXTRA_PHONE, schedule.phoneE164)
             .putExtra(EXTRA_NAME, schedule.targetName)
