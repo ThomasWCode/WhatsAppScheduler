@@ -1,6 +1,7 @@
 package com.thomaswcode.whatsappscheduler.sending
 
 import com.thomaswcode.whatsappscheduler.data.ScheduleRepository
+import com.thomaswcode.whatsappscheduler.data.MissedRun
 import com.thomaswcode.whatsappscheduler.data.SendStore
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.data.db.SendStatus
@@ -179,15 +180,28 @@ class SendQueueProcessorTest {
     // Missed occurrences (B09 interim): decided in the queue, so a re-arm and a late alarm agree
 
     @Test
-    fun occurrenceLateBeyondTheGraceWindowIsReportedMissedNotSent() = runTest {
+    fun occurrenceLateBeyondTheGraceWindowIsHeldNotSent() = runTest {
         store.put(daily())
         clock.now = due.plus(Duration.ofHours(3))
         val sender = FakeSender()
         processor(sender, Settings(missedGraceMinutes = 120)).run { enqueue(scheduled()); drain() }
         assertTrue(sender.jobs.isEmpty())
         assertEquals(listOf(SendStatus.MISSED), store.logged)
-        assertEquals(listOf("missed Mum"), notifier.events)
+        // The series goes on; the user is asked about the held copy of the missed message (B09).
         assertEquals(due.plus(Duration.ofDays(1)).toEpochMilli(), store.row(1).nextAtMillis)
+        assertEquals(listOf("missed Mum"), notifier.events)
+        assertEquals(store.held.single().id, notifier.missedIds.single())
+        assertEquals(1L, store.held.single().sourceScheduleId)
+    }
+
+    @Test
+    fun theGraceWindowIsTwentyMinutesByDefault() = runTest {
+        store.put(oneOff())
+        clock.now = due.plus(Duration.ofMinutes(21))
+        val sender = FakeSender()
+        processor(sender, Settings()).run { enqueue(scheduled()); drain() }
+        assertTrue(sender.jobs.isEmpty())
+        assertEquals(listOf(SendStatus.MISSED), store.logged)
     }
 
     @Test
@@ -398,6 +412,16 @@ class SendQueueProcessorTest {
             logged += status
             return current.copy(lastRunAtMillis = ranAt.toEpochMilli(), lastResult = status.name).also(::put)
         }
+
+        val held = mutableListOf<Schedule>()
+
+        override suspend fun recordMissed(id: Long, occurrenceAtMillis: Long, detail: String, sentTo: String, ranAt: Instant): MissedRun? {
+            val stored = recordRun(id, occurrenceAtMillis, SendStatus.MISSED, detail, sentTo, ranAt) ?: return null
+            if (stored.recurrence == "ONCE") return MissedRun(stored, stored)
+            val copy = stored.copy(id = 1_000 + id, recurrence = "ONCE", nextAtMillis = null, firstAtMillis = occurrenceAtMillis, sourceScheduleId = id)
+            held += copy
+            return MissedRun(stored, copy)
+        }
     }
 
     private class FakeAlarms : ScheduleAlarms {
@@ -422,8 +446,10 @@ class SendQueueProcessorTest {
         override fun pinPaused(reason: String) {
             events += "pinPaused"
         }
+        val missedIds = mutableListOf<Long>()
         override fun missed(schedule: Schedule, occurrenceAtMillis: Long) {
             events += "missed ${schedule.targetName}"
+            missedIds += schedule.id
         }
     }
 

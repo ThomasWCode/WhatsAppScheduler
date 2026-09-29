@@ -16,6 +16,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -48,6 +49,60 @@ class ScheduleRepositoryTest {
         ),
         now = nine.minus(Duration.ofHours(1)),
     )
+
+    @Test
+    fun aMissedOccurrenceIsHeldForTheUser() = runTest {
+        // A series goes on, and the missed message waits as a one-off of its own (B09).
+        val daily = saveDaily()
+        val missed = repository.recordMissed(daily.id, nine.toEpochMilli(), "missed by 180 min (phone off?)", "Mum", ranAt)!!
+        assertNull(missed.schedule.attention)
+        assertEquals(nine.plus(Duration.ofDays(1)).toEpochMilli(), repository.get(daily.id)!!.nextAtMillis)
+        assertNull(repository.get(daily.id)!!.attention)
+        val held = repository.get(missed.held.id)!!
+        assertEquals(Attention.MISSED, held.attention)
+        assertEquals(daily.id, held.sourceScheduleId)
+        assertEquals(nine.toEpochMilli(), held.firstAtMillis)
+        assertNull(held.nextAtMillis)
+        assertEquals("ONCE", held.recurrence)
+        assertEquals(daily.message, held.message)
+        // Its run is the held message's, so the series' own last run and history stand.
+        assertNull(repository.get(daily.id)!!.lastRunAtMillis)
+        assertEquals(mapOf(held.id to nine.toEpochMilli()), repository.observeLatestOccurrences().first())
+        // A one-off waits itself.
+        val once = repository.save(daily.copy(id = 0, recurrence = "ONCE", firstAtMillis = nine.plus(Duration.ofDays(2)).toEpochMilli()), ranAt)
+        val oneOff = repository.recordMissed(once.id, once.nextAtMillis!!, "missed by 30 min (phone off?)", "Mum", ranAt.plus(Duration.ofDays(2)))!!
+        assertEquals(oneOff.schedule, oneOff.held)
+        assertEquals(Attention.MISSED, oneOff.held.attention)
+        assertNull(oneOff.held.nextAtMillis)
+    }
+
+    @Test
+    fun anOccurrenceEditedAwayIsntMissed() = runTest {
+        val daily = saveDaily()
+        // Edited to another time between the queue looking at it and holding it.
+        repository.save(daily.copy(firstAtMillis = nine.plus(Duration.ofHours(8)).toEpochMilli()), ranAt)
+        assertNull(repository.recordMissed(daily.id, nine.toEpochMilli(), "missed by 180 min (phone off?)", "Mum", ranAt))
+        assertNull(repository.get(daily.id)!!.attention)
+        assertEquals(nine.plus(Duration.ofHours(8)).toEpochMilli(), repository.get(daily.id)!!.nextAtMillis)
+        assertTrue(repository.observeLogs().first().isEmpty())
+    }
+
+    @Test
+    fun aMissedOccurrenceLeavesWhatTheSeriesAlreadyWaitsOn() = runTest {
+        val daily = saveDaily()
+        repository.recordRun(daily.id, nine.toEpochMilli(), SendStatus.FAILED, "search: Timed out", "Mum", ranAt)
+        val failed = repository.get(daily.id)!!
+        val tomorrow = failed.nextAtMillis!!
+        repository.recordMissed(daily.id, tomorrow, "missed by 180 min (phone off?)", "Mum", Instant.ofEpochMilli(tomorrow).plus(Duration.ofHours(3)))
+        val after = repository.get(daily.id)!!
+        // Yesterday's failure is still described as it was, and the series has moved on.
+        assertEquals(Attention.FAILED, after.attention)
+        assertEquals(SendStatus.FAILED, after.lastStatus)
+        assertEquals(failed.lastRunAtMillis, after.lastRunAtMillis)
+        assertEquals(failed.lastResult, after.lastResult)
+        assertEquals(Instant.ofEpochMilli(tomorrow).plus(Duration.ofDays(1)).toEpochMilli(), after.nextAtMillis)
+        assertEquals(nine.toEpochMilli(), repository.observeLatestOccurrences().first()[daily.id])
+    }
 
     @Test
     fun recordRunMovesPastTheOccurrenceAndLogsIt() = runTest {

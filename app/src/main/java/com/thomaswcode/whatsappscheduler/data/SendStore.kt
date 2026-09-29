@@ -18,4 +18,15 @@ interface SendStore {
 
     /** Logs a send that was not for the pending occurrence; the next occurrence is left alone. */
     suspend fun recordManual(id: Long, status: SendStatus, detail: String?, sentTo: String, ranAt: Instant): Schedule?
+
+    /**
+     * Logs the occurrence due at [occurrenceAtMillis] as missed and holds it for the user (B09): a
+     * one-off waits itself, with no next time; a series goes on to its next occurrence as usual, and
+     * the missed one is held as a one-off copy of its own. Null, and nothing recorded, when the schedule
+     * no longer has that occurrence pending (deleted, edited or moved since the queue looked).
+     */
+    suspend fun recordMissed(id: Long, occurrenceAtMillis: Long, detail: String, sentTo: String, ranAt: Instant): MissedRun?
 }
+
+/** What [SendStore.recordMissed] did: [schedule] as stored (to arm), and [held], the message now waiting on the user. */
+data class MissedRun(val schedule: Schedule, val held: Schedule)

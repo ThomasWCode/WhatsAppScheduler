@@ -3,6 +3,7 @@ package com.thomaswcode.whatsappscheduler.data.settings
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -27,5 +28,15 @@ class SettingsStoreTest {
         store.update { it.copy(dryRunUntilMillis = 1_000L) }
         assertFalse(store.current().dryRun)
         assertTrue(store.current().dryRunAt(999L))
+    }
+
+    @Test
+    fun theGraceWindowBecomesTwentyMinutesUnlessOneWasChosen() {
+        assertEquals(20, graceMinutes(stored = null, legacy = null))
+        // The old default was stored with any other change, so it becomes the new one.
+        assertEquals(20, graceMinutes(stored = null, legacy = 120))
+        // One the user chose stays, and one set since is what counts.
+        assertEquals(45, graceMinutes(stored = null, legacy = 45))
+        assertEquals(120, graceMinutes(stored = 120, legacy = 45))
     }
 }

@@ -134,14 +134,15 @@ class SendQueueProcessor(
 
     /**
      * An occurrence whose alarm could not fire in time (phone off, app force-stopped, clock changed)
-     * and is now past the grace window: it is not sent, but logged as skipped and the user is told.
+     * and is now past the grace window: it is not sent, and never skipped silently either (B09). It is
+     * held for the user, who is asked: Send now, Postpone… or Discard.
      */
     private suspend fun recordMissed(schedule: Schedule, occurrence: Long, late: Duration) {
-        log.info("Schedule ${schedule.id}: occurrence ${stamp(occurrence)} is ${late.toMinutes()} min late; not sending it")
-        val stored = store.recordRun(schedule.id, occurrence, SendStatus.MISSED, "missed by ${late.toMinutes()} min (phone off?)", schedule.targetName, clock.instant())
+        log.info("Schedule ${schedule.id}: occurrence ${stamp(occurrence)} is ${late.toMinutes()} min late; holding it")
+        val missed = store.recordMissed(schedule.id, occurrence, "missed by ${late.toMinutes()} min (phone off?)", schedule.targetName, clock.instant())
             ?: return
-        alarms.sync(stored)
-        notifier.missed(stored, occurrence)
+        alarms.sync(missed.schedule)
+        notifier.missed(missed.held, occurrence)
     }
 
     /** Re-reads the schedule after a retry delay: it may have been deleted, switched off or edited meanwhile. */
