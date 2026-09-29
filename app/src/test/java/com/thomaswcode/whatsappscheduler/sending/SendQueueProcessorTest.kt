@@ -418,6 +418,41 @@ class SendQueueProcessorTest {
     }
 
     @Test
+    fun theListSaysItIsAboutToSendDuringTheCountdown() = runTest {
+        store.put(oneOff())
+        val phases = mutableListOf<SendPhase?>()
+        val countdown = FakeHeadsUp(onAsk = { phases += state.state.value.phase })
+        processor(FakeSender(), headsUp = countdown).run { enqueue(scheduled()); drain() }
+        assertEquals(listOf(SendPhase.WAITING), phases)
+    }
+
+    @Test
+    fun aSnoozeThatCantBeSavedStopsTheWholeBatch() = runTest {
+        store.put(oneOff(1).copy(batchId = "b"))
+        store.put(oneOff(2).copy(batchId = "b", targetName = "Dad"))
+        store.failWrites = true
+        val sender = FakeSender()
+        val countdown = FakeHeadsUp(choice = HeadsUpChoice.SNOOZE)
+        processor(sender, headsUp = countdown).run { enqueue(scheduled(1)); enqueue(scheduled(2)); drain() }
+        // One countdown; nothing sent, nor counted down again; both reported as not sent.
+        assertEquals(1, countdown.asked.size)
+        assertTrue(sender.jobs.isEmpty())
+        assertEquals(listOf("failed Mum", "failed Dad"), notifier.events)
+    }
+
+    @Test
+    fun aCallBeforeARetrySnoozesInsteadOfInterruptingIt() = runTest {
+        store.put(oneOff())
+        val sender = FakeSender(failed("search"), SendResult.Sent)
+        val countdown = FakeHeadsUp()
+        // A call starts after the first attempt, during the retry delay.
+        sender.onSend = { countdown.startCall(1) }
+        processor(sender, headsUp = countdown).run { enqueue(scheduled()); drain() }
+        assertEquals(1, sender.jobs.size)
+        assertEquals(clock.instant().plus(Duration.ofMinutes(5)).toEpochMilli(), store.row(1).nextAtMillis)
+    }
+
+    @Test
     fun postponingABatchOpensOnePicker() = runTest {
         store.put(oneOff(1).copy(batchId = "b"))
         store.put(oneOff(2).copy(batchId = "b", targetName = "Dad"))
@@ -654,11 +689,11 @@ class SendQueueProcessorTest {
             schedule.batchId?.let { batch -> rows.values.filter { it.batchId == batch && it.nextAtMillis == occurrenceAtMillis }.sortedBy { it.id } }
                 ?: listOf(schedule)
 
-        override suspend fun snooze(ids: List<Long>, occurrenceAtMillis: Long, to: Instant, ranAt: Instant): List<Schedule> = ids.mapNotNull { id ->
+        override suspend fun snooze(ids: List<Long>, occurrenceAtMillis: Long, to: Instant, ranAt: Instant): List<Schedule> = ids.also { check(!failWrites) { "disk full" } }.mapNotNull { id ->
             rows[id]?.takeIf { it.nextAtMillis == occurrenceAtMillis }?.copy(nextAtMillis = to.toEpochMilli(), postponedFromMillis = occurrenceAtMillis)?.also(::put)
         }
 
-        override suspend fun hold(ids: List<Long>, occurrenceAtMillis: Long, ranAt: Instant, detail: String): List<HeldRun> = ids.mapNotNull { id ->
+        override suspend fun hold(ids: List<Long>, occurrenceAtMillis: Long, ranAt: Instant, detail: String): List<HeldRun> = ids.also { check(!failWrites) { "disk full" } }.mapNotNull { id ->
             val current = rows[id]?.takeIf { it.nextAtMillis == occurrenceAtMillis } ?: return@mapNotNull null
             if (current.recurrence == "ONCE") {
                 val waiting = current.copy(nextAtMillis = null, attention = Attention.HELD).also(::put)
@@ -739,6 +774,11 @@ class SendQueueProcessorTest {
         val asked = mutableListOf<List<Long>>()
         override fun inUse() = inUse && inUseLooks-- > 0
         override fun inCall() = calls-- > 0
+
+        /** A call starts now and lasts this many looks. */
+        fun startCall(looks: Int) {
+            calls = looks
+        }
         override fun canShow() = canShow
         override suspend fun ask(schedules: List<Schedule>, endsAtMillis: Long): HeadsUpChoice? {
             asked += schedules.map { it.id }

@@ -5,7 +5,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
-enum class SendPhase { SENDING, WAITING_TO_RETRY }
+enum class SendPhase {
+    /** Before sending: the countdown, or waiting for a call to end or the phone to be put down (features F1). */
+    WAITING,
+    SENDING,
+    WAITING_TO_RETRY,
+}
 
 /** What the send service is doing. Process-wide, so alarm re-arming and the UI can see in-flight work (T4). */
 data class SendState(
