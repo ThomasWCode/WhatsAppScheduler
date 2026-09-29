@@ -39,6 +39,9 @@ class QuickDraftTest {
         val exact = QuickDraft(message = "Hi", time = TimeChoice.Exact(1_790_000_000_000L))
         assertEquals(exact, roundTrip(exact))
         assertEquals(QuickDraft(), roundTrip(QuickDraft()))
+        // A check offer is kept the same way.
+        val offers = draft.recipients
+        assertEquals(offers, RecipientsSaver.restore(with(RecipientsSaver) { SaverScope { true }.save(offers) }!!))
     }
 
     @Test

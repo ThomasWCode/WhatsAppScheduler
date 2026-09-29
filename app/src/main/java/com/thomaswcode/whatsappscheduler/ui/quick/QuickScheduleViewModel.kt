@@ -171,9 +171,10 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
     /**
      * The check offer (features F4) from the last message scheduled, until it is answered. A host that
      * closes with the sheet, the Share target, asks it itself: it is set as the sheet closes, so it is
-     * there before that host could finish. The app's list offers it under the Scheduled snackbar instead.
+     * there before that host could finish, and saved, so it is still asked after the process was killed
+     * meanwhile. The app's list offers it under the Scheduled snackbar instead.
      */
-    var pendingCheckOffers by mutableStateOf<List<RecipientDraft>>(emptyList())
+    var pendingCheckOffers: List<RecipientDraft> by handle.saveable(stateSaver = RecipientsSaver) { mutableStateOf(emptyList()) }
         private set
 
     /** How many check runs started here are still going: they outlive the sheet, but not the process. */
