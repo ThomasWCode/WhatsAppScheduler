@@ -282,6 +282,11 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
         events.trySend(ListEvent.Failed("$what (${error.message ?: error.javaClass.simpleName})."))
     }
 
+    /** "Turn off" on the test-mode warning (B11). */
+    fun turnOffDryRun() {
+        viewModelScope.launch { container.settings.update { it.copy(dryRunUntilMillis = null) } }
+    }
+
     companion object {
         fun factory(container: AppContainer) = viewModelFactory { initializer { ScheduleListViewModel(container) } }
     }
