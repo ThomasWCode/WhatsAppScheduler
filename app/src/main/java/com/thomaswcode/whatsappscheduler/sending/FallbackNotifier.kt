@@ -6,6 +6,7 @@ import android.content.Intent
 import android.text.format.DateFormat
 import com.thomaswcode.whatsappscheduler.data.db.Attention
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
+import com.thomaswcode.whatsappscheduler.domain.Preflight
 import com.thomaswcode.whatsappscheduler.domain.Recurrence
 import com.thomaswcode.whatsappscheduler.ui.health.HealthItem
 import com.thomaswcode.whatsappscheduler.ui.MainActivity
@@ -91,18 +92,18 @@ class FallbackNotifier(private val context: Context, private val notifications: 
             notifications.fallback(
                 "Your $at message to ${schedule.targetName} will fail", problem.message, tap,
                 listOfNotNull(problem.fixLabel?.let { "Fix" to tap }), lifetimeMs = untilSendIsOver.coerceAtLeast(WILL_FAIL_AFTERWARDS_MS),
-                aboutMillis = occurrenceAtMillis,
+                about = Preflight.warningKey(occurrenceAtMillis, schedule.targetName),
             ),
         )
     }
 
     /**
      * Removes the schedule's pre-flight warning: the check found nothing wrong (any more), or the send it
-     * was about is no longer due. One about the send due at [unlessFor] stays.
+     * was about is no longer due. One still [unlessAbout] ([Preflight.warningKey]) stays.
      */
-    fun cancelWillFail(scheduleId: Long, unlessFor: Long? = null) {
+    fun cancelWillFail(scheduleId: Long, unlessAbout: String? = null) {
         val id = Notifications.ID_PREFLIGHT_BASE + scheduleId.toInt()
-        if (unlessFor != null && notifications.aboutOf(id) == unlessFor) return
+        if (unlessAbout != null && notifications.aboutOf(id) == unlessAbout) return
         notifications.cancel(id)
     }
 
