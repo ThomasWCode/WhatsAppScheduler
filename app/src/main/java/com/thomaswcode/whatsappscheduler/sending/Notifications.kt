@@ -55,7 +55,14 @@ class Notifications(private val context: Context) {
             .build()
 
     /** On the "Needs your attention" channel (features F3), with the situation's buttons as [actions]. */
-    fun fallback(title: String, text: String, tap: PendingIntent, actions: List<Pair<String, PendingIntent>> = emptyList()): Notification =
+    fun fallback(
+        title: String,
+        text: String,
+        tap: PendingIntent,
+        actions: List<Pair<String, PendingIntent>> = emptyList(),
+        /** How long it may stay when nothing else removes it; for as long as needed when null. */
+        lifetimeMs: Long? = null,
+    ): Notification =
         Notification.Builder(context, CHANNEL_FALLBACK)
             .setSmallIcon(R.drawable.ic_stat_send)
             .setContentTitle(title)
@@ -64,6 +71,7 @@ class Notifications(private val context: Context) {
             .setContentIntent(tap)
             .setAutoCancel(true)
             .apply { actions.forEach { (label, intent) -> addAction(Notification.Action.Builder(null, label, intent).build()) } }
+            .apply { lifetimeMs?.let(::setTimeoutAfter) }
             .build()
 
     /**
@@ -126,5 +134,7 @@ class Notifications(private val context: Context) {
         const val ID_UNLOCK = 2
         const val ID_PIN_PAUSED = 3
         const val ID_FALLBACK_BASE = 1000
+        /** A pre-flight warning (features F5), apart from [ID_FALLBACK_BASE] so it can't replace a prompt about an earlier occurrence. */
+        const val ID_PREFLIGHT_BASE = 300_000
     }
 }
