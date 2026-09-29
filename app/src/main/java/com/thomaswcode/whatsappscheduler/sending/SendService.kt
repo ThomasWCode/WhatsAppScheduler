@@ -155,6 +155,7 @@ class SendService : LifecycleService() {
             schedules.forEach(fallback::notifyHeld)
             if (pick) choosePostpone(schedules)
         }
+        override fun unarmed(schedule: Schedule) = fallback.notifyUnarmed(schedule)
     }
 
     companion object {
