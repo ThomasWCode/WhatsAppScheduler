@@ -19,8 +19,6 @@ interface ScheduleDao {
     @Query("SELECT * FROM schedules WHERE id = :id")
     suspend fun getById(id: Long): Schedule?
 
-    @Query("SELECT * FROM schedules WHERE id = :id")
-    fun observeById(id: Long): Flow<Schedule?>
 
     @Insert
     suspend fun insert(schedule: Schedule): Long
