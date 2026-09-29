@@ -87,8 +87,15 @@ interface ScheduleDao {
     @Query("SELECT * FROM schedules WHERE recipientId IS NULL ORDER BY createdAtMillis DESC, id DESC")
     suspend fun getUnlinked(): List<Schedule>
 
-    /** Still to go out: pending, or failed or missed and waiting to be sent by hand (see [updatePendingTarget]). */
-    @Query("SELECT * FROM schedules WHERE recipientId = :recipientId AND (nextAtMillis IS NOT NULL OR attention IN ('FAILED', 'MISSED', 'HELD'))")
+    /**
+     * Still to go out: pending, or failed or missed and waiting to be sent by hand (see
+     * [updatePendingTarget]). Not one that may have been sent (a series has a next time as well): its
+     * prompt is about checking the chat it went to, which is still the right one.
+     */
+    @Query(
+        "SELECT * FROM schedules WHERE recipientId = :recipientId AND (nextAtMillis IS NOT NULL OR attention IN ('FAILED', 'MISSED', 'HELD')) " +
+            "AND (attention IS NULL OR attention != 'UNCERTAIN')"
+    )
     suspend fun pendingFor(recipientId: Long): List<Schedule>
 
     @Query("UPDATE schedules SET recipientId = :recipientId WHERE id = :id")
@@ -97,7 +104,8 @@ interface ScheduleDao {
     /**
      * Copies a recipient's edited details into its schedules that haven't gone out yet: pending ones,
      * and failed or missed ones still waiting to be sent by hand. Sent ones keep the details they
-     * were sent with, and so does one that may have been sent, whose chat is the one to check.
+     * were sent with, and so does a one-off that may have been sent, whose chat is the one to check;
+     * a series that may have been sent takes them for its next sends, and its prompt keeps the old chat.
      */
     @Query(
         "UPDATE schedules SET targetKind = :kind, targetName = :chatName, phoneE164 = :phoneE164, isLocked = :isLocked " +
@@ -127,15 +135,12 @@ interface RecipientDao {
     @Query("SELECT * FROM recipients WHERE phoneE164 = :phoneE164 AND id != :exceptId LIMIT 1")
     suspend fun otherByPhone(phoneE164: String, exceptId: Long): Recipient?
 
-    @Query("SELECT * FROM recipients WHERE phoneE164 IS NULL AND kind = :kind AND COALESCE(whatsappName, displayName) = :chatName COLLATE NOCASE AND id != :exceptId LIMIT 1")
-    suspend fun otherByChatName(kind: TargetKind, chatName: String, exceptId: Long): Recipient?
-
     /**
-     * A recipient found by chat name (groups, and contacts without a number), whatever the case: the
-     * search falls back to a case-insensitive match, so "book club" would be the same chat as "Book Club".
+     * Recipients found by chat name (groups, and contacts without a number). The name is matched in
+     * Kotlin (RecipientRepository): SQLite's NOCASE only folds ASCII, so "Équipe" wouldn't match "équipe".
      */
-    @Query("SELECT * FROM recipients WHERE phoneE164 IS NULL AND kind = :kind AND COALESCE(whatsappName, displayName) = :chatName COLLATE NOCASE LIMIT 1")
-    suspend fun byChatName(kind: TargetKind, chatName: String): Recipient?
+    @Query("SELECT * FROM recipients WHERE phoneE164 IS NULL AND kind = :kind ORDER BY id")
+    suspend fun namedOfKind(kind: TargetKind): List<Recipient>
 
     @Insert
     suspend fun insert(recipient: Recipient): Long
