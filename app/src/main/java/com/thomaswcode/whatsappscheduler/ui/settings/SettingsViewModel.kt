@@ -37,6 +37,14 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch { container.settings.update(transform) }
     }
 
+    /** Applies at once: sent messages older than the new period go now, not at the next send or visit. */
+    fun setKeepSentDays(days: Int) {
+        viewModelScope.launch {
+            container.settings.update { it.copy(keepSentDays = days) }
+            runCatching { container.housekeeping.run() }.onFailure { container.log.error("Housekeeping failed", it) }
+        }
+    }
+
     fun savePin(value: String, onDone: () -> Unit) {
         viewModelScope.launch {
             // Clears a rejection (B04). Unlocking may still be paused by the daily limit, in which

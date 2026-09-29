@@ -44,8 +44,17 @@ class MainActivity : ComponentActivity() {
                 runCatching { container.linkRecipientsOnce() }.onFailure { container.log.error("Linking recipients failed", it) }
                 // Failures from before schema v2 show under Needs attention too.
                 runCatching { container.repository.typeLegacyOutcomes() }.onFailure { container.log.error("Typing old outcomes failed", it) }
-                runCatching { container.housekeeping.run() }.onFailure { container.log.error("Housekeeping failed", it) }
             }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Each time the app comes back, not only on a fresh start: with no sends in between (the other
+        // time it runs), sent messages past the period set in Settings would otherwise stay.
+        val container = SchedulerApp.container(this)
+        container.appScope.launch {
+            runCatching { container.housekeeping.run() }.onFailure { container.log.error("Housekeeping failed", it) }
         }
     }
 
