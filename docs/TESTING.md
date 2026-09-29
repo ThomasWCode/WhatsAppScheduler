@@ -37,6 +37,9 @@ Unit tests (`./gradlew test`) cover the quick sheet's time chips and friendly ti
 | 31 | In the sheet, long-press a group's chip → Check this chat now; then a made-up group name | WhatsApp opens, searches, opens the group and backs out to the app; a toast says it was found, and the details show "✓ Found in WhatsApp's search …". The made-up name gives "Couldn't find …". Nothing is typed in either. |
 | 32 | Settings → Test mode on; check the list, wait an hour (or set the phone clock on), check again | While on, the list and the sheet show "Test mode is on until …" in red with Turn off; afterwards it is off by itself and messages send again. "Until turned off" keeps it on. |
 | 33 | A message sent for real, then a test run (⋯ → Test); tap the "Sent to …" notification's body | "Sent to …" with the time and the first line, and Open chat; then "Dry run: not sent to …". Both quiet, gone after a day; several of either are grouped, real sends and test runs apart ("Sent to 3 chats", "Dry run: not sent to 3 chats"). Tapping the body opens the list on that row, outlined for a moment. With Notify after each send off, only the dry-run one shows. |
+| 34 | Test mode on, a one-off to a made-up group a minute ahead, Retries 0; let it fail | "Couldn't send to …" under *Needs your attention*, with Tap to send and Postpone…. Postpone… opens the picker over the current app; a time moves it (toast "Moved to …") and the notification goes. |
+| 35 | Missed-send grace 0, a one-off a minute ahead, then `adb shell am force-stop` until after its time; open the app | "Missed: your message to … (time)" with Send now, Postpone… and Discard. Discard removes the row (Logs keep its history); Send now sends a copy (a dry run in test mode) and the notification goes. |
+| 36 | When a send is interrupted after its Send tap (B02) | "May have been sent to …: check the chat" with Open chat, Mark as sent and Send again. Mark as sent moves the row to Sent. |
 
 Useful commands:
 
