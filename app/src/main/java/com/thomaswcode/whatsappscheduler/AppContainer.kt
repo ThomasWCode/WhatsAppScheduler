@@ -22,6 +22,7 @@ import com.thomaswcode.whatsappscheduler.sending.PinGuard
 import com.thomaswcode.whatsappscheduler.sending.SendRequest
 import com.thomaswcode.whatsappscheduler.sending.SendService
 import com.thomaswcode.whatsappscheduler.sending.SendStateHolder
+import com.thomaswcode.whatsappscheduler.ui.share.ShareShortcuts
 import com.thomaswcode.whatsappscheduler.util.AutomationLog
 import java.time.Clock
 import kotlinx.coroutines.CoroutineScope
@@ -51,6 +52,9 @@ class AppContainer(context: Context) {
     val sentNotifier: SentNotifier by lazy { SentNotifier(appContext, notifications) }
     /** Taken by a send as it takes its row, and by Discard from a notification, so the two can't interleave. */
     val sendAdmission = Mutex()
+
+    /** The recent recipients as Direct Share targets (features F6). */
+    val shareShortcuts: ShareShortcuts by lazy { ShareShortcuts(appContext) }
 
     /** Where the countdown's buttons answer the countdown that is waiting (features F1). */
     val headsUpAnswers = HeadsUpAnswers()
