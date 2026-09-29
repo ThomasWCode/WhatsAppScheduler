@@ -99,6 +99,8 @@ fun ScheduleEditorScreen(
     // Saved, so a rotation keeps the details dialog, with what was typed into it, open.
     var details by rememberSaveable(stateSaver = RecipientSaver) { mutableStateOf<RecipientDraft?>(null) }
     val searchFocus = remember { FocusRequester() }
+    var askedForContacts by rememberSaveable { mutableStateOf(false) }
+    var leaveAfterDetails by remember { mutableStateOf(false) }
 
     val requestContacts = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { vm.search.permissionChanged() }
     val pickContact = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -117,10 +119,22 @@ fun ScheduleEditorScreen(
 
     // Anything not saved is asked about before it goes: Back and the arrow alike.
     fun leave() {
-        // Only saving the message itself lets it go without asking; saving a recipient's details doesn't.
-        if (vm.unsaved && !vm.saving) confirmDiscard = true else onDone()
+        when {
+            // Whether leaving loses a recipient's details is only known once their save is done: they may
+            // end up only in this form. So leaving waits for it.
+            vm.savingDetails -> leaveAfterDetails = true
+            // Only saving the message itself lets it go without asking; saving a recipient's details doesn't.
+            vm.unsaved && !vm.saving -> confirmDiscard = true
+            else -> onDone()
+        }
     }
     BackHandler { leave() }
+    LaunchedEffect(vm.savingDetails) {
+        if (vm.savingDetails || !leaveAfterDetails) return@LaunchedEffect
+        leaveAfterDetails = false
+        // Not when that save failed: the reason is shown instead, and the user decides again.
+        if (vm.error == null) leave()
+    }
 
     if (!vm.ready) return
     val form = vm.form
@@ -154,7 +168,13 @@ fun ScheduleEditorScreen(
                 enabled = !vm.busy,
                 searchFocus = searchFocus,
                 onQuery = vm::updateQuery,
-                onSearchFocused = {},
+                onSearchFocused = {
+                    // Asked the first time the search is used, as in the quick sheet.
+                    if (!vm.search.contactsAllowed && !askedForContacts) {
+                        askedForContacts = true
+                        requestContacts.launch(Manifest.permission.READ_CONTACTS)
+                    }
+                },
                 onRemove = { vm.clearRecipient() },
                 // Not while a details save is still running: a second edit would be lost to it.
                 onDetails = { if (!vm.busy) details = it },
