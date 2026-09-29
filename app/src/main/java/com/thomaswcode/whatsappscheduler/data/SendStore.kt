@@ -41,7 +41,7 @@ interface SendStore {
      * waits itself (attention HELD, no alarm); a series goes on, and the occurrence is held as a
      * one-off copy. Null when that occurrence is no longer the pending one.
      */
-    suspend fun hold(id: Long, occurrenceAtMillis: Long, ranAt: Instant): HeldRun?
+    suspend fun hold(id: Long, occurrenceAtMillis: Long, ranAt: Instant, detail: String): HeldRun?
 }
 
 /**
