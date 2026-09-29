@@ -139,6 +139,33 @@ class PostponeAndHousekeepingTest {
     }
 
     @Test
+    fun aMoveMadeWhileThatOccurrenceWasBeingSentIsSettledByTheSend() = runTest {
+        // The alarm had queued the 09:00 send when the user moved it to the evening.
+        val oneOff = schedules.save(message(), now)
+        schedules.postpone(oneOff.id, tomorrowNine.plus(Duration.ofHours(9)))
+        val sent = schedules.recordRun(oneOff.id, tomorrowNine.toEpochMilli(), SendStatus.SENT, null, "Mum", tomorrowNine.plusSeconds(20))!!
+        assertNull("the moved copy doesn't go again", sent.nextAtMillis)
+        assertNull(sent.postponedFromMillis)
+
+        val daily = schedules.save(message(recurrence = "DAILY"), now)
+        schedules.postpone(daily.id, tomorrowNine.plus(Duration.ofHours(9)))
+        val ran = schedules.recordRun(daily.id, tomorrowNine.toEpochMilli(), SendStatus.SENT, null, "Mum", tomorrowNine.plusSeconds(20))!!
+        assertEquals("the series goes on from Wednesday", tomorrowNine.plus(Duration.ofDays(1)).toEpochMilli(), ran.nextAtMillis)
+    }
+
+    @Test
+    fun undoingASeriesMoveKeepsWhatTheUserDidSince() = runTest {
+        val daily = schedules.save(message(recurrence = "DAILY"), now)
+        val uncertain = schedules.recordRun(daily.id, daily.nextAtMillis!!, SendStatus.UNCERTAIN, "verify: Timed out", "Mum", tomorrowNine.plusSeconds(20))!!
+        val moved = schedules.postpone(daily.id, Instant.ofEpochMilli(uncertain.nextAtMillis!!).plus(Duration.ofHours(3)), seen = uncertain)!!
+        // Checked the chat and marked it as sent, then undid the move.
+        schedules.markSent(daily.id)
+        val restored = schedules.restoreTiming(moved)!!
+        assertNull(restored.attention)
+        assertEquals(uncertain.nextAtMillis, restored.nextAtMillis)
+    }
+
+    @Test
     fun savingReplacesAPostponement() = runTest {
         val daily = schedules.save(message(recurrence = "DAILY"), now)
         schedules.postpone(daily.id, tomorrowNine.plus(Duration.ofHours(3)))
