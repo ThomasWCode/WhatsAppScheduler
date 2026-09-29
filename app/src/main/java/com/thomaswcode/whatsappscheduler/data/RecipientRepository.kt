@@ -41,7 +41,7 @@ class RecipientRepository(private val db: AppDatabase) {
 
     /**
      * The stored recipient for [draft]: the one it was picked from, else the one with the same number,
-     * else (for chats without a number) the same kind and chat name, else a new one. Picking someone
+     * else (for chats without a number) the same chat name, group or contact, else a new one. Picking someone
      * again therefore keeps what was learned about them, such as Chat Lock.
      */
     suspend fun resolve(draft: RecipientDraft): Recipient = db.withTransaction {
@@ -62,20 +62,21 @@ class RecipientRepository(private val db: AppDatabase) {
      */
     suspend fun sameChatElsewhere(recipient: Recipient): Recipient? =
         recipient.phoneE164?.let { recipients.otherByPhone(it, recipient.id) }
-            ?: if (recipient.phoneE164 == null) byChatName(recipient.kind, recipient.chatName, except = recipient.id) else null
+            ?: if (recipient.phoneE164 == null) byChatName(recipient.chatName, except = recipient.id) else null
 
     /** The stored recipient [draft] already is, if any, without creating one: by id, number, or chat name. */
     suspend fun existing(draft: RecipientDraft): Recipient? =
         draft.recipientId?.let { recipients.get(it) }
             ?: draft.phoneE164?.let { recipients.byPhone(it) }
-            ?: if (draft.phoneE164 == null) byChatName(draft.kind, draft.chatName) else null
+            ?: if (draft.phoneE164 == null) byChatName(draft.chatName) else null
 
     /**
      * A recipient found by chat name, whatever the case: WhatsApp's search falls back to a
      * case-insensitive match, so "book club" is the same chat as "Book Club", and "équipe" as "Équipe".
+     * Whatever the kind too: a group and a contact without a number are both found by that search.
      */
-    private suspend fun byChatName(kind: TargetKind, chatName: String, except: Long? = null): Recipient? =
-        recipients.namedOfKind(kind).firstOrNull { it.id != except && it.chatName.trim().equals(chatName.trim(), ignoreCase = true) }
+    private suspend fun byChatName(chatName: String, except: Long? = null): Recipient? =
+        recipients.named().firstOrNull { it.id != except && it.chatName.trim().equals(chatName.trim(), ignoreCase = true) }
 
     suspend fun markUsed(ids: Collection<Long>, at: Instant = Instant.now()) = db.withTransaction {
         ids.forEach { recipients.markUsed(it, at.toEpochMilli()) }
