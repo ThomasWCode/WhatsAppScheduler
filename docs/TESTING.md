@@ -41,6 +41,9 @@ Unit tests (`./gradlew test`) cover the quick sheet's time chips and friendly ti
 | 35 | Missed-send grace 0, a one-off a minute ahead, then `adb shell am force-stop` until after its time; open the app | "Missed: your message to … (time)" with Send now, Postpone… and Discard. Discard removes the row (Logs keep its history); Send now sends a copy (a dry run in test mode) and the notification goes. |
 | 36 | When a send is interrupted after its Send tap (B02) | "May have been sent to …: check the chat" with Open chat, Mark as sent and Send again. Mark as sent moves the row to Sent. |
 | 37 | Schedule a message 20 minutes ahead, then turn the accessibility service off; wait 5 minutes | "Your … message to … will fail" with the service problem and Fix, which opens Accessibility settings. Turning it back on and sending removes the warning; with nothing wrong there is no warning at all. |
+| 38 | Test mode on; a one-off a few minutes ahead, the phone in use when it's due | "Sending to … " pops up counting down from 10 s, with Send now, Snooze 5 min and Postpone…. Left alone, it goes when the count ends; Send now goes at once. With the screen off, no countdown. |
+| 39 | The same, tapping Snooze 5 min; then again, tapping Postpone… | Snooze: the row says it moves to 5 minutes on, and it goes then (Logs: "snoozed 5 min on the countdown"). Postpone…: the picker opens; a time reschedules it, and dismissing leaves it under Needs attention as "Not sent: choose a new time", with that notification. For a series only that occurrence is held; the series goes on. |
+| 40 | A message due while on a phone or WhatsApp call; and one due while another app is open | During the call it waits, and the countdown starts once the call ends. Afterwards the phone goes back to the app that was open, as it was (Home only from the launcher). |
 
 Useful commands:
 
