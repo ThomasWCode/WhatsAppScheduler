@@ -34,11 +34,13 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun rememberTimeFormat(): (LocalTime) -> String {
     val is24 = DateFormat.is24HourFormat(LocalContext.current)
-    return remember(is24) {
-        val format = DateTimeFormatter.ofPattern(if (is24) "HH:mm" else "h:mm a")
-        val f: (LocalTime) -> String = { it.format(format) }
-        f
-    }
+    return remember(is24) { timeFormat(is24) }
+}
+
+/** A time of day as "20:00", or as "8:00 pm" when [is24Hour] is false. */
+fun timeFormat(is24Hour: Boolean): (LocalTime) -> String {
+    val format = DateTimeFormatter.ofPattern(if (is24Hour) "HH:mm" else "h:mm a")
+    return { it.format(format) }
 }
 
 /**

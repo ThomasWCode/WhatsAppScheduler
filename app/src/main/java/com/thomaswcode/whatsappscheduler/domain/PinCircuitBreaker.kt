@@ -21,15 +21,17 @@ sealed interface PinBlock {
     /** The PIN has been saved again, but the app already had its share of failures today. */
     data class DailyLimit(val untilMillis: Long) : PinBlock
 
-    fun describe(zone: ZoneId = ZoneId.systemDefault()): String = when (this) {
+    /** In 12-hour time when [is24Hour] is false, as the phone shows times. */
+    fun describe(zone: ZoneId = ZoneId.systemDefault(), is24Hour: Boolean = true): String = when (this) {
         is Rejected -> "Automatic unlocking is paused: the phone did not accept the stored PIN. Update it in Settings."
         is DailyLimit -> "Automatic unlocking is paused until " +
-            Instant.ofEpochMilli(untilMillis).atZone(zone).format(untilFormat) +
+            Instant.ofEpochMilli(untilMillis).atZone(zone).format(if (is24Hour) untilFormat else untilFormat12) +
             ": the stored PIN failed ${PinCircuitBreaker.MAX_REJECTIONS_PER_DAY} times in 24 hours."
     }
 }
 
 private val untilFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE HH:mm")
+private val untilFormat12: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE h:mm a")
 
 /**
  * Keeps a wrong stored PIN from being typed again and again. One UI lengthens the lockout after

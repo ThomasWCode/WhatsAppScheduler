@@ -172,7 +172,6 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         visible = true
     }
 
-    /** Text shared from another app; the sheet opens on the recipient. */
     /**
      * The sheet for text shared from another app, with [recipientId] chosen when it came through one of
      * the recent chats Direct Share offers (features F6), once that chat is looked up.
@@ -466,7 +465,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         if (existing != null) remove(existing) else add(recipient)
     }
 
-    fun schedule() {
+    fun schedule(time: (LocalTime) -> String) {
         if (saving) return
         val now = this.now.value.let { if (Instant.now().isAfter(it.toInstant())) ZonedDateTime.now() else it }
         val d = draft
@@ -518,13 +517,14 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
                     armFailure?.let { throw it }
                     // Only orders the recent chips, so it doesn't fail the save.
                     runCatching { container.recipients.markUsed(resolved.map { it.id }) }.onFailure { container.log.error("Marking recipients used failed", it) }
+                    container.shareShortcuts.used(resolved)
                     change
                 }
             }
             saving = false
             outcome
                 .onSuccess { change ->
-                    val summary = (if (d.isEditing) "Saved: " else "Scheduled: ") + names(d.recipients) + " · " + FriendlyTime.dayAndTime(at, now)
+                    val summary = (if (d.isEditing) "Saved: " else "Scheduled: ") + names(d.recipients) + " · " + FriendlyTime.dayAndTime(at, now, time)
                     pendingCheckOffers = checkOffers
                     events.trySend(QuickEvent.Scheduled(summary, change.saved.map { it.id }.takeUnless { d.isEditing }, checkOffers))
                     draft = QuickDraft()
