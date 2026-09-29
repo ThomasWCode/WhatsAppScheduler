@@ -46,7 +46,11 @@ class SendQueueProcessor(
     private val queue = ArrayDeque<SendRequest>()
     private var current: SendRequest? = null
 
-    /** Batch members whose occurrence a countdown already let through, so theirs doesn't count down again. */
+    /**
+     * Batch members whose occurrence a countdown already let through, so theirs doesn't count down
+     * again. Each is queued as it is let through, so the queue can't run empty, and this be cleared,
+     * before it has been used.
+     */
     private val approved = mutableSetOf<Pair<Long, Long>>()
 
     /** Queues [request] unless the same send is already queued or running; returns whether it was queued. */
@@ -164,27 +168,48 @@ class SendQueueProcessor(
      * waits first, looking again every 15 s for up to half an hour. Returns whether to send now.
      */
     private suspend fun countdown(schedule: Schedule, occurrence: Long, settings: Settings): Boolean {
-        // Shared by every wait below, so calls can hold a send up for half an hour in all.
+        // Shared by every wait below, so together they can hold a send up for half an hour at most.
         var looks = 0
-        suspend fun waitOutCall() {
-            while (headsUp.inCall() && looks < CALL_LOOKS) {
-                if (looks == 0) {
-                    log.info("Schedule ${schedule.id}: waiting for the call to end")
-                    notifier.progress("Waiting for the call to end…")
+
+        /** Waits while [condition] holds, looking every 15 s; returns whether it still did when time ran out. */
+        suspend fun waitWhile(what: String, condition: () -> Boolean): Boolean {
+            var waiting = false
+            while (condition()) {
+                if (looks >= CALL_LOOKS) return true
+                if (!waiting) {
+                    log.info("Schedule ${schedule.id}: waiting for $what")
+                    notifier.progress("Waiting for $what…")
+                    waiting = true
                 }
                 delay(CALL_LOOK_MS)
                 looks++
             }
+            return false
         }
+        suspend fun waitOutCall() = waitWhile("the call to end") { headsUp.inCall() }
+
         // Let through by its batch's countdown: only a call since then holds it up.
         if (approved.remove(schedule.id to occurrence)) {
             waitOutCall()
             return true
         }
+        var batch = listOf(schedule)
         repeat(MAX_COUNTDOWNS) {
             waitOutCall()
             if (!headsUp.inUse()) return true
-            val batch = store.duePeers(schedule, occurrence)
+            batch = store.duePeers(schedule, occurrence)
+            if (!headsUp.canShow()) {
+                // With notifications off for the app or for Before sending, nobody would see a countdown,
+                // so its running out can't be taken as a yes: the send waits for the phone to be put down
+                // instead, and if that doesn't happen in the half hour, for the user to choose a time.
+                log.info("Schedule ${schedule.id}: the countdown can't be shown (notifications are off)")
+                if (waitWhile("the phone to be put down") { headsUp.inUse() || headsUp.inCall() }) {
+                    hold(batch, occurrence)
+                    return false
+                }
+                approve(schedule, batch, occurrence)
+                return true
+            }
             val choice = headsUp.ask(batch, clock.millis() + settings.headsUpSeconds * 1_000L) ?: HeadsUpChoice.SEND
             log.info("Schedule ${schedule.id}: countdown ${choice.name.lowercase()}" + if (batch.size > 1) " for ${batch.size} chats" else "")
             when (choice) {
@@ -192,29 +217,49 @@ class SendQueueProcessor(
                     // A call that began during the countdown is waited out, and the countdown runs again:
                     // the user may not have seen this one.
                     if (headsUp.inCall() && looks < CALL_LOOKS) return@repeat
-                    batch.filter { it.id != schedule.id }.forEach { approved += it.id to occurrence }
+                    approve(schedule, batch, occurrence)
                     return true
                 }
                 HeadsUpChoice.SNOOZE -> {
-                    // One time for them all, so the batch's alarms still come due together and share the
-                    // next countdown.
-                    val now = clock.instant()
-                    batch.forEach { member ->
-                        store.snooze(member.id, occurrence, now.plus(SNOOZE), now)?.let(::arm)
-                    }
+                    snooze(batch, occurrence)
                     return false
                 }
                 HeadsUpChoice.POSTPONE -> {
-                    val now = clock.instant()
-                    val held = batch.mapNotNull { member -> store.hold(member.id, occurrence, now)?.also { arm(it.schedule) }?.held }
-                    // One picker for them all, as the countdown was.
-                    if (held.isNotEmpty()) notifier.held(held)
+                    hold(batch, occurrence)
                     return false
                 }
             }
         }
-        // Every countdown was cut short by a call, now over or waited out as long as allowed.
-        return true
+        // A call cut every countdown short, and the last is still going on. Sending the moment it ends
+        // would take over the screen with no countdown, so it's snoozed: in five minutes it counts down again.
+        log.info("Schedule ${schedule.id}: calls cut short every countdown; snoozing")
+        snooze(batch, occurrence)
+        return false
+    }
+
+    /**
+     * The rest of [schedule]'s batch goes as well, without counting down again. They're queued now
+     * rather than left to their own alarms, which could come after this queue had emptied and the
+     * approval had gone with it.
+     */
+    private fun approve(schedule: Schedule, batch: List<Schedule>, occurrence: Long) {
+        batch.filter { it.id != schedule.id }.forEach { member ->
+            approved += member.id to occurrence
+            enqueue(SendRequest(member.id, SendKind.SCHEDULED, occurrence))
+        }
+    }
+
+    /** Snooze: one time for them all, so the batch's alarms still come due together and share the next countdown. */
+    private suspend fun snooze(batch: List<Schedule>, occurrence: Long) {
+        val now = clock.instant()
+        batch.forEach { member -> store.snooze(member.id, occurrence, now.plus(SNOOZE), now)?.let(::arm) }
+    }
+
+    /** Postpone…: nothing is sent until the user picks a time, in one picker for them all, as the countdown was. */
+    private suspend fun hold(batch: List<Schedule>, occurrence: Long) {
+        val now = clock.instant()
+        val held = batch.mapNotNull { member -> store.hold(member.id, occurrence, now)?.also { arm(it.schedule) }?.held }
+        if (held.isNotEmpty()) notifier.held(held)
     }
 
     /** Arms [schedule]'s alarm; one that fails is logged, not allowed to stop what is being done for the rest. */
@@ -303,7 +348,10 @@ class SendQueueProcessor(
         /** How early an alarm without an occurrence key may fire and still count as due. */
         const val LEGACY_ALARM_SLACK_MS = 60_000L
         private const val TIDY_UP_ALLOWANCE_MS = 10_000L
-        /** During a call a scheduled send looks again this often, and this many times: half an hour. */
+        /**
+         * During a call, or while the phone is in use with no countdown to show, a scheduled send looks
+         * again this often, and this many times: half an hour.
+         */
         private const val CALL_LOOK_MS = 15_000L
         private const val CALL_LOOKS = 120
         /** A countdown a call cuts short runs again once the call is over, this many times at most. */
