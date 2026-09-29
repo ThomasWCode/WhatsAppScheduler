@@ -14,6 +14,7 @@ import com.thomaswcode.whatsappscheduler.sending.ChatChecker
 import com.thomaswcode.whatsappscheduler.sending.AttentionActions
 import com.thomaswcode.whatsappscheduler.sending.FallbackNotifier
 import com.thomaswcode.whatsappscheduler.sending.HeadsUpAnswers
+import com.thomaswcode.whatsappscheduler.sending.StoppedOccurrences
 import com.thomaswcode.whatsappscheduler.sending.SentNotifier
 import com.thomaswcode.whatsappscheduler.sending.accessibility.AccessibilitySender
 import com.thomaswcode.whatsappscheduler.sending.Notifications
@@ -53,6 +54,9 @@ class AppContainer(context: Context) {
 
     /** Where the countdown's buttons answer the countdown that is waiting (features F1). */
     val headsUpAnswers = HeadsUpAnswers()
+
+    /** Batch occurrences whose Snooze or Postpone couldn't be saved, kept for alarms that come later. */
+    val stoppedOccurrences = StoppedOccurrences(Clock.systemUTC())
     val attentionActions: AttentionActions by lazy {
         AttentionActions(repository, alarmScheduler, { sendState.state.value }, ::send, fallbackNotifier::cancel, admission = sendAdmission)
     }
