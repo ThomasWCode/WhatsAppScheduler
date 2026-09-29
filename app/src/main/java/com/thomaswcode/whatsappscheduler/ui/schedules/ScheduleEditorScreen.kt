@@ -49,11 +49,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.thomaswcode.whatsappscheduler.AppContainer
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.data.RecipientDraft
 import com.thomaswcode.whatsappscheduler.data.contacts.ContactHit
 import com.thomaswcode.whatsappscheduler.domain.PhoneNormaliser
@@ -140,13 +143,18 @@ fun ScheduleEditorScreen(
     val form = vm.form
     val problems = form.problems()
 
+    val resources = LocalResources.current
+
     /** A field's problem, once it should be shown: the rule's as it is typed, the rest after Save is tried. */
-    fun problem(field: EditorForm.Field): String? = problems[field]?.takeIf { field == EditorForm.Field.RULE || vm.triedSaving }
+    fun problem(field: EditorForm.Field): String? =
+        problems[field]?.takeIf { field == EditorForm.Field.RULE || vm.triedSaving }?.let(resources::getString)
 
     Scaffold(
         topBar = {
-            BackBar(if (vm.scheduleId == 0L) "Repeating message" else "Edit repeating message", onBack = ::leave) {
-                if (vm.scheduleId != 0L) TextButton(onClick = { confirmDelete = true }, enabled = !vm.busy && !sending) { Text("Delete") }
+            BackBar(stringResource(if (vm.scheduleId == 0L) R.string.editor_title_new else R.string.editor_title_edit), onBack = ::leave) {
+                if (vm.scheduleId != 0L) {
+                    TextButton(onClick = { confirmDelete = true }, enabled = !vm.busy && !sending) { Text(stringResource(R.string.action_delete)) }
+                }
             }
         },
     ) { padding ->
@@ -154,7 +162,7 @@ fun ScheduleEditorScreen(
             modifier = Modifier.fillMaxSize().padding(padding).imePadding().padding(16.dp).verticalScroll(rememberScrollState()),
         ) {
             if (sending) {
-                Text("It's being sent right now. It can be deleted once that's done.", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.editor_being_sent), style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(8.dp))
             }
             RecipientField(
@@ -192,18 +200,18 @@ fun ScheduleEditorScreen(
             OutlinedTextField(
                 value = form.message,
                 onValueChange = { vm.update { copy(message = it) } },
-                label = { Text("Message") },
+                label = { Text(stringResource(R.string.message_label)) },
                 isError = problem(EditorForm.Field.MESSAGE) != null,
                 supportingText = problem(EditorForm.Field.MESSAGE)?.let { { Text(it) } },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp),
             )
             Spacer(Modifier.height(12.dp))
-            Text("Repeat", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.editor_repeat), style = MaterialTheme.typography.titleSmall)
             // Wraps instead of squeezing the last chips to nothing on a normal-width phone (B15). Once
             // only for a one-off opened here: the quick sheet makes and edits those.
             FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 RuleKind.entries.filter { it != RuleKind.ONCE || form.ruleKind == RuleKind.ONCE }.forEach { kind ->
-                    FilterChip(selected = form.ruleKind == kind, onClick = { vm.update { copy(ruleKind = kind) } }, label = { Text(kind.label) })
+                    FilterChip(selected = form.ruleKind == kind, onClick = { vm.update { copy(ruleKind = kind) } }, label = { Text(stringResource(kind.label)) })
                 }
             }
             val ruleProblem = problem(EditorForm.Field.RULE)
@@ -220,13 +228,13 @@ fun ScheduleEditorScreen(
                     }
                     ruleProblem?.let { FieldError(it) }
                 }
-                RuleKind.MONTHLY -> NumberField("Day of the month", form.monthDay, ruleProblem) { vm.update { copy(monthDay = it) } }
-                RuleKind.HOURS -> NumberField("Every how many hours", form.every, ruleProblem) { vm.update { copy(every = it) } }
-                RuleKind.DAYS -> NumberField("Every how many days", form.every, ruleProblem) { vm.update { copy(every = it) } }
+                RuleKind.MONTHLY -> NumberField(stringResource(R.string.editor_month_day), form.monthDay, ruleProblem) { vm.update { copy(monthDay = it) } }
+                RuleKind.HOURS -> NumberField(stringResource(R.string.editor_every_hours), form.every, ruleProblem) { vm.update { copy(every = it) } }
+                RuleKind.DAYS -> NumberField(stringResource(R.string.editor_every_days), form.every, ruleProblem) { vm.update { copy(every = it) } }
                 RuleKind.ONCE, RuleKind.DAILY -> Unit
             }
             Spacer(Modifier.height(12.dp))
-            Text(if (form.ruleKind == RuleKind.HOURS) "From" else "Starts", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(if (form.ruleKind == RuleKind.HOURS) R.string.editor_from else R.string.editor_starts), style = MaterialTheme.typography.titleSmall)
             Row {
                 OutlinedButton(onClick = { showDate = true }, enabled = !vm.busy) {
                     Text(form.date.format(DateTimeFormatter.ofPattern("EEE d MMM yyyy", locale)))
@@ -247,7 +255,7 @@ fun ScheduleEditorScreen(
             }
             Spacer(Modifier.height(16.dp))
             Button(modifier = Modifier.fillMaxWidth(), enabled = !vm.busy, onClick = vm::save) {
-                Text(if (vm.saving) "Saving…" else "Save")
+                Text(stringResource(if (vm.saving) R.string.saving else R.string.action_save))
             }
             Spacer(Modifier.height(32.dp))
         }
@@ -273,29 +281,29 @@ fun ScheduleEditorScreen(
     if (confirmDiscard) {
         AlertDialog(
             onDismissRequest = { confirmDiscard = false },
-            title = { Text("Discard your changes?") },
-            text = { Text("What you've entered here won't be saved.") },
+            title = { Text(stringResource(R.string.editor_discard_title)) },
+            text = { Text(stringResource(R.string.editor_discard_text)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDiscard = false
                     onDone()
-                }) { Text("Discard") }
+                }) { Text(stringResource(R.string.action_discard)) }
             },
-            dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text("Keep editing") } },
+            dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text(stringResource(R.string.editor_keep_editing)) } },
         )
     }
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete this repeating message?") },
-            text = { Text("It won't be sent again.") },
+            title = { Text(stringResource(R.string.editor_delete_title)) },
+            text = { Text(stringResource(R.string.editor_delete_text)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDelete = false
                     vm.delete()
-                }) { Text("Delete") }
+                }) { Text(stringResource(R.string.action_delete)) }
             },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.action_cancel)) } },
         )
     }
     if (showDate) {
@@ -314,9 +322,9 @@ fun ScheduleEditorScreen(
                 TextButton(onClick = {
                     state.selectedDateMillis?.let { millis -> vm.update { copy(date = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()) } }
                     showDate = false
-                }) { Text("OK") }
+                }) { Text(stringResource(R.string.action_ok)) }
             },
-            dismissButton = { TextButton(onClick = { showDate = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { showDate = false }) { Text(stringResource(R.string.action_cancel)) } },
         ) { DatePicker(state = state) }
     }
     if (showTime) {
@@ -327,9 +335,9 @@ fun ScheduleEditorScreen(
                 TextButton(onClick = {
                     vm.update { copy(time = LocalTime.of(state.hour, state.minute)) }
                     showTime = false
-                }) { Text("OK") }
+                }) { Text(stringResource(R.string.action_ok)) }
             },
-            dismissButton = { TextButton(onClick = { showTime = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { showTime = false }) { Text(stringResource(R.string.action_cancel)) } },
             text = { TimePicker(state = state) },
         )
     }

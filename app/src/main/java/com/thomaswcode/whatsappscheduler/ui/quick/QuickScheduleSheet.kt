@@ -174,7 +174,7 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
             onValueChange = vm::setMessage,
             // Frozen while saving: what shows is what is being saved.
             enabled = !vm.saving,
-            label = { Text(stringResource(R.string.quick_message_label)) },
+            label = { Text(stringResource(R.string.message_label)) },
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             minLines = 3,
             modifier = Modifier.fillMaxWidth().heightIn(min = 96.dp).focusRequester(messageFocus),
@@ -204,7 +204,7 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
             ) {
                 Text(
                     when {
-                        vm.saving -> stringResource(R.string.quick_saving)
+                        vm.saving -> stringResource(R.string.saving)
                         draft.isEditing -> stringResource(R.string.action_save)
                         at != null -> stringResource(R.string.quick_schedule_at, FriendlyTime.dayAndTime(at, now, timeFormat))
                         else -> stringResource(R.string.quick_schedule)

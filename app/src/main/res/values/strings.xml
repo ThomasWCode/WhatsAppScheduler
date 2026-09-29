@@ -86,12 +86,12 @@
     <string name="action_allow">Allow</string>
     <string name="action_not_now">Not now</string>
     <string name="quick_title_edit">Edit message</string>
-    <string name="quick_message_label">Message</string>
+    <string name="message_label">Message</string>
     <string name="quick_when">When</string>
     <string name="quick_time_passed">That time has passed. Pick a later one.</string>
     <string name="quick_sends_soon">Sends in under 2 minutes</string>
     <string name="quick_repeat">Repeat…</string>
-    <string name="quick_saving">Saving…</string>
+    <string name="saving">Saving…</string>
     <string name="quick_schedule">Schedule</string>
     <string name="quick_schedule_at">Schedule · %1$s</string>
     <string name="quick_pick_date_time">Pick date &amp; time…</string>
@@ -110,9 +110,9 @@
     <string name="problem_choose_time">Choose when to send it.</string>
     <string name="quick_scheduled">Scheduled: %1$s · %2$s</string>
     <string name="quick_saved">Saved: %1$s · %2$s</string>
-    <string name="quick_saved_unarmed">Saved, but its alarm couldn\'t be set (%1$s). Tap Save to try again.</string>
-    <string name="quick_save_failed">Couldn\'t save (%1$s). Try again.</string>
-    <string name="quick_delete_failed">Couldn\'t delete (%1$s). Try again.</string>
+    <string name="saved_unarmed">Saved, but its alarm couldn\'t be set (%1$s). Tap Save to try again.</string>
+    <string name="save_failed">Couldn\'t save (%1$s). Try again.</string>
+    <string name="delete_failed">Couldn\'t delete (%1$s). Try again.</string>
 
     <!-- Recipients -->
     <string name="recipient_to">To</string>
@@ -153,4 +153,31 @@
     <string name="share_check_title">Check in WhatsApp?</string>
     <string name="share_check_text">Check %1$s in WhatsApp now? WhatsApp\'s search is run for the name while you watch; nothing is typed.</string>
     <string name="share_shortcut_long_label">%1$s · Schedule on WhatsApp</string>
+
+    <!-- Editor -->
+    <string name="rule_once">Once</string>
+    <string name="rule_daily">Daily</string>
+    <string name="rule_weekly">Weekly</string>
+    <string name="rule_monthly">Monthly</string>
+    <string name="rule_hours">Every few hours</string>
+    <string name="rule_days">Every few days</string>
+    <string name="problem_pick_a_day">Pick at least one day.</string>
+    <string name="problem_month_day">A day from 1 to 31.</string>
+    <string name="problem_hours">At least 1 hour.</string>
+    <string name="problem_days">At least 1 day.</string>
+    <string name="editor_title_new">Repeating message</string>
+    <string name="editor_title_edit">Edit repeating message</string>
+    <string name="editor_being_sent">It\'s being sent right now. It can be deleted once that\'s done.</string>
+    <string name="editor_repeat">Repeat</string>
+    <string name="editor_month_day">Day of the month</string>
+    <string name="editor_every_hours">Every how many hours</string>
+    <string name="editor_every_days">Every how many days</string>
+    <string name="editor_from">From</string>
+    <string name="editor_starts">Starts</string>
+    <string name="editor_discard_title">Discard your changes?</string>
+    <string name="editor_discard_text">What you\'ve entered here won\'t be saved.</string>
+    <string name="editor_keep_editing">Keep editing</string>
+    <string name="editor_delete_title">Delete this repeating message?</string>
+    <string name="editor_delete_text">It won\'t be sent again.</string>
+    <string name="editor_once_in_past">A one-off message must be in the future.</string>
 </resources>
