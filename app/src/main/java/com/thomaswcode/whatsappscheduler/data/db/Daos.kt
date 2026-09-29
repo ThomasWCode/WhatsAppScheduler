@@ -162,6 +162,14 @@ interface SendLogDao {
     @Query("SELECT * FROM send_log ORDER BY atMillis DESC LIMIT :limit")
     fun observeRecent(limit: Int): Flow<List<SendLog>>
 
+    /** The latest runs with one of [statuses] (SendStatus names), filtered before the limit. */
+    @Query("SELECT * FROM send_log WHERE status IN (:statuses) ORDER BY atMillis DESC LIMIT :limit")
+    fun observeRecent(statuses: List<String>, limit: Int): Flow<List<SendLog>>
+
+    /** Runs logged as skipped with "missed by …", from before MISSED existed, become missed. */
+    @Query("UPDATE send_log SET status = 'MISSED' WHERE status = 'SKIPPED' AND detail LIKE 'missed by %'")
+    suspend fun typeLegacyMisses()
+
     @Insert
     suspend fun insert(log: SendLog)
 
@@ -175,12 +183,12 @@ interface SendLogDao {
     suspend fun deleteForSchedules(scheduleIds: List<Long>)
 
     /**
-     * Each schedule's latest run for an occurrence (not a manual one), so the list can say when the
-     * message that needs attention was due.
+     * Each schedule's latest run for an occurrence (not a manual one) of each outcome, so the list can
+     * say when the message that needs attention was due, and why it didn't go.
      */
     @Query(
         "SELECT * FROM send_log WHERE id IN (SELECT MAX(id) FROM send_log " +
-            "WHERE scheduleId IS NOT NULL AND occurrenceAtMillis IS NOT NULL GROUP BY scheduleId)"
+            "WHERE scheduleId IS NOT NULL AND occurrenceAtMillis IS NOT NULL GROUP BY scheduleId, status)"
     )
     fun observeLatestOccurrenceRuns(): Flow<List<SendLog>>
 

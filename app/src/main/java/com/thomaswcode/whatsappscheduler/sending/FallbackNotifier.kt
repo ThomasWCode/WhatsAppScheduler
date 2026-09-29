@@ -144,7 +144,7 @@ class FallbackNotifier(private val context: Context, private val notifications: 
      * by occurrence, its last result ("FAILED: search: …" gives "search: …").
      */
     fun notifyAttention(schedule: Schedule, run: OccurrenceRun?) {
-        val occurrenceAtMillis = run?.atMillis
+        val occurrenceAtMillis = run?.occurrenceAtMillis
         val reason = run?.detail ?: schedule.lastResult?.let { it.substringAfter(": ", missingDelimiterValue = it) } ?: "unknown"
         when (schedule.attention) {
             Attention.FAILED -> notifyFailed(schedule, occurrenceAtMillis, reason)

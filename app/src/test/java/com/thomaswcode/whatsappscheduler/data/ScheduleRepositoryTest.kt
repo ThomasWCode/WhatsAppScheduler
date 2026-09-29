@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.thomaswcode.whatsappscheduler.data.db.AppDatabase
 import com.thomaswcode.whatsappscheduler.data.db.Attention
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
+import com.thomaswcode.whatsappscheduler.data.db.SendLog
 import com.thomaswcode.whatsappscheduler.data.db.SendStatus
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
 import java.time.Duration
@@ -67,7 +68,10 @@ class ScheduleRepositoryTest {
         assertEquals(daily.message, held.message)
         // Its run is the held message's, so the series' own last run and history stand.
         assertNull(repository.get(daily.id)!!.lastRunAtMillis)
-        assertEquals(mapOf(held.id to OccurrenceRun(nine.toEpochMilli(), "missed by 180 min (phone off?)")), repository.observeLatestOccurrences().first())
+        assertEquals(
+            OccurrenceRun(nine.toEpochMilli(), ranAt.toEpochMilli(), "missed by 180 min (phone off?)"),
+            repository.observeLatestOccurrences().first().getValue(held.id).behind(Attention.MISSED),
+        )
         // A one-off waits itself.
         val once = repository.save(daily.copy(id = 0, recurrence = "ONCE", firstAtMillis = nine.plus(Duration.ofDays(2)).toEpochMilli()), ranAt)
         val oneOff = repository.recordMissed(once.id, once.nextAtMillis!!, "missed by 30 min (phone off?)", "Mum", ranAt.plus(Duration.ofDays(2)))!!
@@ -148,6 +152,16 @@ class ScheduleRepositoryTest {
     }
 
     @Test
+    fun runsMissedBeforeMissedExistedCountAsMissed() = runTest {
+        val daily = saveDaily()
+        db.sendLogDao().insert(SendLog(scheduleId = daily.id, atMillis = ranAt.toEpochMilli(), status = SendStatus.SKIPPED, targetName = "Mum", detail = "missed by 45 min (phone off?)"))
+        db.sendLogDao().insert(SendLog(scheduleId = daily.id, atMillis = ranAt.toEpochMilli(), status = SendStatus.SKIPPED, targetName = "Mum", detail = "snoozed 5 min on the countdown"))
+        repository.typeLegacyOutcomes()
+        assertEquals(listOf(SendStatus.MISSED), repository.observeLogs(setOf(SendStatus.MISSED)).first().map { it.status })
+        assertEquals(listOf(SendStatus.SKIPPED), repository.observeLogs(setOf(SendStatus.SKIPPED)).first().map { it.status })
+    }
+
+    @Test
     fun aMissedOccurrenceLeavesWhatTheSeriesAlreadyWaitsOn() = runTest {
         val daily = saveDaily()
         repository.recordRun(daily.id, nine.toEpochMilli(), SendStatus.FAILED, "search: Timed out", "Mum", ranAt)
@@ -161,7 +175,7 @@ class ScheduleRepositoryTest {
         assertEquals(failed.lastRunAtMillis, after.lastRunAtMillis)
         assertEquals(failed.lastResult, after.lastResult)
         assertEquals(Instant.ofEpochMilli(tomorrow).plus(Duration.ofDays(1)).toEpochMilli(), after.nextAtMillis)
-        assertEquals(nine.toEpochMilli(), repository.observeLatestOccurrences().first()[daily.id]?.atMillis)
+        assertEquals(nine.toEpochMilli(), repository.observeLatestOccurrences().first()[daily.id]?.behind(Attention.FAILED)?.occurrenceAtMillis)
     }
 
     @Test

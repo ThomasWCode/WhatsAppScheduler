@@ -1,6 +1,5 @@
 package com.thomaswcode.whatsappscheduler.ui.logs
 
-import com.thomaswcode.whatsappscheduler.data.db.SendLog
 import com.thomaswcode.whatsappscheduler.data.db.SendStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -8,17 +7,13 @@ import org.junit.Test
 
 class LogsTest {
 
-    private fun log(status: SendStatus) = SendLog(scheduleId = 1, atMillis = 0, status = status, targetName = "Mum", detail = null)
-
-    private val all = SendStatus.entries.map(::log)
-
     @Test
-    fun filtersKeepTheirStatuses() {
-        assertEquals(SendStatus.entries, all.filter(LogFilter.ALL::keeps).map { it.status })
-        assertEquals(listOf(SendStatus.SENT), all.filter(LogFilter.SENT::keeps).map { it.status })
+    fun filtersAskForTheirStatuses() {
+        assertNull(LogFilter.ALL.statuses)
+        assertEquals(setOf(SendStatus.SENT), LogFilter.SENT.statuses)
         // Uncertain ones are with the failed: both wait on the user.
-        assertEquals(listOf(SendStatus.FAILED, SendStatus.UNCERTAIN), all.filter(LogFilter.FAILED::keeps).map { it.status })
-        assertEquals(listOf(SendStatus.MISSED), all.filter(LogFilter.MISSED::keeps).map { it.status })
+        assertEquals(setOf(SendStatus.FAILED, SendStatus.UNCERTAIN), LogFilter.FAILED.statuses)
+        assertEquals(setOf(SendStatus.MISSED), LogFilter.MISSED.statuses)
     }
 
     @Test

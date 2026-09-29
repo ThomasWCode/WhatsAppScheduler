@@ -28,8 +28,25 @@ data class DeletedSchedules(val schedules: List<Schedule>, val logs: List<SendLo
 /** [members] went out, or may have, while their edit was open, so the edit wasn't saved (see saveBatch). */
 class SentWhileEditing(val members: List<Schedule>) : IllegalStateException("sent while it was being edited")
 
-/** A schedule's latest scheduled run: the occurrence it was for ([atMillis]) and its logged [detail]. */
-data class OccurrenceRun(val atMillis: Long, val detail: String?)
+/** A scheduled run: the occurrence it was for, when it ran, and its logged [detail]. */
+data class OccurrenceRun(val occurrenceAtMillis: Long, val ranAtMillis: Long, val detail: String?)
+
+/**
+ * A schedule's latest scheduled run of each outcome. What it waits on the user for was set by the
+ * latest run with that outcome, which needn't be its latest run: a test run after a failure, say,
+ * leaves the failure waiting.
+ */
+data class LatestRuns(val byStatus: Map<SendStatus, OccurrenceRun>) {
+    /** The run [attention] is about. */
+    fun behind(attention: Attention?): OccurrenceRun? = when (attention) {
+        Attention.MISSED -> byStatus[SendStatus.MISSED]
+        Attention.FAILED -> byStatus[SendStatus.FAILED]
+        Attention.UNCERTAIN -> byStatus[SendStatus.UNCERTAIN]
+        // A hold is logged as skipped.
+        Attention.HELD -> byStatus[SendStatus.SKIPPED]
+        null -> null
+    }
+}
 
 class ScheduleRepository(private val db: AppDatabase) : SendStore {
 
@@ -38,7 +55,9 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
     private val recipients = db.recipientDao()
 
     fun observeSchedules(): Flow<List<Schedule>> = schedules.observeAll()
-    fun observeLogs(limit: Int = 200): Flow<List<SendLog>> = logs.observeRecent(limit)
+    /** The latest runs, only those with one of [statuses] when given: filtered before the limit, not after. */
+    fun observeLogs(statuses: Set<SendStatus>? = null, limit: Int = 200): Flow<List<SendLog>> =
+        if (statuses == null) logs.observeRecent(limit) else logs.observeRecent(statuses.map { it.name }, limit)
 
     suspend fun all(): List<Schedule> = schedules.getAll()
     override suspend fun get(id: Long): Schedule? = schedules.getById(id)
@@ -166,6 +185,8 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
      * status); runs by hand are left alone, as they never decide attention. Returns how many.
      */
     suspend fun typeLegacyOutcomes(): Int = db.withTransaction {
+        // Runs missed before MISSED existed were logged as skipped, "missed by … min": missed, as they were.
+        logs.typeLegacyMisses()
         schedules.untypedOutcomes().count { row ->
             val result = row.lastResult ?: return@count false
             val status = statusFromResult(result) ?: return@count false
@@ -190,11 +211,13 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
     }
 
     /**
-     * Schedule id to its latest scheduled run: the occurrence it was for, and what it recorded. A run by
-     * hand later changes the schedule's last result, but not this.
+     * Schedule id to its latest scheduled runs, one of each outcome: the occurrence each was for, and
+     * what it recorded. A run by hand later changes the schedule's last result, but not these.
      */
-    fun observeLatestOccurrences(): Flow<Map<Long, OccurrenceRun>> = logs.observeLatestOccurrenceRuns().map { runs ->
-        runs.mapNotNull { run -> run.scheduleId?.let { id -> run.occurrenceAtMillis?.let { id to OccurrenceRun(it, run.detail) } } }.toMap()
+    fun observeLatestOccurrences(): Flow<Map<Long, LatestRuns>> = logs.observeLatestOccurrenceRuns().map { runs ->
+        runs.filter { it.scheduleId != null && it.occurrenceAtMillis != null }
+            .groupBy { it.scheduleId!! }
+            .mapValues { (_, own) -> LatestRuns(own.associate { it.status to OccurrenceRun(it.occurrenceAtMillis!!, it.atMillis, it.detail) }) }
     }
 
     suspend fun batch(batchId: String): List<Schedule> = schedules.getBatch(batchId)
