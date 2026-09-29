@@ -34,6 +34,7 @@ Unit tests (`./gradlew test`) cover the quick sheet's time chips and friendly ti
 | 28 | ⋯ → Postpone… on a one-off, to tomorrow evening; then Undo | The row says "Tomorrow 18:30 · moved from …" and `dumpsys alarm` shows the new time; Undo puts both back. A missed one-off's Postpone… starts at the same time on the next day and brings it back to Upcoming. |
 | 29 | Postpone a daily series' next send past the one after it | The dialog says "This also skips …". After the moved send, the series continues at its usual time the next day. |
 | 30 | Settings → Keep sent messages for → 7 days, with a one-off sent more than 7 days ago; go back to the list (and again after switching away and back with 30 days → 7 days) | The one-off is gone from Sent at once; Logs → Sends still lists its send. |
+| 31 | In the sheet, long-press a group's chip → Check this chat now; then a made-up group name | WhatsApp opens, searches, opens the group and backs out to the app; a toast says it was found, and the details show "✓ Found in WhatsApp's search …". The made-up name gives "Couldn't find …". Nothing is typed in either. |
 
 Useful commands:
 

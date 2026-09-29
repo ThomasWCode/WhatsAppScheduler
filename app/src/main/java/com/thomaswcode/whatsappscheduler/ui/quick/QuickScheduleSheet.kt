@@ -49,6 +49,7 @@ import com.thomaswcode.whatsappscheduler.domain.FriendlyTime
 import com.thomaswcode.whatsappscheduler.domain.PhoneNormaliser
 import com.thomaswcode.whatsappscheduler.domain.PinCircuitBreaker
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
+import com.thomaswcode.whatsappscheduler.ui.formatStamp
 import com.thomaswcode.whatsappscheduler.ui.health.HealthStrip
 import com.thomaswcode.whatsappscheduler.ui.health.rememberHealth
 import java.time.Duration
@@ -204,13 +205,23 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
         }
     }
 
+    // Looked up for the recipient the details are for, not just the recent chips.
+    var checkedAt by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(details) { checkedAt = details?.let { vm.checkedAt(it) } }
     details?.let { recipient ->
         RecipientDetailsDialog(
             recipient = recipient,
             countryIso = settings.defaultCountryIso,
+            checkedAtMillis = checkedAt,
             onDismiss = { details = null },
             onSave = { updated -> vm.saveDetails(recipient, updated); details = null },
             onForget = { vm.forget(recipient); details = null },
+            // Only for a chat found by name; a locked one needs the Chat Lock steps, which a test send covers.
+            onCheck = if (recipient.phoneE164 == null && !recipient.isLocked) {
+                { vm.checkChat(recipient); details = null }
+            } else {
+                null
+            },
         )
     }
 }
@@ -223,9 +234,11 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
 private fun RecipientDetailsDialog(
     recipient: RecipientDraft,
     countryIso: String,
+    checkedAtMillis: Long?,
     onDismiss: () -> Unit,
     onSave: (RecipientDraft) -> Unit,
     onForget: () -> Unit,
+    onCheck: (() -> Unit)?,
 ) {
     var whatsappName by rememberSaveable { mutableStateOf(recipient.whatsappName ?: "") }
     var number by rememberSaveable { mutableStateOf(recipient.phoneE164 ?: "") }
@@ -262,6 +275,13 @@ private fun RecipientDetailsDialog(
                         Text("Adds the Locked chats steps when sending.", style = MaterialTheme.typography.bodySmall)
                     }
                     Switch(checked = locked, onCheckedChange = { locked = it })
+                }
+                onCheck?.let { check ->
+                    checkedAtMillis?.let { Text("✓ Found in WhatsApp's search ${formatStamp(it)}", style = MaterialTheme.typography.bodySmall) }
+                    // It checks the details as saved: after an edit, those aren't what the fields show yet.
+                    val edited = whatsappName != (recipient.whatsappName ?: "") || number != (recipient.phoneE164 ?: "") || locked != recipient.isLocked
+                    if (edited) Text("Save to check the new details.", style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = check, enabled = !edited) { Text("Check this chat now") }
                 }
                 if (recipient.recipientId != null) {
                     TextButton(onClick = onForget) { Text("Remove from recents") }

@@ -64,6 +64,12 @@ class RecipientRepository(private val db: AppDatabase) {
         recipient.phoneE164?.let { recipients.otherByPhone(it, recipient.id) }
             ?: if (recipient.phoneE164 == null) byChatName(recipient.chatName, except = recipient.id) else null
 
+    /** "Check this chat now" found the chat (features F4). */
+    suspend fun markVerified(id: Long, atMillis: Long) = recipients.markVerified(id, atMillis)
+
+    /** A check didn't find the chat: it no longer shows as found. */
+    suspend fun clearVerified(id: Long) = recipients.markVerified(id, null)
+
     /** The stored recipient [draft] already is, if any, without creating one: by id, number, or chat name. */
     suspend fun existing(draft: RecipientDraft): Recipient? =
         draft.recipientId?.let { recipients.get(it) }
@@ -88,7 +94,10 @@ class RecipientRepository(private val db: AppDatabase) {
      * as they are now: their alarms and any Tap to send prompts still carry the old target.
      */
     suspend fun updateDetails(recipient: Recipient): List<Schedule> = db.withTransaction {
-        recipients.update(recipient)
+        // A check found the chat by its old name or kind; after a change it has to be checked again.
+        val before = recipients.get(recipient.id)
+        val renamed = before != null && (before.chatName != recipient.chatName || before.kind != recipient.kind)
+        recipients.update(if (renamed) recipient.copy(verifiedAtMillis = null) else recipient)
         schedules.updatePendingTarget(recipient.id, recipient.kind, recipient.chatName, recipient.phoneE164, recipient.isLocked)
         schedules.pendingFor(recipient.id)
     }

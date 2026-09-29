@@ -34,7 +34,8 @@ class SendService : LifecycleService() {
         val c = container
         SendQueueProcessor(
             store = c.repository,
-            sender = AccessibilitySender(this, c.settings, c.secrets, c.pinGuard, c.log, c.notifications),
+            // Under the same lock as "Check this chat now", so the two never drive WhatsApp at once.
+            sender = LockedSender(AccessibilitySender(this, c.settings, c.secrets, c.pinGuard, c.log, c.notifications), c.automationLock),
             alarms = c.alarmScheduler,
             notifier = ServiceNotifier(c.notifications, c.fallbackNotifier),
             pinGuard = c.pinGuard,

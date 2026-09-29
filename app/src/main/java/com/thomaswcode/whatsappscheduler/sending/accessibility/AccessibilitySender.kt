@@ -3,9 +3,11 @@ package com.thomaswcode.whatsappscheduler.sending.accessibility
 import android.content.Context
 import com.thomaswcode.whatsappscheduler.data.settings.SecretStore
 import com.thomaswcode.whatsappscheduler.data.settings.SettingsStore
+import com.thomaswcode.whatsappscheduler.domain.ChatCheck
 import com.thomaswcode.whatsappscheduler.domain.SendJob
 import com.thomaswcode.whatsappscheduler.domain.SendResult
 import com.thomaswcode.whatsappscheduler.domain.SendResult.Failed.Companion.PRECHECK
+import com.thomaswcode.whatsappscheduler.sending.ChatCheckRunner
 import com.thomaswcode.whatsappscheduler.sending.MessageSender
 import com.thomaswcode.whatsappscheduler.sending.Notifications
 import com.thomaswcode.whatsappscheduler.sending.PinGuard
@@ -33,7 +35,7 @@ class AccessibilitySender(
     private val pinGuard: PinGuard,
     private val log: AutomationLog,
     private val notifications: Notifications,
-) : MessageSender {
+) : MessageSender, ChatCheckRunner {
 
     private val wake = WakeUnlockController(context, log, notifications)
 
@@ -121,6 +123,84 @@ class AccessibilitySender(
     }
 
     /**
+     * F4 "Check this chat now": finds the chat by name the way a send would, checks the title of the
+     * chat that opens, then backs out of WhatsApp to the app it was started from. Nothing is typed.
+     * The user has just tapped the button, so the phone is unlocked and nothing needs waking.
+     */
+    override suspend fun checkChat(name: String): ChatCheck {
+        val service = WaAccessibilityService.instance.value ?: return ChatCheck.NotChecked("auto-send isn't running")
+        val whatsapp = installedWhatsApp() ?: return ChatCheck.NotChecked("WhatsApp isn't installed")
+        val settings = settingsStore.current()
+        val t = settings.stepTimeoutMs
+        val driver = UiDriver(service, log, t)
+        log.info("check: looking for '$name'")
+        service.active.set(true)
+        return try {
+            withTimeout(settings.jobTimeoutMs) {
+                val search = OpenChatBySearch(context, driver, log)
+                // Getting to the search is WhatsApp's side: a failure there says nothing about the name.
+                try {
+                    search.goHome(whatsapp, t)
+                    search.search(name, t)
+                } catch (e: StepFailure) {
+                    return@withTimeout checkFailed("couldn't search for '$name'", e)
+                }
+                // Only whether a result has the name is about the name.
+                val row = try {
+                    search.findResult(name, t)
+                } catch (e: StepFailure) {
+                    log.warn("check: '$name' not found: ${e.message}")
+                    return@withTimeout ChatCheck.NotFound(e.message ?: "not found")
+                }
+                // Opening it is WhatsApp's side again: a click lost or a chat slow to open isn't a wrong name.
+                val title = try {
+                    search.open(row, name, t)
+                } catch (e: StepFailure) {
+                    return@withTimeout checkFailed("found '$name' but couldn't open it", e)
+                }
+                // The tick says this chat was seen to open; without its title, which chat opened isn't known.
+                if (title == null) {
+                    log.warn("check: opened a chat for '$name' but couldn't read its title")
+                    runCatching { driver.dump() }.getOrNull()?.let { log.saveDump("check: no chat title", it) }
+                    return@withTimeout ChatCheck.Failed("couldn't read the chat's title")
+                }
+                log.info("check: found '$name'")
+                ChatCheck.Found
+            }
+        } catch (e: TimeoutCancellationException) {
+            // Where it got to, for Diagnostics, which the result sends the user to.
+            log.warn("check: gave up on '$name' after ${settings.jobTimeoutMs}ms")
+            runCatching { driver.dump() }.getOrNull()?.let { log.saveDump("check timeout", it) }
+            ChatCheck.Failed("it took too long")
+        } finally {
+            runCatching { leaveWhatsApp(driver, whatsapp) }
+            service.active.set(false)
+        }
+    }
+
+    /** A check stopped by WhatsApp's side, logged with the screen it stopped on for Diagnostics. */
+    private fun checkFailed(what: String, e: StepFailure): ChatCheck.Failed {
+        log.warn("check: $what: ${e.message}")
+        e.dump?.let { log.saveDump("check: ${e.step}", it) }
+        return ChatCheck.Failed(e.message ?: e.step)
+    }
+
+    /**
+     * Back out of the chat, the search and WhatsApp itself, one step at a time and only while WhatsApp
+     * is in front, so the app the check was started from comes back and nothing of the user's is left.
+     */
+    private suspend fun leaveWhatsApp(driver: UiDriver, whatsapp: String) {
+        repeat(MAX_BACKS) {
+            // A window changing over has no root for a while: that isn't knowing what is in front, not
+            // having left, so it looks again (within the same bounded number of tries).
+            var front: String? = null
+            if (!driver.waitUntil(2_000) { driver.foregroundPackage().also { front = it } != null }) return@repeat
+            if (front != whatsapp) return
+            driver.back()
+        }
+    }
+
+    /**
      * Leaves WhatsApp and puts the phone back as it was. After a failure from before the tap,
      * [unsentDraft] is cleared from the composer first, so a message pre-filled by the chat link
      * doesn't wait in WhatsApp as a draft that could be sent by accident later (I10).
@@ -147,6 +227,11 @@ class AccessibilitySender(
         runCatching { driver.setText("tidyUp", entry, "") }
             .onSuccess { log.info("tidyUp: cleared the unsent message from the composer") }
             .onFailure { log.warn("tidyUp: could not clear the unsent message: ${it.message}") }
+    }
+
+    private companion object {
+        /** Chat, search, search box, chat list, WhatsApp itself, and one spare. */
+        const val MAX_BACKS = 6
     }
 
     @Suppress("DEPRECATION")
