@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import com.thomaswcode.whatsappscheduler.data.ScheduleRepository
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
+import com.thomaswcode.whatsappscheduler.domain.Preflight
 import com.thomaswcode.whatsappscheduler.sending.SendKind
 import com.thomaswcode.whatsappscheduler.sending.SendRequest
 import com.thomaswcode.whatsappscheduler.sending.SendService
@@ -46,13 +47,43 @@ class AlarmScheduler(
         } else {
             alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next, fire)
         }
+        armPreflight(schedule.id, next)
     }
 
     fun cancel(scheduleId: Long) {
         // Extras don't take part in PendingIntent matching, so this finds the alarm whatever occurrence it carries.
         PendingIntent.getBroadcast(context, scheduleId.toInt(), fireIntent(scheduleId), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_NO_CREATE)
             ?.let(alarmManager::cancel)
+        cancelPreflight(scheduleId)
     }
+
+    /**
+     * The pre-flight check's own alarm (features F5), [Preflight.LEAD] before the send; none when that
+     * has already passed. Not an alarm clock: it only looks, so it needn't show as the next alarm.
+     */
+    private fun armPreflight(scheduleId: Long, occurrenceAtMillis: Long) {
+        val at = Preflight.checkAt(occurrenceAtMillis, System.currentTimeMillis())
+        if (at == null) {
+            cancelPreflight(scheduleId)
+            return
+        }
+        val check = PendingIntent.getBroadcast(
+            context, scheduleId.toInt(),
+            preflightIntent(scheduleId).putExtra(PreflightReceiver.EXTRA_OCCURRENCE_AT, occurrenceAtMillis),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        if (canScheduleExact()) alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, check)
+        else alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, check)
+    }
+
+    private fun cancelPreflight(scheduleId: Long) {
+        PendingIntent.getBroadcast(context, scheduleId.toInt(), preflightIntent(scheduleId), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_NO_CREATE)
+            ?.let(alarmManager::cancel)
+    }
+
+    private fun preflightIntent(scheduleId: Long): Intent = Intent(context, PreflightReceiver::class.java)
+        .setAction(PreflightReceiver.ACTION_PREFLIGHT)
+        .putExtra(PreflightReceiver.EXTRA_SCHEDULE_ID, scheduleId)
 
     /**
      * Re-arms every alarm (after boot, update or clock change). An occurrence whose alarm could not

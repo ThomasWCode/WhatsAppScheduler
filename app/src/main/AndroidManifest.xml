@@ -110,6 +110,10 @@
             android:exported="false" />
 
         <receiver
+            android:name=".scheduling.PreflightReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".scheduling.BootReceiver"
             android:exported="true">
             <intent-filter>

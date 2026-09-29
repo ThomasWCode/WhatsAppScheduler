@@ -40,6 +40,7 @@ Unit tests (`./gradlew test`) cover the quick sheet's time chips and friendly ti
 | 34 | Test mode on, a one-off to a made-up group a minute ahead, Retries 0; let it fail | "Couldn't send to …" under *Needs your attention*, with Tap to send and Postpone…. Postpone… opens the picker over the current app; a time moves it (toast "Moved to …") and the notification goes. |
 | 35 | Missed-send grace 0, a one-off a minute ahead, then `adb shell am force-stop` until after its time; open the app | "Missed: your message to … (time)" with Send now, Postpone… and Discard. Discard removes the row (Logs keep its history); Send now sends a copy (a dry run in test mode) and the notification goes. |
 | 36 | When a send is interrupted after its Send tap (B02) | "May have been sent to …: check the chat" with Open chat, Mark as sent and Send again. Mark as sent moves the row to Sent. |
+| 37 | Schedule a message 20 minutes ahead, then turn the accessibility service off; wait 5 minutes | "Your … message to … will fail" with the service problem and Fix, which opens Accessibility settings. Turning it back on and sending removes the warning; with nothing wrong there is no warning at all. |
 
 Useful commands:
 

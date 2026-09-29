@@ -3,11 +3,14 @@ package com.thomaswcode.whatsappscheduler.sending
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.text.format.DateFormat
 import com.thomaswcode.whatsappscheduler.data.db.Attention
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.domain.Recurrence
+import com.thomaswcode.whatsappscheduler.ui.health.HealthItem
 import com.thomaswcode.whatsappscheduler.ui.MainActivity
 import java.time.Instant
+import java.util.Date
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -69,6 +72,31 @@ class FallbackNotifier(private val context: Context, private val notifications: 
         ),
     )
 
+    /**
+     * What the pre-flight check found would make the send due at [occurrenceAtMillis] fail (features
+     * F5), with the way to fix it. It goes when that send is made, or once it can't matter any more.
+     */
+    fun notifyWillFail(schedule: Schedule, occurrenceAtMillis: Long, problem: HealthItem) {
+        val fix = when {
+            problem.problem.fixedInAppSettings -> MainActivity.intent(context, MainActivity.DESTINATION_SETTINGS)
+            problem.fix != null -> Intent(problem.fix).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            else -> MainActivity.rowIntent(context, schedule.id)
+        }
+        val tap = PendingIntent.getActivity(context, schedule.id.toInt(), fix, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val at = DateFormat.getTimeFormat(context).format(Date(occurrenceAtMillis))
+        val untilSendIsOver = occurrenceAtMillis - System.currentTimeMillis() + WILL_FAIL_AFTERWARDS_MS
+        notifications.show(
+            Notifications.ID_PREFLIGHT_BASE + schedule.id.toInt(),
+            notifications.fallback(
+                "Your $at message to ${schedule.targetName} will fail", problem.message, tap,
+                listOfNotNull(problem.fixLabel?.let { "Fix" to tap }), lifetimeMs = untilSendIsOver.coerceAtLeast(WILL_FAIL_AFTERWARDS_MS),
+            ),
+        )
+    }
+
+    /** The pre-flight check found nothing wrong (any more). */
+    fun cancelWillFail(scheduleId: Long) = notifications.cancel(Notifications.ID_PREFLIGHT_BASE + scheduleId.toInt())
+
     fun notifyPinPaused(reason: String) {
         val open = PendingIntent.getActivity(
             context, REQUEST_PIN_PAUSED,
@@ -101,11 +129,17 @@ class FallbackNotifier(private val context: Context, private val notifications: 
         }
     }
 
-    /** Removes the schedule's prompt, which is stale once it has been sent, edited or deleted (B10). */
-    fun cancel(scheduleId: Long) = notifications.cancel(Notifications.ID_FALLBACK_BASE + scheduleId.toInt())
+    /** Removes the schedule's prompt, which is stale once it has been sent, edited or deleted (B10), and any pre-flight warning. */
+    fun cancel(scheduleId: Long) {
+        notifications.cancel(Notifications.ID_FALLBACK_BASE + scheduleId.toInt())
+        cancelWillFail(scheduleId)
+    }
 
-    private fun show(schedule: Schedule, title: String, text: String, tap: PendingIntent, actions: List<Pair<String, PendingIntent>>) =
+    /** A prompt about how the send went also answers a pre-flight warning for it, which goes. */
+    private fun show(schedule: Schedule, title: String, text: String, tap: PendingIntent, actions: List<Pair<String, PendingIntent>>) {
+        cancelWillFail(schedule.id)
         notifications.show(Notifications.ID_FALLBACK_BASE + schedule.id.toInt(), notifications.fallback(title, text, tap, actions))
+    }
 
     /**
      * Postpone… for a one-off. A series' missed occurrence isn't moved from here: Postpone moves a
@@ -145,5 +179,7 @@ class FallbackNotifier(private val context: Context, private val notifications: 
     private companion object {
         val stampFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE d MMM HH:mm")
         const val REQUEST_PIN_PAUSED = -2
+        /** A pre-flight warning stays this long after its send was due, unless that send removes it first. */
+        const val WILL_FAIL_AFTERWARDS_MS = 60 * 60 * 1000L
     }
 }
