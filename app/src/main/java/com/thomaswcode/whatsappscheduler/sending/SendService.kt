@@ -52,6 +52,7 @@ class SendService : LifecycleService() {
             jobGuard = WakeLockGuard(getSystemService(PowerManager::class.java)),
             admission = c.sendAdmission,
             headsUp = HeadsUpPrompt(this, c.notifications, c.headsUpAnswers),
+            stopped = c.stoppedOccurrences,
         )
     }
 
