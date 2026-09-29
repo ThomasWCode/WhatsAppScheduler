@@ -223,12 +223,13 @@ class AccessibilitySender(
     }
 
     /**
-     * The app in front. Just after the countdown's notification goes, the window in front can be the
-     * system UI's, or none, for a moment: it waits briefly for an app's.
+     * The app in front, by its application window, so a keyboard being typed with isn't taken for it.
+     * Just after the countdown's notification goes there can be none for a moment, or only the system
+     * UI's: it waits briefly for an app's.
      */
     private suspend fun frontApp(driver: UiDriver): String? {
         var front: String? = null
-        driver.waitUntil(FRONT_APP_WAIT_MS) { driver.foregroundPackage()?.takeIf { it != SYSTEM_UI }?.also { front = it } != null }
+        driver.waitUntil(FRONT_APP_WAIT_MS) { driver.foregroundAppPackage()?.takeIf { it != SYSTEM_UI }?.also { front = it } != null }
         return front
     }
 
