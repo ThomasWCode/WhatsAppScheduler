@@ -14,10 +14,18 @@ import java.util.Locale
 object RuleSentence {
 
     /**
-     * [rule] beginning at [firstAt], as it reads at [now]; null when it has no time to go (a one-off,
-     * or a weekly rule without days).
+     * [rule] beginning at [firstAt], as it reads at [now]; null when it has no time to go (a one-off, a
+     * weekly rule without days, or a number that isn't one yet).
      */
     fun describe(rule: Recurrence, firstAt: ZonedDateTime, now: ZonedDateTime, locale: Locale, time: (LocalTime) -> String): String? {
+        // Half-typed numbers (a field cleared before the new one goes in) make no rule to say, or to work out.
+        val valid = when (rule) {
+            is Recurrence.Monthly -> rule.dayOfMonth in 1..31
+            is Recurrence.EveryNHours -> rule.hours >= 1
+            is Recurrence.EveryNDays -> rule.days >= 1
+            else -> true
+        }
+        if (!valid) return null
         val at = time(firstAt.toLocalTime())
         val what = when (rule) {
             Recurrence.Once -> return null

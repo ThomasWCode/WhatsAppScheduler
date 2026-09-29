@@ -89,6 +89,7 @@ fun ScheduleEditorScreen(
     val timeFormat = rememberTimeFormat()
     val recents by vm.recents.collectAsStateWithLifecycle()
     val now by vm.now.collectAsStateWithLifecycle()
+    val sending by vm.sending.collectAsStateWithLifecycle()
     LaunchedEffect(vm) { vm.done.collect { onDone() } }
     var showDate by rememberSaveable { mutableStateOf(false) }
     var showTime by rememberSaveable { mutableStateOf(false) }
@@ -128,13 +129,17 @@ fun ScheduleEditorScreen(
     Scaffold(
         topBar = {
             BackBar(if (vm.scheduleId == 0L) "Repeating message" else "Edit repeating message", onBack = ::leave) {
-                if (vm.scheduleId != 0L) TextButton(onClick = { confirmDelete = true }, enabled = !vm.saving) { Text("Delete") }
+                if (vm.scheduleId != 0L) TextButton(onClick = { confirmDelete = true }, enabled = !vm.saving && !sending) { Text("Delete") }
             }
         },
     ) { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).imePadding().padding(16.dp).verticalScroll(rememberScrollState()),
         ) {
+            if (sending) {
+                Text("It's being sent right now. It can be deleted once that's done.", style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(8.dp))
+            }
             RecipientField(
                 chosen = listOfNotNull(form.recipient),
                 query = vm.query,
@@ -205,8 +210,10 @@ fun ScheduleEditorScreen(
                 Spacer(Modifier.width(8.dp))
                 OutlinedButton(onClick = { showTime = true }, enabled = !vm.saving) { Text(timeFormat(form.time)) }
             }
-            // The rule said back, so a slip (Thu for Tue, say) shows before it is saved.
-            RuleSentence.describe(form.rule(), ZonedDateTime.of(form.date, form.time, now.zone), now, locale, timeFormat)?.let {
+            // The rule said back, so a slip (Thu for Tue, say) shows before it is saved; once it is a rule.
+            val sentence = if (problems[EditorForm.Field.RULE] != null) null
+            else RuleSentence.describe(form.rule(), ZonedDateTime.of(form.date, form.time, now.zone), now, locale, timeFormat)
+            sentence?.let {
                 Spacer(Modifier.height(8.dp))
                 Text(it, style = MaterialTheme.typography.bodyMedium)
             }

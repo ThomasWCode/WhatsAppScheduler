@@ -63,6 +63,10 @@ class RuleSentenceTest {
     fun nothingToSayWithoutATimeToGo() {
         assertNull(say(Recurrence.Once, at("2026-10-01T09:00")))
         assertNull(say(Recurrence.Weekly(emptySet()), at("2026-10-01T09:00")))
+        // A number field cleared while typing: no sentence, and nothing worked out from it.
+        assertNull(say(Recurrence.Monthly(0), at("2026-10-01T09:00")))
+        assertNull(say(Recurrence.EveryNHours(0), at("2026-10-01T09:00")))
+        assertNull(say(Recurrence.EveryNDays(0), at("2026-10-01T09:00")))
     }
 
     @Test
