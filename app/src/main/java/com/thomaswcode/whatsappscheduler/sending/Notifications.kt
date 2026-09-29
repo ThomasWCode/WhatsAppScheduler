@@ -62,6 +62,8 @@ class Notifications(private val context: Context) {
         actions: List<Pair<String, PendingIntent>> = emptyList(),
         /** How long it may stay when nothing else removes it; for as long as needed when null. */
         lifetimeMs: Long? = null,
+        /** The time it is about, kept on it (not shown) so it can be told from one about another time. */
+        aboutMillis: Long? = null,
     ): Notification =
         Notification.Builder(context, CHANNEL_FALLBACK)
             .setSmallIcon(R.drawable.ic_stat_send)
@@ -72,6 +74,7 @@ class Notifications(private val context: Context) {
             .setAutoCancel(true)
             .apply { actions.forEach { (label, intent) -> addAction(Notification.Action.Builder(null, label, intent).build()) } }
             .apply { lifetimeMs?.let(::setTimeoutAfter) }
+            .apply { aboutMillis?.let { setWhen(it).setShowWhen(false) } }
             .build()
 
     /**
@@ -110,6 +113,9 @@ class Notifications(private val context: Context) {
     fun cancel(id: Int) = manager.cancel(id)
 
     fun isShowing(id: Int): Boolean = runCatching { manager.activeNotifications.any { it.id == id } }.getOrDefault(false)
+
+    /** The time notification [id] is about ([fallback]'s aboutMillis), if it is showing. */
+    fun aboutOf(id: Int): Long? = runCatching { manager.activeNotifications.firstOrNull { it.id == id }?.notification?.`when` }.getOrNull()
 
     private fun openApp(): PendingIntent = PendingIntent.getActivity(
         context, 0, Intent(context, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
