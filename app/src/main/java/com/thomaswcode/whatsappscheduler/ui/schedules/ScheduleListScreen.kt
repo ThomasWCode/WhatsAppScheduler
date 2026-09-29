@@ -115,7 +115,8 @@ fun ScheduleListScreen(
     val hasPin by vm.hasPin.collectAsStateWithLifecycle()
     val pinFailures by vm.pinFailures.collectAsStateWithLifecycle()
     val serviceConnected by vm.serviceConnected.collectAsStateWithLifecycle()
-    val health = rememberHealth(serviceConnected, hasPin, PinCircuitBreaker.block(pinFailures, now.toInstant().toEpochMilli()), settings?.dryRun == true)
+    val nowMillis = now.toInstant().toEpochMilli()
+    val health = rememberHealth(serviceConnected, hasPin, PinCircuitBreaker.block(pinFailures, nowMillis), settings?.dryRunUntilMillis, nowMillis)
     val timeFormat = rememberTimeFormat()
     val snackbar = vm.snackbar
     // Held by id and saved, so an open dialog survives rotation and always shows the current rows.
@@ -266,7 +267,10 @@ fun ScheduleListScreen(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 96.dp),
         ) {
             item(key = "health") {
-                HealthStrip(health, showReady = true, onOpenSettings = onSettings, onClick = onSetup, modifier = Modifier.padding(bottom = 4.dp))
+                HealthStrip(
+                    health, showReady = true, onOpenSettings = onSettings, onClick = onSetup,
+                    onTurnOffDryRun = vm::turnOffDryRun, modifier = Modifier.padding(bottom = 4.dp),
+                )
             }
             if (sections.isEmpty) {
                 item(key = "empty") {

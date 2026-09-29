@@ -110,7 +110,8 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
 
     val chips = vm.chips(now, timeFormat)
     val at = vm.resolvedTime(now)
-    val health = rememberHealth(serviceConnected, hasPin, PinCircuitBreaker.block(pinFailures, now.toInstant().toEpochMilli()), settings.dryRun)
+    val nowMillis = now.toInstant().toEpochMilli()
+    val health = rememberHealth(serviceConnected, hasPin, PinCircuitBreaker.block(pinFailures, nowMillis), settings.dryRunUntilMillis, nowMillis)
 
     Column(
         modifier = Modifier
@@ -130,7 +131,7 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
             }
         }
         // One warning at most: the most serious thing that would stop or change the send.
-        HealthStrip(health, showReady = false, onOpenSettings = null, modifier = Modifier.padding(vertical = 6.dp))
+        HealthStrip(health, showReady = false, onOpenSettings = null, onTurnOffDryRun = vm::turnOffDryRun, modifier = Modifier.padding(vertical = 6.dp))
         Spacer(Modifier.height(4.dp))
         RecipientField(
             chosen = draft.recipients,

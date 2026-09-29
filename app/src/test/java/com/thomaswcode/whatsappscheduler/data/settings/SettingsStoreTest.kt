@@ -20,8 +20,12 @@ class SettingsStoreTest {
         assertFalse(store.recipientsLinked())
         store.markRecipientsLinked()
         // Settings are written as a whole; that must not wipe the flag, or linking would run again.
-        store.update { it.copy(dryRun = true) }
+        store.update { it.copy(dryRunUntilMillis = Settings.UNTIL_TURNED_OFF) }
         assertTrue(store.recipientsLinked())
         assertTrue(store.current().dryRun)
+        // Test mode with an end is off once that has passed.
+        store.update { it.copy(dryRunUntilMillis = 1_000L) }
+        assertFalse(store.current().dryRun)
+        assertTrue(store.current().dryRunAt(999L))
     }
 }
