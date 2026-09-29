@@ -41,7 +41,7 @@ class SendQueueProcessorTest {
     private val stopped = StoppedOccurrences(clock)
 
     private fun processor(sender: MessageSender, settings: Settings = Settings(retryCount = 2, retryDelaySeconds = 30), headsUp: HeadsUp = HeadsUp.None) =
-        SendQueueProcessor(store, sender, alarms, notifier, PinGuard(pinStore, clock), state, log, { settings }, clock, headsUp = headsUp, stopped = stopped)
+        SendQueueProcessor(store, sender, alarms, notifier, PinGuard(pinStore, clock), state, log, { settings }, clock, headsUp = headsUp, stopped = stopped, texts = { id, _ -> "text $id" })
 
     private fun oneOff(id: Long = 1, at: Instant = due) = schedule(id, at, "ONCE")
 

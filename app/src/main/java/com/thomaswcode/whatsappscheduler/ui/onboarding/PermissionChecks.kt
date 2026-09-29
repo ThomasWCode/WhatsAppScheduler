@@ -29,7 +29,7 @@ data class SetupItem(
     @StringRes val why: Int,
     val state: CheckState,
     val action: Intent?,
-    @StringRes val actionLabel: Int = R.string.setup_open_settings,
+    @StringRes val actionLabel: Int = R.string.action_open_settings,
     val group: SetupGroup = SetupGroup.REQUIRED,
 )
 
@@ -86,7 +86,7 @@ object PermissionChecks {
             ),
             SetupItem(
                 "samsung", R.string.setup_samsung_title, R.string.setup_samsung_why,
-                CheckState.MANUAL, appDetails, R.string.setup_open_app_info, group = SetupGroup.MANUAL,
+                CheckState.MANUAL, appDetails, R.string.action_open_app_info, group = SetupGroup.MANUAL,
             ),
             SetupItem(
                 "pin", R.string.setup_pin_title,

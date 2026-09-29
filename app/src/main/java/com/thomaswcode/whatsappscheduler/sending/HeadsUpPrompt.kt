@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.media.AudioManager
 import android.os.PowerManager
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -39,7 +40,7 @@ class HeadsUpPrompt(
         notifications.show(
             Notifications.ID_HEADS_UP,
             notifications.headsUp(
-                title = "Sending to $to",
+                title = context.getString(R.string.notif_heads_up_title, to),
                 text = text,
                 endsAtMillis = endsAtMillis,
                 sendNow = button(HeadsUpActionReceiver.ACTION_SEND_NOW, wait.token),

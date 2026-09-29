@@ -67,7 +67,7 @@ class PostponeActivity : ComponentActivity() {
                         first[row.id]?.let { (next, run) -> row.copy(nextAtMillis = next.takeIf { it >= 0 }, lastRunAtMillis = run.takeIf { it >= 0 }) }
                     }.ifEmpty { null }
                     if (seen == null) {
-                        Toast.makeText(this@PostponeActivity, R.string.postpone_deleted, Toast.LENGTH_LONG).show()
+                        Toast.makeText(this@PostponeActivity, R.string.already_deleted, Toast.LENGTH_LONG).show()
                         ids.forEach(container.fallbackNotifier::cancel)
                         finish()
                     }
