@@ -1,6 +1,10 @@
 package com.thomaswcode.whatsappscheduler.ui.settings
 
 import android.app.Activity
+import android.text.format.DateFormat
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,10 +18,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -26,14 +34,14 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
-import androidx.compose.material3.TimePicker
-import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -41,7 +49,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -54,7 +64,6 @@ import com.thomaswcode.whatsappscheduler.domain.PinCircuitBreaker
 import com.thomaswcode.whatsappscheduler.ui.BackBar
 import com.thomaswcode.whatsappscheduler.ui.authenticateThen
 import com.thomaswcode.whatsappscheduler.ui.quick.rememberTimeFormat
-import android.text.format.DateFormat
 import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
@@ -83,7 +92,16 @@ fun SettingsScreen(
 
     fun update(transform: (Settings) -> Settings) = vm.update(transform)
 
-    Scaffold(topBar = { BackBar("Settings", onBack) }) { padding ->
+    // A field being edited saves as it loses focus, so it loses it before the screen is left, by the
+    // back arrow, Back or a Diagnostics link, rather than going with the screen unsaved (B13).
+    val focus = LocalFocusManager.current
+    fun leave(to: () -> Unit) {
+        focus.clearFocus()
+        to()
+    }
+    BackHandler { leave(onBack) }
+
+    Scaffold(topBar = { BackBar("Settings", onBack = { leave(onBack) }) }) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).imePadding().padding(16.dp).verticalScroll(rememberScrollState())) {
             Text("Secrets", style = MaterialTheme.typography.titleMedium)
             Text(
@@ -108,38 +126,47 @@ fun SettingsScreen(
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
             Text("Sending", style = MaterialTheme.typography.titleMedium)
-            TestModeRow(settings.dryRunUntilMillis) { until -> update { it.copy(dryRunUntilMillis = until) } }
             ToggleRow("Notify after each send", "A quiet \"Sent to …\" notification. Test runs always say they sent nothing.", settings.notifyAfterSend) { v ->
                 update { it.copy(notifyAfterSend = v) }
             }
-            ToggleRow("Re-lock the phone after sending", "Only when it was locked before.", settings.relockAfterSend) { v -> update { it.copy(relockAfterSend = v) } }
             TimeSettingRow("Morning time for quick chips", "Used by This morning, Tomorrow and Mon.", settings.morning) { t ->
                 update { it.copy(morningMinutes = t.hour * 60 + t.minute) }
             }
             TimeSettingRow("Evening time for quick chips", "Used by Tonight.", settings.evening) { t ->
                 update { it.copy(eveningMinutes = t.hour * 60 + t.minute) }
             }
-            OwnNumberRow(settings.ownNumberE164, settings.defaultCountryIso) { e164 -> update { it.copy(ownNumberE164 = e164) } }
             KeepSentRow(settings.keepSentDays, vm::setKeepSentDays)
-            ToggleRow("Use phone-number link for locked contacts", "Faster path for locked contact chats; enable only if a dry run shows it works.", settings.deepLinkForLockedChats) { v -> update { it.copy(deepLinkForLockedChats = v) } }
-            NumberRow("Retries per message", settings.retryCount) { v -> update { it.copy(retryCount = v.coerceIn(0, 5)) } }
-            NumberRow("Seconds between retries", settings.retryDelaySeconds) { v -> update { it.copy(retryDelaySeconds = v.coerceIn(5, 600)) } }
-            NumberRow("Step timeout (ms)", settings.stepTimeoutMs.toInt()) { v -> update { it.copy(stepTimeoutMs = v.coerceIn(2000, 60000).toLong()) } }
-            NumberRow("Whole-send timeout (ms)", settings.jobTimeoutMs.toInt()) { v -> update { it.copy(jobTimeoutMs = v.coerceIn(20000, 600000).toLong()) } }
-            NumberRow("Missed-send grace (minutes)", settings.missedGraceMinutes) { v -> update { it.copy(missedGraceMinutes = v.coerceIn(0, 24 * 60)) } }
-            NumberRow("Countdown before sending, in use (seconds)", settings.headsUpSeconds) { v -> update { it.copy(headsUpSeconds = v.coerceIn(5, 30)) } }
-            TextRow("Default country for phone numbers (ISO)", settings.defaultCountryIso) { v -> update { it.copy(defaultCountryIso = v.uppercase().take(2)) } }
+            ToggleRow("Re-lock the phone after sending", "Only when it was locked before.", settings.relockAfterSend) { v -> update { it.copy(relockAfterSend = v) } }
+            OwnNumberRow(settings.ownNumberE164, settings.defaultCountryIso) { e164 -> update { it.copy(ownNumberE164 = e164) } }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+            Text("Test mode", style = MaterialTheme.typography.titleMedium)
+            TestModeRow(settings.dryRunUntilMillis) { until -> update { it.copy(dryRunUntilMillis = until) } }
+
+            // Tuning that rarely needs touching (R6), out of the way until opened.
+            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+            CollapsibleSection("Advanced", "Retries, timeouts, the grace window, the countdown, and more.") {
+                NumberRow("Retries per message", settings.retryCount, 0..5) { v -> update { it.copy(retryCount = v) } }
+                NumberRow("Seconds between retries", settings.retryDelaySeconds, 5..600) { v -> update { it.copy(retryDelaySeconds = v) } }
+                NumberRow("Step timeout (ms)", settings.stepTimeoutMs.toInt(), 2_000..60_000) { v -> update { it.copy(stepTimeoutMs = v.toLong()) } }
+                NumberRow("Whole-send timeout (ms)", settings.jobTimeoutMs.toInt(), 20_000..600_000) { v -> update { it.copy(jobTimeoutMs = v.toLong()) } }
+                NumberRow("Missed-send grace (minutes)", settings.missedGraceMinutes, 0..24 * 60) { v -> update { it.copy(missedGraceMinutes = v) } }
+                NumberRow("Countdown before sending, in use (seconds)", settings.headsUpSeconds, 5..30) { v -> update { it.copy(headsUpSeconds = v) } }
+                CountryRow(settings.defaultCountryIso) { v -> update { it.copy(defaultCountryIso = v) } }
+                ToggleRow("Use phone-number link for locked contacts", "Faster path for locked contact chats; enable only if a dry run shows it works.", settings.deepLinkForLockedChats) { v -> update { it.copy(deepLinkForLockedChats = v) } }
+            }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
             // Logs moved here from the list's top bar (R7): Needs attention now brings failures to you.
-            Text("Diagnostics", style = MaterialTheme.typography.titleMedium)
-            Button(onClick = onSetup, modifier = Modifier.fillMaxWidth()) { Text("Setup checklist") }
-            OutlinedButton(onClick = onLogs, modifier = Modifier.fillMaxWidth()) { Text("Logs: sends and automation trace") }
-            OutlinedButton(onClick = onInspector, modifier = Modifier.fillMaxWidth()) { Text("UI inspector (capture WhatsApp view ids)") }
-            OutlinedButton(
-                onClick = vm::rearmAlarms,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Re-arm all alarms") }
+            CollapsibleSection("Diagnostics", "Setup checklist, logs, the UI inspector and re-arming alarms.") {
+                Button(onClick = { leave(onSetup) }, modifier = Modifier.fillMaxWidth()) { Text("Setup checklist") }
+                OutlinedButton(onClick = { leave(onLogs) }, modifier = Modifier.fillMaxWidth()) { Text("Logs: sends and automation trace") }
+                OutlinedButton(onClick = { leave(onInspector) }, modifier = Modifier.fillMaxWidth()) { Text("UI inspector (capture WhatsApp view ids)") }
+                OutlinedButton(
+                    onClick = vm::rearmAlarms,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Re-arm all alarms") }
+            }
             status?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp)) }
             Spacer(Modifier.height(32.dp))
         }
@@ -383,33 +410,97 @@ private fun ToggleRow(title: String, subtitle: String, checked: Boolean, onChang
     }
 }
 
+/**
+ * A number setting (B13). What is typed stays as typed, and is saved on Done or on leaving the field,
+ * only when it is within [range]; otherwise the field says what is allowed, rather than a value clamped
+ * after the first digit turning "15000" into "20005".
+ */
 @Composable
-private fun NumberRow(title: String, value: Int, onChange: (Int) -> Unit) {
-    var text by remember(value) { mutableStateOf(value.toString()) }
+private fun NumberRow(title: String, value: Int, range: IntRange, onSave: (Int) -> Unit) {
+    // Keyed on the saved value: a save shows, and typing doesn't reset what has been typed so far.
+    var text by rememberSaveable(value) { mutableStateOf(value.toString()) }
+    val number = text.toIntOrNull()
+    val valid = number != null && number in range
+    val focus = LocalFocusManager.current
+    fun save() {
+        if (valid && number != value) onSave(number!!)
+    }
+    SettingField(
+        title = title,
+        text = text,
+        onText = { t -> text = t.filter(Char::isDigit).take(7) },
+        error = "${range.first}–${range.last}".takeUnless { valid },
+        keyboard = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+        onDone = { save(); focus.clearFocus() },
+        onLeave = ::save,
+    )
+}
+
+/** The default country for numbers typed without one: two letters, saved as for [NumberRow]. */
+@Composable
+private fun CountryRow(value: String, onSave: (String) -> Unit) {
+    var text by rememberSaveable(value) { mutableStateOf(value) }
+    val code = text.trim().uppercase()
+    val valid = code.length == 2 && code.all { it in 'A'..'Z' }
+    val focus = LocalFocusManager.current
+    fun save() {
+        if (valid && code != value) onSave(code)
+    }
+    SettingField(
+        title = "Default country for phone numbers (ISO)",
+        text = text,
+        onText = { t -> text = t.take(2) },
+        error = "Two letters, e.g. GB".takeUnless { valid },
+        keyboard = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Done),
+        onDone = { save(); focus.clearFocus() },
+        onLeave = ::save,
+    )
+}
+
+@Composable
+private fun SettingField(
+    title: String,
+    text: String,
+    onText: (String) -> Unit,
+    error: String?,
+    keyboard: KeyboardOptions,
+    onDone: () -> Unit,
+    onLeave: () -> Unit,
+) {
     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(title, modifier = Modifier.weight(1f))
         Spacer(Modifier.width(8.dp))
         OutlinedTextField(
             value = text,
-            onValueChange = { t -> text = t.filter(Char::isDigit); t.toIntOrNull()?.let(onChange) },
-            modifier = Modifier.width(120.dp),
+            onValueChange = onText,
+            modifier = Modifier.width(140.dp).onFocusChanged { if (!it.isFocused) onLeave() },
             singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            isError = error != null,
+            supportingText = error?.let { { Text(it) } },
+            keyboardOptions = keyboard,
+            keyboardActions = KeyboardActions(onDone = { onDone() }),
         )
     }
 }
 
+/** A section that stays closed until opened, e.g. Advanced (R6); open or closed, it stays so across rotation. */
 @Composable
-private fun TextRow(title: String, value: String, onChange: (String) -> Unit) {
-    var text by remember(value) { mutableStateOf(value) }
-    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(title, modifier = Modifier.weight(1f))
-        Spacer(Modifier.width(8.dp))
-        OutlinedTextField(
-            value = text,
-            onValueChange = { t -> text = t; if (t.length == 2) onChange(t) },
-            modifier = Modifier.width(120.dp),
-            singleLine = true,
-        )
+private fun CollapsibleSection(title: String, summary: String, content: @Composable () -> Unit) {
+    var open by rememberSaveable(title) { mutableStateOf(false) }
+    val focus = LocalFocusManager.current
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClickLabel = if (open) "Close $title" else "Open $title") {
+            // A field being edited saves as it loses focus: before it goes with the section, not lost with it.
+            focus.clearFocus()
+            open = !open
+        }.padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            if (!open) Text(summary, style = MaterialTheme.typography.bodySmall)
+        }
+        Icon(if (open) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null)
     }
+    if (open) Column(verticalArrangement = Arrangement.spacedBy(4.dp)) { content() }
 }
