@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -44,7 +45,7 @@ import kotlinx.coroutines.launch
 fun InspectorScreen(container: AppContainer, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val service by WaAccessibilityService.connected.collectAsState()
+    val service by WaAccessibilityService.instance.collectAsState()
     var countdown by remember { mutableStateOf<Int?>(null) }
     var dump by remember { mutableStateOf(container.log.lastDump()) }
 
@@ -54,7 +55,7 @@ fun InspectorScreen(container: AppContainer, onBack: () -> Unit) {
                 "Tap Capture, then within 8 seconds open the screen you want to inspect (a WhatsApp chat, the search results, the Locked chats prompt, or lock the phone and wake it to the PIN pad). The tree of every window is saved here and shown below.",
                 style = MaterialTheme.typography.bodySmall,
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.height(8.dp))
             Row(modifier = Modifier.padding(vertical = 8.dp)) {
                 Button(
                     enabled = service != null && countdown == null,
@@ -78,6 +79,7 @@ fun InspectorScreen(container: AppContainer, onBack: () -> Unit) {
                     },
                 ) { Text("Share") }
             }
+            Text("A capture contains chat names and message previews: think before sharing it.", style = MaterialTheme.typography.bodySmall)
             if (service == null) Text("Accessibility service is not enabled.", color = MaterialTheme.colorScheme.error)
             SelectionContainer {
                 Text(

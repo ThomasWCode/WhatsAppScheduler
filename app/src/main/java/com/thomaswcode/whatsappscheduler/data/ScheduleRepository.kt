@@ -35,7 +35,6 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
     private val recipients = db.recipientDao()
 
     fun observeSchedules(): Flow<List<Schedule>> = schedules.observeAll()
-    fun observeSchedule(id: Long): Flow<Schedule?> = schedules.observeById(id)
     fun observeLogs(limit: Int = 200): Flow<List<SendLog>> = logs.observeRecent(limit)
 
     suspend fun all(): List<Schedule> = schedules.getAll()
@@ -302,6 +301,16 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
             firstAtMillis = firstAt, nextAtMillis = next, lastRunAtMillis = ranAt.toEpochMilli(),
             lastResult = result, lastStatus = status, attention = attention, postponedFromMillis = postponedFrom,
         )
+    }
+
+    /**
+     * The occurrence due at [occurrenceAtMillis] couldn't even be started (B19): recorded as not sent,
+     * but only while the row is still on and has that occurrence pending, checked in the same
+     * transaction, so an alarm arriving late can't mark an edited, moved or sent schedule failed.
+     */
+    suspend fun recordNotStarted(id: Long, occurrenceAtMillis: Long, detail: String, ranAt: Instant): Schedule? = db.withTransaction {
+        val current = schedules.getById(id)?.takeIf { it.enabled && it.nextAtMillis == occurrenceAtMillis } ?: return@withTransaction null
+        recordRun(id, occurrenceAtMillis, SendStatus.FAILED, detail, current.targetName, ranAt)
     }
 
     override suspend fun recordMissed(id: Long, occurrenceAtMillis: Long, detail: String, sentTo: String, ranAt: Instant): HeldRun? =
