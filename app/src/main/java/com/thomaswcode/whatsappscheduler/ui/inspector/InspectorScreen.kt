@@ -44,7 +44,7 @@ import kotlinx.coroutines.launch
 fun InspectorScreen(container: AppContainer, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val service by WaAccessibilityService.connected.collectAsState()
+    val service by WaAccessibilityService.instance.collectAsState()
     var countdown by remember { mutableStateOf<Int?>(null) }
     var dump by remember { mutableStateOf(container.log.lastDump()) }
 
