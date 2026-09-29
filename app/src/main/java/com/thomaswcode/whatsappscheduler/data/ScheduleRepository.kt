@@ -106,6 +106,24 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
     }
 
     /**
+     * [postpone] for every row of a batch in one transaction: all of them, as the user saw them, or none,
+     * so a batch can't end up half moved. Null when any was sent, changed or deleted since.
+     */
+    suspend fun postponeAll(seen: List<Schedule>, at: Instant): List<Postponed>? = db.withTransaction {
+        val current = seen.map { schedules.getById(it.id) }
+        val unchanged = seen.zip(current).all { (was, now) -> now != null && now.nextAtMillis == was.nextAtMillis && now.lastRunAtMillis == was.lastRunAtMillis }
+        if (!unchanged) return@withTransaction null
+        seen.map { postpone(it.id, at, seen = it) ?: error("row changed inside the transaction") }
+    }
+
+    /** [restoreTiming] for a whole move, in one transaction: every row, or none (null) if any has changed since. */
+    suspend fun restoreAll(moved: List<Postponed>): List<Schedule>? = db.withTransaction {
+        val stands = moved.all { m -> schedules.getById(m.after.id)?.let { it.nextAtMillis == m.after.nextAtMillis && it.lastRunAtMillis == m.after.lastRunAtMillis } == true }
+        if (!stands) return@withTransaction null
+        moved.map { restoreTiming(it) ?: error("row changed inside the transaction") }
+    }
+
+    /**
      * Undo for [postpone]: the timing, switch and attention as they were; the rest as it is now. Only
      * while the move still stands: once the moved occurrence has run, or the row was changed, putting
      * the old time back would send it again, so nothing is restored and null is returned.
@@ -239,9 +257,11 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
         // Logged even when the schedule was deleted during the send: history outlives the schedule.
         logs.insert(SendLog(scheduleId = current?.id, atMillis = ranAt.toEpochMilli(), status = status, targetName = sentTo, detail = detail, occurrenceAtMillis = occurrenceAtMillis))
         if (current == null) return@withTransaction null
-        // Postponed while it was being sent (the move and the alarm can cross): it has gone now, so it
-        // counts as used up and the moved copy is dropped, or the message would go twice.
-        val usedUp = current.nextAtMillis == occurrenceAtMillis || current.postponedFromMillis == occurrenceAtMillis
+        // A run is only recorded for an occurrence other than the row's next when the row changed during
+        // the send. An edit clears "moved from", so a row that still has it was postponed while that
+        // occurrence was on its way (however many times: A to B to C): it has gone now, so it counts as
+        // used up and the moved copy is dropped, or the message would go twice.
+        val usedUp = current.nextAtMillis == occurrenceAtMillis || current.postponedFromMillis != null
         val next = when {
             !usedUp -> current.nextAtMillis
             // Used up, a one-off is done, even one whose time a Postpone moved on meanwhile.
