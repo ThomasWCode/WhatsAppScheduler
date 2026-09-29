@@ -156,6 +156,16 @@ fun ScheduleListScreen(
         }
     }
 
+    // A row that starts sending while its Send now dialog is open: the dialog goes, since a copy sent
+    // then would duplicate the message already on its way (B08).
+    LaunchedEffect(sendIds, sendState) {
+        if (sendIds?.any { sendState.isBusy(it) } == true) sendIds = null
+    }
+    // The same for Postpone: the row's occurrence is being sent, so there is nothing to move.
+    LaunchedEffect(vm.postponing, sendState) {
+        if (vm.postponing?.any { sendState.isBusy(it.id) } == true) vm.cancelPostpone()
+    }
+
     fun askToSend(group: List<Schedule>, copyOnly: Boolean = false) {
         sendIds = group.map { it.id }.toLongArray()
         sendCopyOnly = copyOnly
