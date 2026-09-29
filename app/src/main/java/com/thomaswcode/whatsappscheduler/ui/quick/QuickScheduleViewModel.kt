@@ -546,7 +546,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
                     }
                     container.log.error("Quick schedule failed", it)
                     val reason = it.message ?: it.javaClass.simpleName
-                    error = container.text(if (committed) R.string.quick_saved_unarmed else R.string.quick_save_failed, reason)
+                    error = container.text(if (committed) R.string.saved_unarmed else R.string.save_failed, reason)
                 }
         }
     }
@@ -578,7 +578,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
                 }
                 .onFailure {
                     container.log.error("Quick delete failed", it)
-                    error = container.text(R.string.quick_delete_failed, it.message ?: it.javaClass.simpleName)
+                    error = container.text(R.string.delete_failed, it.message ?: it.javaClass.simpleName)
                 }
         }
     }
