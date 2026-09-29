@@ -306,21 +306,29 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
 
     override suspend fun recordMissed(id: Long, occurrenceAtMillis: Long, detail: String, sentTo: String, ranAt: Instant): MissedRun? =
         db.withTransaction {
-            val before = schedules.getById(id)
-            val stored = recordRun(id, occurrenceAtMillis, SendStatus.MISSED, detail, sentTo, ranAt) ?: return@withTransaction null
-            if (stored.rule == Recurrence.Once) return@withTransaction MissedRun(stored, stored)
-            // The series itself waits on nothing new: it goes on. The missed message is held on its own, so
-            // Send now, Postpone and Discard are the ordinary one-off ones, and the series' own row stays as it was.
-            val series = stored.copy(attention = before?.attention)
-            schedules.setAttention(id, series.attention)
+            val current = schedules.getById(id)
+            if (current == null || current.rule == Recurrence.Once) {
+                val stored = recordRun(id, occurrenceAtMillis, SendStatus.MISSED, detail, sentTo, ranAt) ?: return@withTransaction null
+                return@withTransaction MissedRun(stored, stored)
+            }
+            // The series goes on past the occurrence, as after any run, but its own last run and whatever it
+            // already waits on (an earlier failure, say) stay as they were: the missed message is held on its
+            // own, with its own run and history, so Send now, Postpone and Discard are the one-off ones.
+            val usedUp = current.nextAtMillis == occurrenceAtMillis || current.postponedFromMillis != null
+            val series = if (!usedUp) current else current.copy(
+                nextAtMillis = nextAfterRun(current, occurrenceAtMillis, ranAt, movedFromMillis = current.postponedFromMillis),
+                postponedFromMillis = null,
+            )
+            if (series != current) schedules.update(series)
             val held = Schedule(
-                message = stored.message, targetKind = stored.targetKind, targetName = stored.targetName, phoneE164 = stored.phoneE164,
-                isLocked = stored.isLocked, firstAtMillis = occurrenceAtMillis, zoneId = stored.zoneId,
+                message = current.message, targetKind = current.targetKind, targetName = current.targetName, phoneE164 = current.phoneE164,
+                isLocked = current.isLocked, firstAtMillis = occurrenceAtMillis, zoneId = current.zoneId,
                 recurrence = RecurrenceCodec.encode(Recurrence.Once), nextAtMillis = null, createdAtMillis = ranAt.toEpochMilli(),
                 lastRunAtMillis = ranAt.toEpochMilli(), lastResult = "${SendStatus.MISSED.name}: $detail", lastStatus = SendStatus.MISSED,
-                recipientId = stored.recipientId, attention = Attention.MISSED, sourceScheduleId = stored.id,
-            )
-            MissedRun(series, held.copy(id = schedules.insert(held)))
+                recipientId = current.recipientId, attention = Attention.MISSED, sourceScheduleId = current.id,
+            ).let { it.copy(id = schedules.insert(it)) }
+            logs.insert(SendLog(scheduleId = held.id, atMillis = ranAt.toEpochMilli(), status = SendStatus.MISSED, targetName = sentTo, detail = detail, occurrenceAtMillis = occurrenceAtMillis))
+            MissedRun(series, held)
         }
 
     /**
