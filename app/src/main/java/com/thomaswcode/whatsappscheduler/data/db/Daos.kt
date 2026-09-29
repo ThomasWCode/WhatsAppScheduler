@@ -38,12 +38,33 @@ interface ScheduleDao {
     /** Writes only the run columns, so edits made while a send was running survive it (B08). */
     @Query(
         "UPDATE schedules SET firstAtMillis = :firstAtMillis, nextAtMillis = :nextAtMillis, lastRunAtMillis = :ranAtMillis, " +
-            "lastResult = :result, lastStatus = :status, attention = :attention WHERE id = :id"
+            "lastResult = :result, lastStatus = :status, attention = :attention, postponedFromMillis = :postponedFromMillis WHERE id = :id"
     )
-    suspend fun updateRun(id: Long, firstAtMillis: Long, nextAtMillis: Long?, ranAtMillis: Long, result: String, status: SendStatus, attention: Attention?)
+    suspend fun updateRun(
+        id: Long,
+        firstAtMillis: Long,
+        nextAtMillis: Long?,
+        ranAtMillis: Long,
+        result: String,
+        status: SendStatus,
+        attention: Attention?,
+        postponedFromMillis: Long?,
+    )
 
     @Query("UPDATE schedules SET lastRunAtMillis = :ranAtMillis, lastResult = :result, lastStatus = :status, attention = :attention WHERE id = :id")
     suspend fun updateLastRun(id: Long, ranAtMillis: Long, result: String, status: SendStatus, attention: Attention?)
+
+    /**
+     * Auto-clear (quick-schedule.md §8): one-offs sent, or dry-run, before [beforeMillis] that wait on
+     * nothing. Their history stays (send_log's link is ON DELETE SET NULL). Rows from before schema v2
+     * have only the result text, which starts with the status, after "manual " for a run from the app.
+     */
+    @Query(
+        "DELETE FROM schedules WHERE recurrence = 'ONCE' AND nextAtMillis IS NULL AND attention IS NULL " +
+            "AND lastRunAtMillis < :beforeMillis AND (lastStatus IN ('SENT', 'DRY_RUN') OR (lastStatus IS NULL AND (" +
+            "lastResult LIKE 'SENT%' OR lastResult LIKE 'DRY_RUN%' OR lastResult LIKE 'manual SENT%' OR lastResult LIKE 'manual DRY_RUN%')))"
+    )
+    suspend fun clearSent(beforeMillis: Long): Int
 
     /** Rows from before schema v2 whose last scheduled run is known only as text. */
     @Query("SELECT * FROM schedules WHERE lastStatus IS NULL AND lastResult IS NOT NULL AND lastResult NOT LIKE 'manual %'")

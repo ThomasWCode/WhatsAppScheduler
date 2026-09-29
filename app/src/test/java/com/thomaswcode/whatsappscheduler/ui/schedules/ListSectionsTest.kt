@@ -97,6 +97,10 @@ class ListSectionsTest {
         val weekly = schedule(3, next = "2026-10-05T09:00", recurrence = "WEEKLY:MONDAY")
         assertEquals("Weekly on Mon · next Mon 5 Oct 09:00", line(Section.REPEATING, weekly))
         assertEquals("Weekly on Mon · paused", line(Section.REPEATING, weekly.copy(enabled = false)))
+        assertEquals(
+            "Weekly on Mon · next Mon 5 Oct 09:00 · moved from Today 20:00",
+            line(Section.REPEATING, weekly.copy(postponedFromMillis = ms("2026-09-28T20:00"))),
+        )
 
         // Missed: when it was due, by its latest run's occurrence, although that was noticed later.
         val missed = schedule(6, next = null).copy(lastRunAtMillis = ms("2026-09-28T11:30"), attention = Attention.MISSED)

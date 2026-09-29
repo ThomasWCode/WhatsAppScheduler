@@ -13,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import com.thomaswcode.whatsappscheduler.SchedulerApp
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -34,6 +35,16 @@ class MainActivity : ComponentActivity() {
         }
         // Only on a fresh start: a recreate (rotation, dark mode switching at sunset) doesn't need it again.
         if (savedInstanceState == null) container.recoverOnOpen()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Each time the app comes back, not only on a fresh start: with no sends in between (the other
+        // time it runs), sent messages past the period set in Settings would otherwise stay.
+        val container = SchedulerApp.container(this)
+        container.appScope.launch {
+            runCatching { container.housekeeping.run() }.onFailure { container.log.error("Housekeeping failed", it) }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
