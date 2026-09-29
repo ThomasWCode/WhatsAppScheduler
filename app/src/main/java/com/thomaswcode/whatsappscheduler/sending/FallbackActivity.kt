@@ -3,10 +3,12 @@ package com.thomaswcode.whatsappscheduler.sending
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
+import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.sending.accessibility.Selectors
 
 /**
@@ -49,5 +51,20 @@ class FallbackActivity : Activity() {
         const val EXTRA_MESSAGE = "message"
         const val EXTRA_PHONE = "phone"
         const val EXTRA_NAME = "name"
+
+        // The two differ in action as well as extras, because extras alone don't tell PendingIntents apart.
+
+        /** Tap to send: the message on the clipboard and the chat opened with it. */
+        fun manualSend(context: Context, schedule: Schedule): Intent = Intent(context, FallbackActivity::class.java)
+            .setAction(ACTION_SEND)
+            .putExtra(EXTRA_MESSAGE, schedule.message)
+            .putExtra(EXTRA_PHONE, schedule.phoneE164)
+            .putExtra(EXTRA_NAME, schedule.targetName)
+
+        /** Open chat, to see whether a message that may have been sent arrived. */
+        fun checkChat(context: Context, schedule: Schedule): Intent = Intent(context, FallbackActivity::class.java)
+            .setAction(ACTION_CHECK)
+            .putExtra(EXTRA_PHONE, schedule.phoneE164)
+            .putExtra(EXTRA_NAME, schedule.targetName)
     }
 }

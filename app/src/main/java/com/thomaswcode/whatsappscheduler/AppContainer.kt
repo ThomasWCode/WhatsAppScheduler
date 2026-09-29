@@ -68,14 +68,17 @@ class AppContainer(context: Context) {
     /**
      * What a fresh start of any screen the app can be opened on (the launcher's, the Share target) owes:
      * every alarm re-armed, since Android drops them when the app is force-stopped and nothing else sets
-     * them again, with an occurrence missed meanwhile handed to the send queue; and, once, old schedules
-     * linked to recipients. In the app's scope, so a recreate while it works doesn't cancel it.
+     * them again, with an occurrence missed meanwhile handed to the send queue; once, old schedules
+     * linked to recipients; and old outcomes typed. In the app's scope, so a recreate while it works
+     * doesn't cancel it.
      */
     fun recoverOnOpen() {
         appScope.launch {
             runCatching { alarmScheduler.rescheduleAll() }.onFailure { log.error("rescheduleAll failed", it) }
             // Usually done already when the app started; this waits for it if not.
             runCatching { linkRecipientsOnce() }.onFailure { log.error("Linking recipients failed", it) }
+            // Failures from before schema v2 show under Needs attention too.
+            runCatching { repository.typeLegacyOutcomes() }.onFailure { log.error("Typing old outcomes failed", it) }
         }
     }
 }

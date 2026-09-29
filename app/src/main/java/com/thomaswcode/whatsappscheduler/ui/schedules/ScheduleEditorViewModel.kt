@@ -241,6 +241,8 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
             firstAtMillis = firstAt.toEpochMilli(),
             zoneId = zone.id,
             recurrence = RecurrenceCodec.encode(rule),
+            // A one-off saved with a time is dealt with; a series' attention is about a past occurrence.
+            attention = if (rule == Recurrence.Once) null else existing?.attention,
         )
         saving = true
         viewModelScope.launch {

@@ -19,8 +19,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -32,7 +30,6 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -45,8 +42,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.thomaswcode.whatsappscheduler.data.RecipientDraft
 import com.thomaswcode.whatsappscheduler.data.contacts.ContactHit
@@ -54,7 +49,8 @@ import com.thomaswcode.whatsappscheduler.domain.FriendlyTime
 import com.thomaswcode.whatsappscheduler.domain.PhoneNormaliser
 import com.thomaswcode.whatsappscheduler.domain.PinCircuitBreaker
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
-import com.thomaswcode.whatsappscheduler.ui.health.HealthCheck
+import com.thomaswcode.whatsappscheduler.ui.health.HealthStrip
+import com.thomaswcode.whatsappscheduler.ui.health.rememberHealth
 import java.time.Duration
 
 /**
@@ -113,13 +109,7 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
 
     val chips = vm.chips(now, timeFormat)
     val at = vm.resolvedTime(now)
-    // Checked again on every return, e.g. from the settings page a Fix opened: those settings aren't observed.
-    var resumes by remember { mutableIntStateOf(0) }
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { resumes++ }
-    val pinBlock = PinCircuitBreaker.block(pinFailures, now.toInstant().toEpochMilli())
-    val health = remember(resumes, serviceConnected, hasPin, pinBlock, settings.dryRun) {
-        HealthCheck.evaluate(context, serviceConnected, hasPin, pinBlock, settings.dryRun)
-    }
+    val health = rememberHealth(serviceConnected, hasPin, PinCircuitBreaker.block(pinFailures, now.toInstant().toEpochMilli()), settings.dryRun)
 
     Column(
         modifier = Modifier
@@ -138,29 +128,8 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
                 TextButton(onClick = vm::discard, enabled = !vm.saving) { Text("Discard") }
             }
         }
-        // One warning at most: the most serious thing that would stop or change the send (sorted by severity).
-        health.firstOrNull()?.let { item ->
-            // Red only for what stops the send; dry run still types the message, so it is a notice.
-            val blocking = item.problem.blocksSending
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = if (blocking) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.tertiaryContainer,
-                ),
-                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 12.dp, end = 4.dp)) {
-                    Text(
-                        item.message,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (blocking) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onTertiaryContainer,
-                        modifier = Modifier.weight(1f).padding(vertical = 10.dp),
-                    )
-                    item.fix?.let { intent ->
-                        TextButton(onClick = { runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }) { Text(item.fixLabel ?: "Fix") }
-                    }
-                }
-            }
-        }
+        // One warning at most: the most serious thing that would stop or change the send.
+        HealthStrip(health, showReady = false, onOpenSettings = null, modifier = Modifier.padding(vertical = 6.dp))
         Spacer(Modifier.height(4.dp))
         RecipientField(
             chosen = draft.recipients,
