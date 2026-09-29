@@ -51,7 +51,6 @@ import com.thomaswcode.whatsappscheduler.domain.PinCircuitBreaker
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
 import com.thomaswcode.whatsappscheduler.ui.health.HealthStrip
 import com.thomaswcode.whatsappscheduler.ui.health.rememberHealth
-import com.thomaswcode.whatsappscheduler.ui.rememberStampFormat
 import java.time.Duration
 
 /**
@@ -82,7 +81,8 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
     val timeFormat = rememberTimeFormat()
     val searchFocus = remember { FocusRequester() }
     val messageFocus = remember { FocusRequester() }
-    var details by remember { mutableStateOf<RecipientDraft?>(null) }
+    // Saved, so a rotation keeps the details dialog, with what was typed into it, open.
+    var details by rememberSaveable(stateSaver = RecipientSaver) { mutableStateOf<RecipientDraft?>(null) }
     var askedForContacts by rememberSaveable { mutableStateOf(false) }
 
     val requestContacts = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { vm.contactsPermissionChanged() }
@@ -152,7 +152,8 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
                 }
             },
             onRemove = vm::remove,
-            onDetails = { details = it },
+            // Not while a save is still running: a second edit would be lost to it.
+            onDetails = { if (!vm.saving) details = it },
             onToggleRecent = vm::toggle,
             onAddDraft = vm::add,
             onAddContact = vm::add,
@@ -225,85 +226,4 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
             },
         )
     }
-}
-
-/**
- * Recipient details (quick-schedule.md §3): the name WhatsApp shows, the number and Chat Lock, set
- * once and remembered. Changes also reach this recipient's messages that haven't gone out.
- */
-@Composable
-private fun RecipientDetailsDialog(
-    recipient: RecipientDraft,
-    countryIso: String,
-    checkedAtMillis: Long?,
-    onDismiss: () -> Unit,
-    onSave: (RecipientDraft) -> Unit,
-    onForget: () -> Unit,
-    onCheck: (() -> Unit)?,
-) {
-    val stamp = rememberStampFormat()
-    var whatsappName by rememberSaveable { mutableStateOf(recipient.whatsappName ?: "") }
-    var number by rememberSaveable { mutableStateOf(recipient.phoneE164 ?: "") }
-    var locked by rememberSaveable { mutableStateOf(recipient.isLocked) }
-    val parsed = number.takeIf { it.isNotBlank() }?.let { PhoneNormaliser.parse(it, countryIso) }
-    val numberOk = number.isBlank() || parsed?.e164OrNull != null
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(recipient.displayName) },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = whatsappName,
-                    onValueChange = { whatsappName = it },
-                    label = { Text("Name in WhatsApp") },
-                    placeholder = { Text(recipient.displayName) },
-                    supportingText = { Text("Only if WhatsApp shows the chat under another name; used to find it without a number.") },
-                    singleLine = true,
-                )
-                if (recipient.kind == TargetKind.CONTACT) {
-                    OutlinedTextField(
-                        value = number,
-                        onValueChange = { number = it },
-                        label = { Text("Number") },
-                        isError = !numberOk,
-                        supportingText = { Text(if (numberOk) "Leave empty to find the chat by name." else "Not a valid number.") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                    )
-                }
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Behind Chat Lock")
-                        Text("Adds the Locked chats steps when sending.", style = MaterialTheme.typography.bodySmall)
-                    }
-                    Switch(checked = locked, onCheckedChange = { locked = it })
-                }
-                onCheck?.let { check ->
-                    checkedAtMillis?.let { Text("✓ Found in WhatsApp's search ${stamp(it)}", style = MaterialTheme.typography.bodySmall) }
-                    // It checks the details as saved: after an edit, those aren't what the fields show yet.
-                    val edited = whatsappName != (recipient.whatsappName ?: "") || number != (recipient.phoneE164 ?: "") || locked != recipient.isLocked
-                    if (edited) Text("Save to check the new details.", style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = check, enabled = !edited) { Text("Check this chat now") }
-                }
-                if (recipient.recipientId != null) {
-                    TextButton(onClick = onForget) { Text("Remove from recents") }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = numberOk,
-                onClick = {
-                    onSave(
-                        recipient.copy(
-                            whatsappName = whatsappName.trim().takeIf { it.isNotEmpty() && it != recipient.displayName },
-                            phoneE164 = if (recipient.kind == TargetKind.CONTACT) parsed?.e164OrNull else recipient.phoneE164,
-                            isLocked = locked,
-                        ),
-                    )
-                },
-            ) { Text("Save") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
 }

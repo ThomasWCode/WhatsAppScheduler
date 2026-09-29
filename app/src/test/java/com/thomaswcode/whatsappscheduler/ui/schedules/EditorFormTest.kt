@@ -1,19 +1,17 @@
 package com.thomaswcode.whatsappscheduler.ui.schedules
 
 import androidx.compose.runtime.saveable.SaverScope
-import com.thomaswcode.whatsappscheduler.data.db.Recipient
+import androidx.lifecycle.SavedStateHandle
+import com.thomaswcode.whatsappscheduler.data.RecipientDraft
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.domain.Recurrence
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
 import java.time.DayOfWeek
-import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
-import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -21,6 +19,7 @@ import org.junit.Test
 class EditorFormTest {
 
     private val london = ZoneId.of("Europe/London")
+    private val workCrew = RecipientDraft(TargetKind.GROUP, "Work crew", whatsappName = "Work crew 🛠", isLocked = true, recipientId = 7)
 
     @Test
     fun defaultTimeJustBeforeMidnightIsTomorrow() {
@@ -29,82 +28,23 @@ class EditorFormTest {
         assertEquals(LocalDate.parse("2026-09-29"), form.date)
         assertEquals(LocalTime.parse("00:02"), form.time)
         assertEquals(setOf(DayOfWeek.TUESDAY), form.weekdays)
+        // The full editor is for repeating messages.
+        assertEquals(RuleKind.DAILY, form.ruleKind)
     }
 
     @Test
     fun formSurvivesBeingSavedAndRestored() {
-        // B17: what the Saver writes into the SavedStateHandle comes back unchanged.
+        // B17: what the Saver writes into the SavedStateHandle comes back unchanged, the recipient's
+        // details (Chat Lock, WhatsApp name, stored id) with it.
         val form = EditorForm(
-            kind = TargetKind.GROUP, name = "Work crew", phone = "", locked = true, message = "Stand-up in 5",
+            recipient = workCrew, message = "Stand-up in 5",
             date = LocalDate.parse("2026-10-05"), time = LocalTime.parse("09:30"), ruleKind = RuleKind.WEEKLY,
-            weekdays = setOf(DayOfWeek.MONDAY, DayOfWeek.THURSDAY), monthDay = "5", every = "3", pickedName = "Work",
-            lockedTouched = true, nameTyped = true,
+            weekdays = setOf(DayOfWeek.MONDAY, DayOfWeek.THURSDAY), monthDay = "5", every = "3",
         )
         val saved = with(EditorForm.Saver) { SaverScope { true }.save(form) }!!
         assertEquals(form, EditorForm.Saver.restore(saved))
-    }
-
-    @Test
-    fun chatLockComesFromTheChatUnlessSwitchedHere() {
-        val lockedChat = Recipient(id = 7, kind = TargetKind.CONTACT, displayName = "Sam", phoneE164 = "+447400123458", isLocked = true)
-        val form = EditorForm.blank(ZonedDateTime.of(2026, 9, 28, 12, 0, 0, 0, london)).copy(name = "Sam", phone = "+447400123458")
-        val elsewhere = Schedule(
-            message = "Hi", targetKind = TargetKind.CONTACT, targetName = "Dad", phoneE164 = "+447400123457", isLocked = false,
-            firstAtMillis = 0L, zoneId = london.id, recurrence = "DAILY", nextAtMillis = null, recipientId = 3,
-        )
-        // New, or moved to a chat already known to be locked: the untouched switch doesn't unlock it.
-        assertTrue(ScheduleEditorViewModel.lockFor(form, lockedChat, existing = null))
-        assertTrue(ScheduleEditorViewModel.lockFor(form, lockedChat, elsewhere))
-        // Still the schedule's own chat: the schedule's own setting stands.
-        assertFalse(ScheduleEditorViewModel.lockFor(form, lockedChat, elsewhere.copy(recipientId = 7)))
-        // Switched here: that decides.
-        assertFalse(ScheduleEditorViewModel.lockFor(form.copy(lockedTouched = true), lockedChat, null))
-    }
-
-    @Test
-    fun theChatsWhatsAppNameStandsUnlessOneIsTypedHere() {
-        val mum = Recipient(id = 7, kind = TargetKind.CONTACT, displayName = "Mum", whatsappName = "Mum (work)", phoneE164 = "+447400123456")
-        val form = EditorForm.blank(ZonedDateTime.of(2026, 9, 28, 12, 0, 0, 0, london)).copy(phone = "+447400123456")
-        // Filled in by the contact picker: the address book's name, not the one WhatsApp shows.
-        assertNull(ScheduleEditorViewModel.typedChatName(form.copy(name = "Mum", pickedName = "Mum"), mum))
-        // As the schedule already had it.
-        assertNull(ScheduleEditorViewModel.typedChatName(form.copy(name = "Mum (work)", nameTyped = true), mum))
-        // Loaded with the schedule for someone else and never typed: not a name for this chat.
-        assertNull(ScheduleEditorViewModel.typedChatName(form.copy(name = "Dad"), mum))
-        // Typed here: what WhatsApp shows, so it is remembered for the chat.
-        assertEquals("Mummy", ScheduleEditorViewModel.typedChatName(form.copy(name = " Mummy ", nameTyped = true), mum))
-    }
-
-    @Test
-    fun aNameTypedForOneContactGoesWhenAnotherIsPicked() {
-        val typed = EditorForm.blank(ZonedDateTime.of(2026, 9, 28, 12, 0, 0, 0, london))
-            .copy(phone = "+447400123456", name = "Mummy", pickedName = "Mum", nameTyped = true)
-        // Someone else: the name typed for Mum isn't theirs.
-        val dad = typed.picked("+447400123457", "Dad", "GB")
-        assertEquals("Dad", dad.name)
-        assertFalse(dad.nameTyped)
-        // Mum again: what was typed for her stands.
-        val again = typed.picked("+447400123456", "Mum", "GB")
-        assertEquals("Mummy", again.name)
-        assertTrue(again.nameTyped)
-        // Nothing typed: the picker's name, whoever it is.
-        assertEquals("Mum", typed.copy(nameTyped = false).picked("+447400123456", "Mum", "GB").name)
-    }
-
-    @Test
-    fun chatLockGoesWithTheContactItWasFor() {
-        val blank = EditorForm.blank(ZonedDateTime.of(2026, 9, 28, 12, 0, 0, 0, london))
-        val lockedMum = blank.copy(phone = "+447400123456", name = "Mum", locked = true)
-        // Someone else: off until what is remembered for them is looked up.
-        assertFalse(lockedMum.picked("+447400123457", "Dad", "GB").locked)
-        // Mum again: as it was.
-        assertTrue(lockedMum.picked("+447400123456", "Mum", "GB").locked)
-        // Switched on before anyone was chosen: for whoever is picked.
-        val flippedFirst = blank.copy(locked = true, lockedTouched = true).picked("+447400123457", "Dad", "GB")
-        assertTrue(flippedFirst.locked && flippedFirst.lockedTouched)
-        // Switched for Mum, then Dad picked: not a statement about Dad.
-        val dad = lockedMum.copy(lockedTouched = true).picked("+447400123457", "Dad", "GB")
-        assertFalse(dad.locked || dad.lockedTouched)
+        val noOne = form.copy(recipient = null)
+        assertEquals(noOne, EditorForm.Saver.restore(with(EditorForm.Saver) { SaverScope { true }.save(noOne) }!!))
     }
 
     @Test
@@ -114,7 +54,10 @@ class EditorFormTest {
             firstAtMillis = LocalDateTime.parse("2026-10-01T19:00").atZone(london).toInstant().toEpochMilli(), zoneId = london.id,
             recurrence = "WEEKLY:THURSDAY", nextAtMillis = null,
         )
-        val form = EditorForm.from(schedule)
+        val dad = RecipientDraft(TargetKind.CONTACT, "Dad", phoneE164 = "+447400123456", recipientId = 3)
+        val form = EditorForm.from(schedule, dad)
+        assertEquals(dad, form.recipient)
+        assertEquals("Bins!", form.message)
         assertEquals(RuleKind.WEEKLY, form.ruleKind)
         assertEquals(setOf(DayOfWeek.THURSDAY), form.weekdays)
         assertEquals(LocalTime.parse("19:00"), form.time)
@@ -122,18 +65,36 @@ class EditorFormTest {
     }
 
     @Test
-    fun validationExplainsWhatIsMissing() {
-        val now = Instant.parse("2026-09-28T12:00:00Z")
-        val ok = EditorForm.blank(now.atZone(london)).copy(name = "Mum", message = "Hi")
-        val at = now.plusSeconds(3600)
-        assertNull(ScheduleEditorViewModel.validate(ok, null, Recurrence.Once, at, now))
-        assertEquals("Enter a message.", ScheduleEditorViewModel.validate(ok.copy(message = " "), null, Recurrence.Once, at, now))
-        assertEquals(
-            "A one-off message must be in the future.",
-            ScheduleEditorViewModel.validate(ok, null, Recurrence.Once, now.minusSeconds(1), now),
+    fun problemsSayWhatIsMissingByField() {
+        val ok = EditorForm.blank(LocalDateTime.parse("2026-09-28T12:00").atZone(london)).copy(recipient = workCrew, message = "Hi")
+        assertTrue(ok.problems().isEmpty())
+        assertEquals("Choose who it's for.", ok.copy(recipient = null).problems()[EditorForm.Field.RECIPIENT])
+        assertEquals("Enter a message.", ok.copy(message = " ").problems()[EditorForm.Field.MESSAGE])
+        assertEquals("Pick at least one day.", ok.copy(ruleKind = RuleKind.WEEKLY, weekdays = emptySet()).problems()[EditorForm.Field.RULE])
+        assertEquals("A day from 1 to 31.", ok.copy(ruleKind = RuleKind.MONTHLY, monthDay = "32").problems()[EditorForm.Field.RULE])
+        assertEquals("A day from 1 to 31.", ok.copy(ruleKind = RuleKind.MONTHLY, monthDay = "").problems()[EditorForm.Field.RULE])
+        assertEquals("At least 1 hour.", ok.copy(ruleKind = RuleKind.HOURS, every = "0").problems()[EditorForm.Field.RULE])
+        assertEquals("At least 1 day.", ok.copy(ruleKind = RuleKind.DAYS, every = "").problems()[EditorForm.Field.RULE])
+        assertNull(ok.copy(ruleKind = RuleKind.MONTHLY, monthDay = "31").problems()[EditorForm.Field.RULE])
+    }
+
+    @Test
+    fun repeatHandsOverTheSheetsRecipientMessageAndTime() {
+        val at = LocalDateTime.parse("2026-10-02T18:30").atZone(london)
+        val handle = SavedStateHandle(
+            mapOf(
+                "kind" to "GROUP", "name" to "Book club", "wa" to "Book club 📚", "rid" to 12L, "locked" to true,
+                "message" to "Chapter 3 tonight", "at" to at.toInstant().toEpochMilli(),
+            ),
         )
-        val badPhone = ok.copy(phone = "07700 900123")
-        assertEquals(true, ScheduleEditorViewModel.validate(badPhone, null, Recurrence.Once, at, now)?.startsWith("That phone number isn't valid"))
-        assertEquals("Pick at least one weekday.", ScheduleEditorViewModel.validate(ok, null, Recurrence.Weekly(emptySet()), at, now))
+        val form = ScheduleEditorViewModel.prefillFrom(handle, london, LocalDateTime.parse("2026-09-28T12:00").atZone(london))!!
+        // Both names, and the stored recipient it is, as the sheet had them.
+        assertEquals(RecipientDraft(TargetKind.GROUP, "Book club", whatsappName = "Book club 📚", isLocked = true, recipientId = 12), form.recipient)
+        assertEquals("Chapter 3 tonight", form.message)
+        assertEquals(LocalDate.parse("2026-10-02"), form.date)
+        assertEquals(LocalTime.parse("18:30"), form.time)
+        assertEquals(RuleKind.DAILY, form.ruleKind)
+        assertEquals(setOf(DayOfWeek.FRIDAY), form.weekdays)
+        assertNull(ScheduleEditorViewModel.prefillFrom(SavedStateHandle(), london))
     }
 }
