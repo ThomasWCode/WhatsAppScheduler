@@ -138,17 +138,26 @@ class AccessibilitySender(
         return try {
             withTimeout(settings.jobTimeoutMs) {
                 val search = OpenChatBySearch(context, driver, log)
-                search.goHome(whatsapp, t)
-                search.search(name, t)
-                search.openResult(name, t)
+                // Getting to the search is WhatsApp's side: a failure there says nothing about the name.
+                try {
+                    search.goHome(whatsapp, t)
+                    search.search(name, t)
+                } catch (e: StepFailure) {
+                    log.warn("check: couldn't search for '$name': ${e.message}")
+                    return@withTimeout ChatCheck.Failed(e.message ?: e.step)
+                }
+                // Only the result row and the chat's title are about the name.
+                try {
+                    search.openResult(name, t)
+                    log.info("check: found '$name'")
+                    ChatCheck.Found
+                } catch (e: StepFailure) {
+                    log.warn("check: '$name' not found: ${e.message}")
+                    ChatCheck.NotFound(e.message ?: "not found")
+                }
             }
-            log.info("check: found '$name'")
-            ChatCheck.Found
-        } catch (e: StepFailure) {
-            log.warn("check: '$name' not found: ${e.message}")
-            ChatCheck.NotFound(e.message ?: "not found")
         } catch (e: TimeoutCancellationException) {
-            ChatCheck.NotFound("it took too long")
+            ChatCheck.Failed("it took too long")
         } finally {
             runCatching { leaveWhatsApp(driver, whatsapp) }
             service.active.set(false)

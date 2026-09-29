@@ -8,6 +8,12 @@ sealed interface ChatCheck {
     /** The search, or the chat that opened, didn't match; [reason] says which. */
     data class NotFound(val reason: String) : ChatCheck
 
+    /**
+     * WhatsApp didn't respond as expected before the search could run, e.g. its layout changed: says
+     * nothing about the name. [reason] is the step that failed.
+     */
+    data class Failed(val reason: String) : ChatCheck
+
     /** Nothing was tried, e.g. auto-send isn't running or a message is being sent. */
     data class NotChecked(val reason: String) : ChatCheck
 }
