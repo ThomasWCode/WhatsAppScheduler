@@ -3,6 +3,7 @@ package com.thomaswcode.whatsappscheduler.domain
 import java.time.Duration
 import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -27,6 +28,14 @@ class PreflightTest {
         assertEquals(nine - Duration.ofMinutes(15).toMillis(), Preflight.checkAt(nine, nowMillis = nine - Duration.ofHours(1).toMillis(), catchUp = true))
         // Nothing to look at once the send is due.
         assertNull(Preflight.checkAt(nine, nowMillis = nine, catchUp = true))
+    }
+
+    @Test
+    fun aCheckAlsoCoversSendsDueSoonAfterIt() {
+        assertTrue(Preflight.covers(nine, nine))
+        assertTrue(Preflight.covers(nine, nine + Duration.ofMinutes(5).toMillis()))
+        assertFalse(Preflight.covers(nine, nine + Duration.ofMinutes(11).toMillis()))
+        assertFalse(Preflight.covers(nine, nine - 1))
     }
 
     @Test
