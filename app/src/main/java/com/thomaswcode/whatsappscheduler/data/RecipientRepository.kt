@@ -45,9 +45,7 @@ class RecipientRepository(private val db: AppDatabase) {
      * again therefore keeps what was learned about them, such as Chat Lock.
      */
     suspend fun resolve(draft: RecipientDraft): Recipient = db.withTransaction {
-        draft.recipientId?.let { recipients.get(it) }
-            ?: draft.phoneE164?.let { recipients.byPhone(it) }
-            ?: (if (draft.phoneE164 == null) recipients.byChatName(draft.kind, draft.chatName) else null)
+        existing(draft)
             ?: Recipient(
                 kind = draft.kind,
                 displayName = draft.displayName.trim(),
@@ -65,6 +63,12 @@ class RecipientRepository(private val db: AppDatabase) {
     suspend fun sameChatElsewhere(recipient: Recipient): Recipient? =
         recipient.phoneE164?.let { recipients.otherByPhone(it, recipient.id) }
             ?: if (recipient.phoneE164 == null) recipients.otherByChatName(recipient.kind, recipient.chatName, recipient.id) else null
+
+    /** The stored recipient [draft] already is, if any, without creating one: by id, number, or chat name. */
+    suspend fun existing(draft: RecipientDraft): Recipient? =
+        draft.recipientId?.let { recipients.get(it) }
+            ?: draft.phoneE164?.let { recipients.byPhone(it) }
+            ?: if (draft.phoneE164 == null) recipients.byChatName(draft.kind, draft.chatName) else null
 
     suspend fun markUsed(ids: Collection<Long>, at: Instant = Instant.now()) = db.withTransaction {
         ids.forEach { recipients.markUsed(it, at.toEpochMilli()) }

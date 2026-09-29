@@ -239,9 +239,10 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
                     // If a later step fails, Save again updates this row rather than inserting another.
                     existing = saved
                     container.recipients.markUsed(listOf(recipient.id))
+                    // A prompt for the old version of the message is stale now (B10); cleared first, so a
+                    // failure arming the alarm can't leave it behind.
+                    runCatching { container.fallbackNotifier.cancel(saved.id) }.onFailure { container.log.error("Clearing a prompt failed", it) }
                     container.alarmScheduler.sync(saved)
-                    // A prompt for the old version of the message is stale now (B10).
-                    container.fallbackNotifier.cancel(saved.id)
                 }
             }
             outcome

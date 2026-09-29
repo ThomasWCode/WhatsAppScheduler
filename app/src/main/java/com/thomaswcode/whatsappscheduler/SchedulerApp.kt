@@ -1,6 +1,7 @@
 package com.thomaswcode.whatsappscheduler
 
 import android.app.Application
+import kotlinx.coroutines.launch
 
 class SchedulerApp : Application() {
 
@@ -11,6 +12,10 @@ class SchedulerApp : Application() {
         super.onCreate()
         container = AppContainer(this)
         container.notifications.ensureChannels()
+        // Before any screen can remove a recipient (see AppContainer.linkRecipientsOnce).
+        container.appScope.launch {
+            runCatching { container.linkRecipientsOnce() }.onFailure { container.log.error("Linking recipients failed", it) }
+        }
     }
 
     companion object {
