@@ -31,17 +31,20 @@ interface SendStore {
     suspend fun duePeers(schedule: Schedule, occurrenceAtMillis: Long): List<Schedule>
 
     /**
-     * Snooze on the countdown (features F1): the occurrence due at [occurrenceAtMillis] moves to [to],
-     * and it is logged, not as a failure. Null when that occurrence is no longer the pending one.
+     * Snooze on the countdown (features F1): for each of [ids] (a batch shares its countdown), the
+     * occurrence due at [occurrenceAtMillis] moves to [to], and it is logged, not as a failure. All in one
+     * transaction, so a batch is never left part snoozed. Those whose occurrence is no longer the
+     * pending one are left out.
      */
-    suspend fun snooze(id: Long, occurrenceAtMillis: Long, to: Instant, ranAt: Instant): Schedule?
+    suspend fun snooze(ids: List<Long>, occurrenceAtMillis: Long, to: Instant, ranAt: Instant): List<Schedule>
 
     /**
      * Postpone… on the countdown (features F1): nothing is sent until the user picks a time. A one-off
      * waits itself (attention HELD, no alarm); a series goes on, and the occurrence is held as a
-     * one-off copy. Null when that occurrence is no longer the pending one.
+     * one-off copy. For each of [ids], in one transaction; those whose occurrence is no longer the
+     * pending one are left out.
      */
-    suspend fun hold(id: Long, occurrenceAtMillis: Long, ranAt: Instant, detail: String): HeldRun?
+    suspend fun hold(ids: List<Long>, occurrenceAtMillis: Long, ranAt: Instant, detail: String): List<HeldRun>
 }
 
 /**

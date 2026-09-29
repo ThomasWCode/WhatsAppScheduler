@@ -85,13 +85,13 @@ class ScheduleRepositoryTest {
         // Snooze: five minutes on, logged, the series otherwise as it was.
         val daily = saveDaily()
         val later = nine.plus(Duration.ofMinutes(5))
-        val snoozed = repository.snooze(daily.id, nine.toEpochMilli(), later, nine)!!
+        val snoozed = repository.snooze(listOf(daily.id), nine.toEpochMilli(), later, nine).single()
         assertEquals(later.toEpochMilli(), snoozed.nextAtMillis)
         assertEquals(nine.toEpochMilli(), snoozed.postponedFromMillis)
         assertNull(snoozed.lastStatus)
-        assertNull(repository.snooze(daily.id, nine.toEpochMilli(), later, nine))
+        assertTrue(repository.snooze(listOf(daily.id), nine.toEpochMilli(), later, nine).isEmpty())
         // Postpone… on a series: it goes on, and this occurrence waits on its own for a new time.
-        val held = repository.hold(daily.id, later.toEpochMilli(), later, "held for a new time")!!
+        val held = repository.hold(listOf(daily.id), later.toEpochMilli(), later, "held for a new time").single()
         assertNull(held.schedule.attention)
         assertEquals(nine.plus(Duration.ofDays(1)).toEpochMilli(), repository.get(daily.id)!!.nextAtMillis)
         assertEquals(Attention.HELD, held.held.attention)
@@ -100,7 +100,7 @@ class ScheduleRepositoryTest {
         assertEquals(daily.id, held.held.sourceScheduleId)
         // A one-off waits itself.
         val once = repository.save(daily.copy(id = 0, recurrence = "ONCE", firstAtMillis = nine.plus(Duration.ofDays(2)).toEpochMilli()), ranAt)
-        val heldOnce = repository.hold(once.id, once.nextAtMillis!!, nine.plus(Duration.ofDays(2)), "held for a new time")!!
+        val heldOnce = repository.hold(listOf(once.id), once.nextAtMillis!!, nine.plus(Duration.ofDays(2)), "held for a new time").single()
         assertEquals(heldOnce.schedule, heldOnce.held)
         assertEquals(Attention.HELD, repository.get(once.id)!!.attention)
         assertNull(repository.get(once.id)!!.nextAtMillis)
@@ -111,8 +111,7 @@ class ScheduleRepositoryTest {
         val before = nine.minus(Duration.ofHours(1))
         val mum = repository.save(saveDaily().copy(batchId = "b"), before)
         val dad = repository.save(saveDaily().copy(batchId = "b", targetName = "Dad"), before)
-        val heldMum = repository.hold(mum.id, nine.toEpochMilli(), ranAt, "held for a new time")!!.held
-        val heldDad = repository.hold(dad.id, nine.toEpochMilli(), ranAt, "held for a new time")!!.held
+        val (heldMum, heldDad) = repository.hold(listOf(mum.id, dad.id), nine.toEpochMilli(), ranAt, "held for a new time").map { it.held }
         assertEquals("b@${nine.toEpochMilli()}", heldMum.batchId)
         assertEquals(heldMum.batchId, heldDad.batchId)
         // The series themselves stay in their own batch.

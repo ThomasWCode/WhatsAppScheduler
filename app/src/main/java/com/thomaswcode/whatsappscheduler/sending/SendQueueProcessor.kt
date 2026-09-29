@@ -270,7 +270,7 @@ class SendQueueProcessor(
     private suspend fun snooze(batch: List<Schedule>, occurrence: Long) {
         val now = clock.instant()
         val to = now.plus(SNOOZE)
-        val unarmed = batch.mapNotNull { member -> store.snooze(member.id, occurrence, to, now)?.takeUnless(::arm) }
+        val unarmed = store.snooze(batch.map { it.id }, occurrence, to, now).filterNot(::arm)
         if (unarmed.isNotEmpty()) hold(unarmed, to.toEpochMilli(), HELD_UNARMED, pick = false)
     }
 
@@ -280,15 +280,13 @@ class SendQueueProcessor(
      * opens over what the user is doing.
      */
     private suspend fun hold(batch: List<Schedule>, occurrence: Long, detail: String, pick: Boolean) {
-        val now = clock.instant()
-        val held = batch.mapNotNull { member ->
-            store.hold(member.id, occurrence, now, detail)?.also { run ->
-                // A series goes on to its next time; if that can't be armed, its next message wouldn't go
-                // by itself, and nothing would say so.
-                if (!arm(run.schedule) && run.schedule.id != run.held.id) notifier.unarmed(run.schedule)
-            }?.held
+        val runs = store.hold(batch.map { it.id }, occurrence, clock.instant(), detail)
+        runs.forEach { run ->
+            // A series goes on to its next time; if that can't be armed, its next message wouldn't go by
+            // itself, and nothing would say so.
+            if (!arm(run.schedule) && run.schedule.id != run.held.id) notifier.unarmed(run.schedule)
         }
-        if (held.isNotEmpty()) notifier.held(held, pick)
+        if (runs.isNotEmpty()) notifier.held(runs.map { it.held }, pick)
     }
 
     /** Arms [schedule]'s alarm, and says whether that worked; one that fails is logged, not allowed to stop the rest. */

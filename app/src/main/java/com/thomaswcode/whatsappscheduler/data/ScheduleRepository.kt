@@ -360,23 +360,27 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
             ?.takeIf { peers -> peers.any { it.id == schedule.id } }
             ?: listOf(schedule)
 
-    override suspend fun snooze(id: Long, occurrenceAtMillis: Long, to: Instant, ranAt: Instant): Schedule? = db.withTransaction {
-        val current = schedules.getById(id)?.takeIf { it.nextAtMillis == occurrenceAtMillis } ?: return@withTransaction null
-        val moved = postpone(id, to, seen = current)?.after ?: return@withTransaction null
-        logs.insert(SendLog(scheduleId = id, atMillis = ranAt.toEpochMilli(), status = SendStatus.SKIPPED, targetName = current.targetName, detail = SNOOZED, occurrenceAtMillis = occurrenceAtMillis))
-        moved
+    override suspend fun snooze(ids: List<Long>, occurrenceAtMillis: Long, to: Instant, ranAt: Instant): List<Schedule> = db.withTransaction {
+        ids.mapNotNull { id ->
+            val current = schedules.getById(id)?.takeIf { it.nextAtMillis == occurrenceAtMillis } ?: return@mapNotNull null
+            val moved = postpone(id, to, seen = current)?.after ?: return@mapNotNull null
+            logs.insert(SendLog(scheduleId = id, atMillis = ranAt.toEpochMilli(), status = SendStatus.SKIPPED, targetName = current.targetName, detail = SNOOZED, occurrenceAtMillis = occurrenceAtMillis))
+            moved
+        }
     }
 
-    override suspend fun hold(id: Long, occurrenceAtMillis: Long, ranAt: Instant, detail: String): HeldRun? = db.withTransaction {
-        val current = schedules.getById(id)?.takeIf { it.nextAtMillis == occurrenceAtMillis } ?: return@withTransaction null
-        if (current.rule != Recurrence.Once) {
-            return@withTransaction holdAsCopy(current, occurrenceAtMillis, ranAt, Attention.HELD, SendStatus.SKIPPED, detail, ran = false)
+    override suspend fun hold(ids: List<Long>, occurrenceAtMillis: Long, ranAt: Instant, detail: String): List<HeldRun> = db.withTransaction {
+        ids.mapNotNull { id ->
+            val current = schedules.getById(id)?.takeIf { it.nextAtMillis == occurrenceAtMillis } ?: return@mapNotNull null
+            if (current.rule != Recurrence.Once) {
+                return@mapNotNull holdAsCopy(current, occurrenceAtMillis, ranAt, Attention.HELD, SendStatus.SKIPPED, detail, ran = false)
+            }
+            // Waits itself, with no alarm: nothing is sent until the user picks a time.
+            val held = current.copy(nextAtMillis = null, attention = Attention.HELD)
+            schedules.update(held)
+            logs.insert(SendLog(scheduleId = id, atMillis = ranAt.toEpochMilli(), status = SendStatus.SKIPPED, targetName = current.targetName, detail = detail, occurrenceAtMillis = occurrenceAtMillis))
+            HeldRun(held, held)
         }
-        // Waits itself, with no alarm: nothing is sent until the user picks a time.
-        val held = current.copy(nextAtMillis = null, attention = Attention.HELD)
-        schedules.update(held)
-        logs.insert(SendLog(scheduleId = id, atMillis = ranAt.toEpochMilli(), status = SendStatus.SKIPPED, targetName = current.targetName, detail = detail, occurrenceAtMillis = occurrenceAtMillis))
-        HeldRun(held, held)
     }
 
     /**
