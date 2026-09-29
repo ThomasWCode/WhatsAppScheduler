@@ -1,12 +1,10 @@
 package com.thomaswcode.whatsappscheduler.ui.onboarding
 
-import android.app.AlarmManager
 import android.app.KeyguardManager
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
@@ -47,7 +45,6 @@ object PermissionChecks {
     ): List<SetupItem> {
         val pkg = context.packageName
         val pkgUri = Uri.parse("package:$pkg")
-        val alarm = context.getSystemService(AlarmManager::class.java)
         val power = context.getSystemService(PowerManager::class.java)
         val keyguard = context.getSystemService(KeyguardManager::class.java)
         val notifications = context.getSystemService(NotificationManager::class.java)
@@ -64,12 +61,6 @@ object PermissionChecks {
             ),
             accessibility(WaAccessibilityService.isEnabled(context), serviceRunning),
             SetupItem(
-                "exact", "Alarms & reminders allowed",
-                "Exact alarms fire at the scheduled minute even in Doze. Without them messages still go, but can be late.",
-                if (alarm.canScheduleExactAlarms()) CheckState.OK else CheckState.MISSING,
-                Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, pkgUri), group = SetupGroup.RECOMMENDED,
-            ),
-            SetupItem(
                 "overlay", "Display over other apps",
                 "Required to bring WhatsApp to the front from the background.",
                 if (Settings.canDrawOverlays(context)) CheckState.OK else CheckState.MISSING,
@@ -78,15 +69,14 @@ object PermissionChecks {
             SetupItem(
                 "notifications", "Notifications allowed",
                 "For the countdown before a send, and for telling you when one couldn't go.",
-                // On Android 12 there is no notification permission, only the app-level switch.
                 if (NotificationManagerCompat.from(context).areNotificationsEnabled()) CheckState.OK else CheckState.MISSING,
                 appDetails, group = SetupGroup.RECOMMENDED,
             ),
             SetupItem(
                 "fullscreen", "Full-screen notifications allowed",
                 "The other way the app wakes a locked phone's screen, if the first doesn't work.",
-                if (Build.VERSION.SDK_INT < 34 || notifications.canUseFullScreenIntent()) CheckState.OK else CheckState.MISSING,
-                if (Build.VERSION.SDK_INT >= 34) Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, pkgUri) else null,
+                if (notifications.canUseFullScreenIntent()) CheckState.OK else CheckState.MISSING,
+                Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, pkgUri),
                 group = SetupGroup.RECOMMENDED,
             ),
             SetupItem(

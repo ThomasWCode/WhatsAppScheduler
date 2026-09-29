@@ -25,8 +25,8 @@ class AlarmReceiver : BroadcastReceiver() {
         try {
             SendService.enqueue(context, SendRequest(id, SendKind.SCHEDULED, occurrence))
         } catch (e: IllegalStateException) {
-            // Android 12 won't start a foreground service from the inexact alarm set when exact alarms are
-            // denied (B19). The occurrence is recorded as not sent, so opening the app later can't send it
+            // Exact alarms may start the service (minSdk 34 always has them), but should Android refuse
+            // anyway (B19), the occurrence is recorded as not sent, so opening the app later can't send it
             // again after a send by hand, and the user is offered one.
             container.log.error("Schedule $id: couldn't start sending from its alarm", e)
             val pending = goAsync()
