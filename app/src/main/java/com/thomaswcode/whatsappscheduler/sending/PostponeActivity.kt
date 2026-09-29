@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import com.thomaswcode.whatsappscheduler.SchedulerApp
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
@@ -40,8 +41,10 @@ class PostponeActivity : ComponentActivity() {
         val id = intent.getLongExtra(EXTRA_SCHEDULE_ID, -1L)
         setContent {
             AppTheme {
-                // The row as it was when the picker opened: the move is refused if it is sent or changed meanwhile.
+                // The row as it was when the picker first opened: the move is refused if it is sent or changed
+                // meanwhile. Its timing is saved, so a rotation reads the row again without forgetting that.
                 var seen by remember { mutableStateOf<Schedule?>(null) }
+                var seenTiming by rememberSaveable { mutableStateOf<LongArray?>(null) }
                 val scope = rememberCoroutineScope()
                 val timeFormat = rememberTimeFormat()
                 // Moves on each minute, so a time that has become less than a minute away can't be picked.
@@ -53,7 +56,10 @@ class PostponeActivity : ComponentActivity() {
                     }
                 }
                 LaunchedEffect(id) {
-                    seen = container.repository.get(id)
+                    val row = container.repository.get(id)
+                    val timing = seenTiming ?: row?.let { longArrayOf(it.nextAtMillis ?: -1L, it.lastRunAtMillis ?: -1L) }?.also { seenTiming = it }
+                    seen = if (row == null || timing == null) null
+                    else row.copy(nextAtMillis = timing[0].takeIf { it >= 0 }, lastRunAtMillis = timing[1].takeIf { it >= 0 })
                     if (seen == null) {
                         Toast.makeText(this@PostponeActivity, "It has been deleted.", Toast.LENGTH_LONG).show()
                         container.fallbackNotifier.cancel(id)
