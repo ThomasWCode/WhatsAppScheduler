@@ -7,6 +7,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.PowerManager
 import android.provider.Settings
+import android.text.format.DateFormat
 import androidx.core.app.NotificationManagerCompat
 import com.thomaswcode.whatsappscheduler.data.settings.Settings as AppSettings
 import com.thomaswcode.whatsappscheduler.domain.PinBlock
@@ -80,7 +81,7 @@ object HealthCheck {
             )
         }
         if (pinBlock != null) {
-            items += HealthItem(HealthProblem.PIN_PAUSED, pinBlock.describe(), "Settings", null)
+            items += HealthItem(HealthProblem.PIN_PAUSED, pinBlock.describe(is24Hour = DateFormat.is24HourFormat(context)), "Settings", null)
         } else if (!hasPin && context.getSystemService(KeyguardManager::class.java).isDeviceSecure) {
             items += HealthItem(HealthProblem.NO_PIN, "No lock-screen PIN is stored, so a locked phone can't be unlocked to send.", "Settings", null)
         }

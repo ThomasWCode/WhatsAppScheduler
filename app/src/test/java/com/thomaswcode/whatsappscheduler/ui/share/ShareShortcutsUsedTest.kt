@@ -26,6 +26,20 @@ class ShareShortcutsUsedTest {
     }
 
     @Test
+    fun theRecentsAreRankedMostRecentFirstAndTheRestGo() {
+        val shortcuts = ShareShortcuts(context)
+        val dad = Recipient(id = 3, kind = TargetKind.CONTACT, displayName = "Dad", phoneE164 = "+447700900123")
+        shortcuts.publish(listOf(choir, dad))
+        assertEquals(
+            listOf("recipient-12" to 0, "recipient-3" to 1),
+            ShortcutManagerCompat.getDynamicShortcuts(context).map { it.id to it.rank }.sortedBy { it.second },
+        )
+
+        shortcuts.publish(listOf(dad))
+        assertEquals(listOf("recipient-3" to 0), ShortcutManagerCompat.getDynamicShortcuts(context).map { it.id to it.rank })
+    }
+
+    @Test
     fun usingAChatAgainKeepsOneShortcutForIt() {
         val shortcuts = ShareShortcuts(context)
         shortcuts.used(listOf(choir))
