@@ -28,7 +28,8 @@ data class Settings(
     val retryDelaySeconds: Int = 30,
     val stepTimeoutMs: Long = 8_000,
     val jobTimeoutMs: Long = 90_000,
-    val missedGraceMinutes: Int = 120,
+    /** How late a send may still go by itself (B09); later than that it is held and the user asked. */
+    val missedGraceMinutes: Int = DEFAULT_GRACE_MINUTES,
     val deepLinkForLockedChats: Boolean = false,
     val defaultCountryIso: String = "GB",
     val onboardingDone: Boolean = false,
@@ -57,6 +58,19 @@ data class Settings(
     val evening: LocalTime get() = LocalTime.of(eveningMinutes / 60, eveningMinutes % 60)
 }
 
+/** The grace window's default (B09): up to 20 minutes late a message still goes by itself. */
+const val DEFAULT_GRACE_MINUTES = 20
+
+/** The default before B09. Every setting was stored whenever any was changed, so a stored 120 was usually never chosen. */
+private const val LEGACY_DEFAULT_GRACE_MINUTES = 120
+
+/**
+ * The grace window from what is stored: one set since the default became 20 minutes, else an older
+ * setting unless it is the old default, which becomes the new one.
+ */
+internal fun graceMinutes(stored: Int?, legacy: Int?): Int =
+    stored ?: legacy?.takeIf { it != LEGACY_DEFAULT_GRACE_MINUTES } ?: DEFAULT_GRACE_MINUTES
+
 class SettingsStore(private val context: Context) {
 
     private object Keys {
@@ -69,7 +83,9 @@ class SettingsStore(private val context: Context) {
         val retryDelay = intPreferencesKey("retry_delay_seconds")
         val stepTimeout = longPreferencesKey("step_timeout_ms")
         val jobTimeout = longPreferencesKey("job_timeout_ms")
-        val grace = intPreferencesKey("missed_grace_minutes")
+        /** From when the grace window's default was 2 hours; see [graceMinutes]. */
+        val legacyGrace = intPreferencesKey("missed_grace_minutes")
+        val grace = intPreferencesKey("missed_grace_minutes_v2")
         val deepLinkLocked = booleanPreferencesKey("deep_link_locked")
         val countryIso = stringPreferencesKey("default_country_iso")
         val onboardingDone = booleanPreferencesKey("onboarding_done")
@@ -114,7 +130,7 @@ class SettingsStore(private val context: Context) {
         retryDelaySeconds = p[Keys.retryDelay] ?: 30,
         stepTimeoutMs = p[Keys.stepTimeout] ?: 8_000,
         jobTimeoutMs = p[Keys.jobTimeout] ?: 90_000,
-        missedGraceMinutes = p[Keys.grace] ?: 120,
+        missedGraceMinutes = graceMinutes(p[Keys.grace], p[Keys.legacyGrace]),
         deepLinkForLockedChats = p[Keys.deepLinkLocked] ?: false,
         defaultCountryIso = p[Keys.countryIso] ?: "GB",
         onboardingDone = p[Keys.onboardingDone] ?: false,
@@ -134,6 +150,7 @@ class SettingsStore(private val context: Context) {
         p[Keys.stepTimeout] = s.stepTimeoutMs
         p[Keys.jobTimeout] = s.jobTimeoutMs
         p[Keys.grace] = s.missedGraceMinutes
+        p.remove(Keys.legacyGrace)
         p[Keys.deepLinkLocked] = s.deepLinkForLockedChats
         p[Keys.countryIso] = s.defaultCountryIso
         p[Keys.onboardingDone] = s.onboardingDone
