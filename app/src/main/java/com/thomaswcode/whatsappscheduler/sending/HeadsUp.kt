@@ -1,6 +1,7 @@
 package com.thomaswcode.whatsappscheduler.sending
 
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CompletableDeferred
 
@@ -47,18 +48,28 @@ interface HeadsUp {
  * for it. There is one countdown at a time, as the queue sends one message at a time.
  */
 class HeadsUpAnswers {
-    private val waiting = AtomicReference<CompletableDeferred<HeadsUpChoice>?>(null)
 
-    /** Starts waiting for an answer to a new countdown. */
-    fun expect(): CompletableDeferred<HeadsUpChoice> = CompletableDeferred<HeadsUpChoice>().also { waiting.set(it) }
+    /** A countdown waiting for its answer; [token] is carried by its buttons. */
+    class Wait(val token: Long) {
+        val answer = CompletableDeferred<HeadsUpChoice>()
+    }
 
-    /** A button was pressed; ignored when no countdown is waiting, e.g. one tapped after it ran out. */
-    fun answer(choice: HeadsUpChoice) {
-        waiting.get()?.complete(choice)
+    private val tokens = AtomicLong()
+    private val waiting = AtomicReference<Wait?>(null)
+
+    /** Starts waiting for an answer to a new countdown, whose buttons carry the wait's token. */
+    fun expect(): Wait = Wait(tokens.incrementAndGet()).also { waiting.set(it) }
+
+    /**
+     * A button was pressed. Only the countdown it belongs to takes the answer: one tapped after its
+     * countdown ran out, or delivered late, can't answer the next one, e.g. snoozing another message.
+     */
+    fun answer(token: Long, choice: HeadsUpChoice) {
+        waiting.get()?.takeIf { it.token == token }?.answer?.complete(choice)
     }
 
     /** The countdown is over: later taps on its notification do nothing. */
-    fun done(answer: CompletableDeferred<HeadsUpChoice>) {
-        waiting.compareAndSet(answer, null)
+    fun done(wait: Wait) {
+        waiting.compareAndSet(wait, null)
     }
 }
