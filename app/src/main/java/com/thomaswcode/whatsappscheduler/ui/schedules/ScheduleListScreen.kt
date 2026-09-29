@@ -374,7 +374,7 @@ fun ScheduleListScreen(
             schedule = group.first(),
             now = now,
             onDismiss = vm::cancelPostpone,
-            onMove = { at -> vm.postpone(at, resources.getString(R.string.list_moved_to, FriendlyTime.dayAndTime(at.atZone(now.zone), now, timeFormat))) },
+            onMove = { at -> vm.postpone(at, resources.getString(R.string.moved_to, FriendlyTime.dayAndTime(at.atZone(now.zone), now, timeFormat))) },
         )
     }
 
