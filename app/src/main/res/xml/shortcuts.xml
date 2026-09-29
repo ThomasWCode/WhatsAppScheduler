@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Direct Share (features F6): the recipients the app publishes as sharing shortcuts, in this
+     category, are offered in the share sheet for text, and open the Share target with the chat. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <share-target android:targetClass="com.thomaswcode.whatsappscheduler.ui.share.ShareTargetActivity">
+        <data android:mimeType="text/plain" />
+        <category android:name="com.thomaswcode.whatsappscheduler.category.SCHEDULE_TO" />
+    </share-target>
+</shortcuts>
