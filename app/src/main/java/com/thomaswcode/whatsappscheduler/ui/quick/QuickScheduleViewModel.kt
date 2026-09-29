@@ -19,7 +19,6 @@ import com.thomaswcode.whatsappscheduler.data.SentWhileEditing
 import com.thomaswcode.whatsappscheduler.data.contacts.ContactHit
 import com.thomaswcode.whatsappscheduler.data.db.Recipient
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
-import com.thomaswcode.whatsappscheduler.data.db.SendStatus
 import com.thomaswcode.whatsappscheduler.data.settings.Settings
 import com.thomaswcode.whatsappscheduler.domain.FriendlyTime
 import com.thomaswcode.whatsappscheduler.domain.PhoneNormaliser
@@ -30,6 +29,7 @@ import com.thomaswcode.whatsappscheduler.domain.RecurrenceCodec
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
 import com.thomaswcode.whatsappscheduler.domain.TimeChip
 import com.thomaswcode.whatsappscheduler.sending.accessibility.WaAccessibilityService
+import com.thomaswcode.whatsappscheduler.ui.minuteClock
 import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
@@ -38,7 +38,6 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.collectLatest
@@ -46,7 +45,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -117,13 +115,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
     val pinFailures: StateFlow<PinFailures> = container.secrets.observePinFailures().stateIn(viewModelScope, whileShown, PinFailures())
 
     /** The time, moving on each minute, so the chips and "in 18 h 52 min" stay right while the sheet is open. */
-    val now: StateFlow<ZonedDateTime> = flow {
-        while (true) {
-            val now = ZonedDateTime.now()
-            emit(now)
-            delay(60_000L - now.second * 1_000L - now.nano / 1_000_000)
-        }
-    }.stateIn(viewModelScope, whileShown, ZonedDateTime.now())
+    val now: StateFlow<ZonedDateTime> = minuteClock().stateIn(viewModelScope, whileShown, ZonedDateTime.now())
 
     private val events = Channel<QuickEvent>(Channel.BUFFERED)
     val eventFlow: Flow<QuickEvent> = events.receiveAsFlow()
@@ -178,30 +170,47 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         visible = true
     }
 
-    /** Opens the one-off (or batch) in edit mode: the same sheet, titled "Edit message". */
-    fun openEdit(schedule: Schedule) {
+    /**
+     * Opens a one-off in edit mode: the same sheet, titled "Edit message". [members] are exactly the
+     * schedules the row shows. A batch can be split across the list's sections, and editing members
+     * that have already gone would schedule them again.
+     */
+    fun openEdit(members: List<Schedule>) {
+        val schedule = members.firstOrNull() ?: return
         viewModelScope.launch {
-            val batch = schedule.batchId?.let { container.repository.batch(it) }?.ifEmpty { null } ?: listOf(schedule)
-            // A batch part-way through, or finished with mixed outcomes: the members still to go, pending or
-            // failed or missed, are edited together, and none that went (or may have), so saving can't send
-            // it to anyone twice. All of them only when every one went, which is sending it again.
-            val members = batch.filter { it.nextAtMillis != null || (it.lastStatus != SendStatus.SENT && it.lastStatus != SendStatus.UNCERTAIN) }
-                .ifEmpty { batch }
-            draft = QuickDraft(
-                recipients = members.map { m ->
-                    m.recipientId?.let { container.recipients.get(it) }?.toDraft()
-                        ?: RecipientDraft(m.targetKind, m.targetName, phoneE164 = m.phoneE164, isLocked = m.isLocked)
-                },
-                message = schedule.message,
-                time = schedule.nextAtMillis?.let(TimeChoice::Exact),
-                editingIds = members.map { it.id },
-                editingRuns = members.map { it.lastRunAtMillis ?: -1L },
+            show(
+                QuickDraft(
+                    recipients = members.map { recipientOf(it) },
+                    message = schedule.message,
+                    time = schedule.nextAtMillis?.let(TimeChoice::Exact),
+                    editingIds = members.map { it.id },
+                    editingRuns = members.map { it.lastRunAtMillis ?: -1L },
+                ),
             )
-            query = ""
-            error = null
-            visible = true
         }
     }
+
+    /**
+     * "Send again…" on a sent message (quick-schedule.md §8): a new message to the same people with
+     * the same text, and no time chosen yet.
+     */
+    fun openSendAgain(group: List<Schedule>) {
+        viewModelScope.launch {
+            show(QuickDraft(recipients = group.map { recipientOf(it) }, message = group.first().message))
+        }
+    }
+
+    private fun show(newDraft: QuickDraft) {
+        draft = newDraft
+        query = ""
+        error = null
+        visible = true
+    }
+
+    /** The stored recipient a schedule went to, or its own copy of the target when it isn't linked. */
+    private suspend fun recipientOf(schedule: Schedule): RecipientDraft =
+        schedule.recipientId?.let { container.recipients.get(it) }?.toDraft()
+            ?: RecipientDraft(schedule.targetKind, schedule.targetName, phoneE164 = schedule.phoneE164, isLocked = schedule.isLocked)
 
     /**
      * Members that went out (or may have) while the sheet was open: nothing was saved, and they leave

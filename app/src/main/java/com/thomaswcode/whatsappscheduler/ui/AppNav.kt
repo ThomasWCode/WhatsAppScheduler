@@ -66,7 +66,6 @@ fun AppNav(container: AppContainer, destination: MutableStateFlow<String?>) {
                 onEdit = { nav.navigate(Routes.edit(it)) },
                 onRepeat = { nav.navigate(Routes.repeat(it)) },
                 onSettings = { nav.navigate(Routes.SETTINGS) },
-                onLogs = { nav.navigate(Routes.LOGS) },
                 onSetup = { nav.navigate(Routes.SETUP) },
             )
         }

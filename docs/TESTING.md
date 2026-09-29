@@ -27,6 +27,10 @@ Unit tests (`./gradlew test`) cover the quick sheet's time chips and friendly ti
 | 21 | Fill the sheet, then **Repeat…** | The full editor opens with the first recipient, the message and the time, set to Daily. Opening New message again shows an empty sheet. |
 | 22 | Half-fill the sheet, swipe it away, rotate, tap New message; then **Discard** | The draft comes back after the rotation; Discard empties it. |
 | 23 | Tap into the editor's message field and Settings' own-number field with the keyboard up (B16) | The keyboard never covers the field being typed in or Save. |
+| 24 | Switch the app's accessibility service off in system settings, go back to the app, then switch it on again (B24) | The strip turns red at once ("Auto-send is off … Fix") and back to ready or the next item when it is on. Check with a screenshot: `uiautomator dump` itself unbinds the service. |
+| 25 | Swipe a row away, then tap Undo | The row goes with its history (Logs → Sends); Undo brings back the row, its history and its alarm (`dumpsys alarm`). |
+| 26 | Dry run on: a one-off to a made-up group name, then ⋯ → Send now… | While it retries, the row says "Waiting to try again…" and can't be opened or swiped. Then it moves to Needs attention, "Couldn't send · <time>", with Send now and Discard; Discard shows Undo. |
+| 27 | A daily schedule (Repeat… from the sheet) | It is under Repeating with a switch; switched off it says "paused". One-offs have no switch. |
 
 Useful commands:
 
