@@ -375,7 +375,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         if (saving) return
         saving = true
         viewModelScope.launch {
-            runCatching {
+            val removed = runCatching {
                 withContext(NonCancellable) {
                     container.linkRecipientsOnce()
                     container.recipients.get(id)?.let { container.recipients.remove(it) }
@@ -383,6 +383,11 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
             }
                 .onFailure { container.log.error("Removing a recipient failed", it) }
             saving = false
+            // The chip stays linked unless it really went: a failure would otherwise look like success.
+            if (removed.isFailure) {
+                error = "Couldn't remove ${recipient.displayName} from recents. Try again."
+                return@launch
+            }
             draft = draft.copy(recipients = draft.recipients.map { if (it.recipientId == id) it.copy(recipientId = null) else it })
         }
     }

@@ -153,7 +153,8 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
                 }
             },
             onRemove = vm::remove,
-            onDetails = { details = it },
+            // Not while a save is still running: a second edit would be lost to it.
+            onDetails = { if (!vm.saving) details = it },
             onToggleRecent = vm::toggle,
             onAddDraft = vm::add,
             onAddContact = vm::add,

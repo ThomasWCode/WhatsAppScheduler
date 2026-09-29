@@ -156,7 +156,8 @@ fun ScheduleEditorScreen(
                 onQuery = vm::updateQuery,
                 onSearchFocused = {},
                 onRemove = { vm.clearRecipient() },
-                onDetails = { details = it },
+                // Not while a details save is still running: a second edit would be lost to it.
+                onDetails = { if (!vm.busy) details = it },
                 onToggleRecent = { vm.choose(it.toDraft()) },
                 onAddDraft = vm::choose,
                 onAddContact = vm::add,
