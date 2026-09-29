@@ -18,6 +18,7 @@ import com.thomaswcode.whatsappscheduler.data.ScheduleRepository
 import com.thomaswcode.whatsappscheduler.data.contacts.ContactHit
 import com.thomaswcode.whatsappscheduler.data.db.Recipient
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
+import com.thomaswcode.whatsappscheduler.data.db.SendStatus
 import com.thomaswcode.whatsappscheduler.data.settings.Settings
 import com.thomaswcode.whatsappscheduler.domain.FriendlyTime
 import com.thomaswcode.whatsappscheduler.domain.PhoneNormaliser
@@ -170,8 +171,12 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
     fun openEdit(schedule: Schedule) {
         viewModelScope.launch {
             val batch = schedule.batchId?.let { container.repository.batch(it) }?.ifEmpty { null } ?: listOf(schedule)
-            // A batch part-way through: only the members still to be sent are edited; the others have had it.
-            val members = batch.filter { it.nextAtMillis != null }.ifEmpty { batch }
+            // A batch part-way through, or finished with mixed outcomes: only the members that haven't gone
+            // (nor may have) are edited, so saving can't send it to anyone twice. All of them only when
+            // every one went, which is sending it again.
+            val pending = batch.filter { it.nextAtMillis != null }
+            val unsent = batch.filter { it.lastStatus != SendStatus.SENT && it.lastStatus != SendStatus.UNCERTAIN }
+            val members = pending.ifEmpty { unsent }.ifEmpty { batch }
             draft = QuickDraft(
                 recipients = members.map { m ->
                     m.recipientId?.let { container.recipients.get(it) }?.toDraft()
@@ -274,7 +279,13 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
             error = "$typed isn't a number WhatsApp can open. Type it with its country code."
             return
         }
-        add(RecipientDraft(TargetKind.CONTACT, PhoneNormaliser.display(e164, iso), phoneE164 = e164))
+        val typedChat = RecipientDraft(TargetKind.CONTACT, PhoneNormaliser.display(e164, iso), phoneE164 = e164)
+        add(typedChat)
+        // A number already saved shows what is known about it, as a picked contact does.
+        viewModelScope.launch {
+            val saved = container.recipients.byPhone(e164) ?: return@launch
+            if (!saving) draft = draft.copy(recipients = draft.recipients.map { if (it == typedChat) saved.toDraft() else it })
+        }
     }
 
     fun remove(recipient: RecipientDraft) {
@@ -300,7 +311,13 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
                     // Also a chip not linked to it yet (a number typed, a lookup still running): saving would
                     // resolve it to the stored recipient anyway, and the edit must land there.
                     val stored = container.recipients.existing(original) ?: return@runCatching null
-                    val edited = stored.copy(whatsappName = updated.whatsappName, phoneE164 = updated.phoneE164, isLocked = updated.isLocked, kind = updated.kind)
+                    // Only what the user changed: a chip that isn't linked yet may not know the stored name or
+                    // Chat Lock, and saving the dialog unchanged mustn't wipe them.
+                    val edited = stored.copy(
+                        whatsappName = if (updated.whatsappName != original.whatsappName) updated.whatsappName else stored.whatsappName,
+                        phoneE164 = if (updated.phoneE164 != original.phoneE164) updated.phoneE164 else stored.phoneE164,
+                        isLocked = if (updated.isLocked != original.isLocked) updated.isLocked else stored.isLocked,
+                    )
                     // Refused rather than leaving two stored identities for one chat.
                     container.recipients.sameChatElsewhere(edited)?.let { return@runCatching it }
                     // Pending schedules just changed target: re-armed from the stored rows, and a Tap to send
