@@ -41,6 +41,9 @@ interface ScheduleDao {
     @Query("UPDATE schedules SET lastRunAtMillis = :ranAtMillis, lastResult = :result, lastStatus = :status, attention = :attention WHERE id = :id")
     suspend fun updateLastRun(id: Long, ranAtMillis: Long, result: String, status: SendStatus, attention: Attention?)
 
+    @Query("UPDATE schedules SET lastResult = :result WHERE id = :id")
+    suspend fun setLastResult(id: Long, result: String)
+
     @Query("SELECT * FROM schedules WHERE batchId = :batchId ORDER BY id")
     suspend fun getBatch(batchId: String): List<Schedule>
 
