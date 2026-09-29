@@ -5,6 +5,7 @@ import com.thomaswcode.whatsappscheduler.data.db.Attention
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.data.db.SendStatus
 import com.thomaswcode.whatsappscheduler.domain.FriendlyTime
+import com.thomaswcode.whatsappscheduler.domain.PlainResult
 import com.thomaswcode.whatsappscheduler.domain.Recurrence
 import java.time.Instant
 import java.time.LocalTime
@@ -77,7 +78,8 @@ fun statusLine(
             val tried = schedule.lastRunAtMillis ?: due
             when (schedule.attention) {
                 Attention.MISSED -> "Missed · ${day(due)}"
-                Attention.FAILED -> "Couldn't send · ${day(tried)}"
+                // Why, in words, where the step that failed is known (improvements I2).
+                Attention.FAILED -> "${PlainResult.fromResult(schedule.lastResult) ?: "Couldn't send"} · ${day(tried)}"
                 Attention.UNCERTAIN -> "May have been sent · ${day(tried)}: check the chat"
                 Attention.HELD -> "Not sent: choose a new time"
                 null -> day(due)
