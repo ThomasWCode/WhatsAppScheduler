@@ -50,6 +50,29 @@ class ScheduleRepositoryTest {
     )
 
     @Test
+    fun aMissedOccurrenceIsHeldForTheUser() = runTest {
+        // A series goes on, and the missed message waits as a one-off of its own (B09).
+        val daily = saveDaily()
+        val missed = repository.recordMissed(daily.id, nine.toEpochMilli(), "missed by 180 min (phone off?)", "Mum", ranAt)!!
+        assertNull(missed.schedule.attention)
+        assertEquals(nine.plus(Duration.ofDays(1)).toEpochMilli(), repository.get(daily.id)!!.nextAtMillis)
+        assertNull(repository.get(daily.id)!!.attention)
+        val held = repository.get(missed.held.id)!!
+        assertEquals(Attention.MISSED, held.attention)
+        assertEquals(daily.id, held.sourceScheduleId)
+        assertEquals(nine.toEpochMilli(), held.firstAtMillis)
+        assertNull(held.nextAtMillis)
+        assertEquals("ONCE", held.recurrence)
+        assertEquals(daily.message, held.message)
+        // A one-off waits itself.
+        val once = repository.save(daily.copy(id = 0, recurrence = "ONCE", firstAtMillis = nine.plus(Duration.ofDays(2)).toEpochMilli()), ranAt)
+        val oneOff = repository.recordMissed(once.id, once.nextAtMillis!!, "missed by 30 min (phone off?)", "Mum", ranAt.plus(Duration.ofDays(2)))!!
+        assertEquals(oneOff.schedule, oneOff.held)
+        assertEquals(Attention.MISSED, oneOff.held.attention)
+        assertNull(oneOff.held.nextAtMillis)
+    }
+
+    @Test
     fun recordRunMovesPastTheOccurrenceAndLogsIt() = runTest {
         val saved = saveDaily()
         val stored = repository.recordRun(saved.id, nine.toEpochMilli(), SendStatus.SENT, null, "Mum", ranAt)!!

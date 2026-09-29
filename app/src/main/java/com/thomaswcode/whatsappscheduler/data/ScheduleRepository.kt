@@ -9,6 +9,7 @@ import com.thomaswcode.whatsappscheduler.data.db.SendLog
 import com.thomaswcode.whatsappscheduler.data.db.SendStatus
 import com.thomaswcode.whatsappscheduler.domain.Recurrence
 import com.thomaswcode.whatsappscheduler.domain.RecurrenceCalculator
+import com.thomaswcode.whatsappscheduler.domain.RecurrenceCodec
 import java.time.Instant
 import java.time.ZoneId
 import java.util.UUID
@@ -302,6 +303,25 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
             lastResult = result, lastStatus = status, attention = attention, postponedFromMillis = postponedFrom,
         )
     }
+
+    override suspend fun recordMissed(id: Long, occurrenceAtMillis: Long, detail: String, sentTo: String, ranAt: Instant): MissedRun? =
+        db.withTransaction {
+            val before = schedules.getById(id)
+            val stored = recordRun(id, occurrenceAtMillis, SendStatus.MISSED, detail, sentTo, ranAt) ?: return@withTransaction null
+            if (stored.rule == Recurrence.Once) return@withTransaction MissedRun(stored, stored)
+            // The series itself waits on nothing new: it goes on. The missed message is held on its own, so
+            // Send now, Postpone and Discard are the ordinary one-off ones, and the series' own row stays as it was.
+            val series = stored.copy(attention = before?.attention)
+            schedules.setAttention(id, series.attention)
+            val held = Schedule(
+                message = stored.message, targetKind = stored.targetKind, targetName = stored.targetName, phoneE164 = stored.phoneE164,
+                isLocked = stored.isLocked, firstAtMillis = occurrenceAtMillis, zoneId = stored.zoneId,
+                recurrence = RecurrenceCodec.encode(Recurrence.Once), nextAtMillis = null, createdAtMillis = ranAt.toEpochMilli(),
+                lastRunAtMillis = ranAt.toEpochMilli(), lastResult = "${SendStatus.MISSED.name}: $detail", lastStatus = SendStatus.MISSED,
+                recipientId = stored.recipientId, attention = Attention.MISSED, sourceScheduleId = stored.id,
+            )
+            MissedRun(series, held.copy(id = schedules.insert(held)))
+        }
 
     /**
      * A manual run doesn't decide whether the schedule needs attention, except that a real send by
