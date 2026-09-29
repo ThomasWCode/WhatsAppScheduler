@@ -120,7 +120,7 @@ fun ScheduleListScreen(
     val context = LocalContext.current
     val schedules by vm.schedules.collectAsStateWithLifecycle()
     val sections = remember(schedules) { ListSections.of(schedules) }
-    val dueAt by vm.dueAt.collectAsStateWithLifecycle()
+    val latestRuns by vm.latestRuns.collectAsStateWithLifecycle()
     val sendState by vm.sendState.collectAsStateWithLifecycle()
     val now by vm.now.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
@@ -219,7 +219,7 @@ fun ScheduleListScreen(
         ScheduleRow(
             group = group,
             outlined = group.any { it.id == outlined },
-            line = busy ?: statusLine(section, group, now, dueAt, timeFormat),
+            line = busy ?: statusLine(section, group, now, latestRuns, timeFormat),
             busy = busy != null,
             needsYou = section == Section.ATTENTION,
             switchedOn = if (section == Section.REPEATING) first.enabled else null,

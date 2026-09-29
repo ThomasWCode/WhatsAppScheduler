@@ -6,7 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -88,7 +88,8 @@ fun LogsScreen(container: AppContainer, onBack: () -> Unit, onOpenSchedule: (Lon
                 // Only with the trace in view, so it's plain what they act on.
                 if (tab == 1) {
                     TextButton(onClick = { shareTrace(context, trace) }, enabled = trace.isNotEmpty()) { Text("Share") }
-                    TextButton(onClick = { container.log.clear() }, enabled = trace.isNotEmpty()) { Text("Clear") }
+                    // Always: it also deletes a window dump the UI inspector saved, which the trace doesn't show.
+                    TextButton(onClick = { container.log.clear() }) { Text("Clear") }
                 }
             }
         },
@@ -109,7 +110,8 @@ fun LogsScreen(container: AppContainer, onBack: () -> Unit, onOpenSchedule: (Lon
 
 @Composable
 private fun SendsTab(sends: List<SendLog>, filter: LogFilter, onFilter: (LogFilter) -> Unit, onOpenSchedule: (Long) -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    // Wraps, so none is cut off on a narrow window or with large text.
+    FlowRow(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         LogFilter.entries.forEach { choice ->
             FilterChip(selected = filter == choice, onClick = { onFilter(choice) }, label = { Text(choice.label) })
         }

@@ -67,7 +67,7 @@ class ScheduleRepositoryTest {
         assertEquals(daily.message, held.message)
         // Its run is the held message's, so the series' own last run and history stand.
         assertNull(repository.get(daily.id)!!.lastRunAtMillis)
-        assertEquals(mapOf(held.id to nine.toEpochMilli()), repository.observeLatestOccurrences().first())
+        assertEquals(mapOf(held.id to OccurrenceRun(nine.toEpochMilli(), "missed by 180 min (phone off?)")), repository.observeLatestOccurrences().first())
         // A one-off waits itself.
         val once = repository.save(daily.copy(id = 0, recurrence = "ONCE", firstAtMillis = nine.plus(Duration.ofDays(2)).toEpochMilli()), ranAt)
         val oneOff = repository.recordMissed(once.id, once.nextAtMillis!!, "missed by 30 min (phone off?)", "Mum", ranAt.plus(Duration.ofDays(2)))!!
@@ -161,7 +161,7 @@ class ScheduleRepositoryTest {
         assertEquals(failed.lastRunAtMillis, after.lastRunAtMillis)
         assertEquals(failed.lastResult, after.lastResult)
         assertEquals(Instant.ofEpochMilli(tomorrow).plus(Duration.ofDays(1)).toEpochMilli(), after.nextAtMillis)
-        assertEquals(nine.toEpochMilli(), repository.observeLatestOccurrences().first()[daily.id])
+        assertEquals(nine.toEpochMilli(), repository.observeLatestOccurrences().first()[daily.id]?.atMillis)
     }
 
     @Test
