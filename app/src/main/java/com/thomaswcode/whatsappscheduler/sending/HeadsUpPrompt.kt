@@ -51,7 +51,12 @@ class HeadsUpPrompt(
         }
     }
 
+    /**
+     * The token is in the request code as well as the extras: extras don't make a PendingIntent
+     * different, so with one request code every countdown would rewrite the last one's buttons, and an
+     * old notification still showing could answer the new countdown.
+     */
     private fun button(action: String, token: Long): PendingIntent = PendingIntent.getBroadcast(
-        context, 0, HeadsUpActionReceiver.intent(context, action, token), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        context, token.toInt(), HeadsUpActionReceiver.intent(context, action, token), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 }
