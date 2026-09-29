@@ -143,25 +143,40 @@ class AccessibilitySender(
                     search.goHome(whatsapp, t)
                     search.search(name, t)
                 } catch (e: StepFailure) {
-                    log.warn("check: couldn't search for '$name': ${e.message}")
-                    return@withTimeout ChatCheck.Failed(e.message ?: e.step)
+                    return@withTimeout checkFailed("couldn't search for '$name'", e)
                 }
-                // Only the result row and the chat's title are about the name.
-                try {
-                    search.openResult(name, t)
-                    log.info("check: found '$name'")
-                    ChatCheck.Found
+                // Only whether a result has the name is about the name.
+                val row = try {
+                    search.findResult(name, t)
                 } catch (e: StepFailure) {
                     log.warn("check: '$name' not found: ${e.message}")
-                    ChatCheck.NotFound(e.message ?: "not found")
+                    return@withTimeout ChatCheck.NotFound(e.message ?: "not found")
                 }
+                // Opening it is WhatsApp's side again: a click lost or a chat slow to open isn't a wrong name.
+                try {
+                    search.open(row, name, t)
+                } catch (e: StepFailure) {
+                    return@withTimeout checkFailed("found '$name' but couldn't open it", e)
+                }
+                log.info("check: found '$name'")
+                ChatCheck.Found
             }
         } catch (e: TimeoutCancellationException) {
+            // Where it got to, for Diagnostics, which the result sends the user to.
+            log.warn("check: gave up on '$name' after ${settings.jobTimeoutMs}ms")
+            runCatching { driver.dump() }.getOrNull()?.let { log.saveDump("check timeout", it) }
             ChatCheck.Failed("it took too long")
         } finally {
             runCatching { leaveWhatsApp(driver, whatsapp) }
             service.active.set(false)
         }
+    }
+
+    /** A check stopped by WhatsApp's side, logged with the screen it stopped on for Diagnostics. */
+    private fun checkFailed(what: String, e: StepFailure): ChatCheck.Failed {
+        log.warn("check: $what: ${e.message}")
+        e.dump?.let { log.saveDump("check: ${e.step}", it) }
+        return ChatCheck.Failed(e.message ?: e.step)
     }
 
     /**
