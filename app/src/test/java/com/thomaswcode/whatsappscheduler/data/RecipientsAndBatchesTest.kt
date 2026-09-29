@@ -140,6 +140,20 @@ class RecipientsAndBatchesTest {
     }
 
     @Test
+    fun aFailedMessageWaitingToBeSentByHandFollowsTheRecipientToo() = runTest {
+        val m = recipients.resolve(mum)
+        val failed = schedules.saveBatch(template(), listOf(m), now = now).saved.single()
+        schedules.recordRun(failed.id, failed.nextAtMillis!!, SendStatus.FAILED, "search: Timed out", "Mum", tomorrowNine.plusSeconds(30))
+        val uncertain = schedules.saveBatch(template(), listOf(m), now = now).saved.single()
+        schedules.recordRun(uncertain.id, uncertain.nextAtMillis!!, SendStatus.UNCERTAIN, "verify: Timed out", "Mum", tomorrowNine.plusSeconds(30))
+        val changed = recipients.updateDetails(m.copy(phoneE164 = "+447400123459"))
+        assertEquals(listOf(failed.id), changed.map { it.id })
+        assertEquals("+447400123459", schedules.get(failed.id)!!.phoneE164)
+        // It may have gone to the old number: that is the chat to check.
+        assertEquals("+447400123456", schedules.get(uncertain.id)!!.phoneE164)
+    }
+
+    @Test
     fun detailEditsReportThePendingMessagesTheyChanged() = runTest {
         val m = recipients.resolve(mum)
         val pending = schedules.saveBatch(template(), listOf(m), now = now).saved.single()
