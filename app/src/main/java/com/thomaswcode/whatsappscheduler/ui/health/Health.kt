@@ -71,7 +71,12 @@ object HealthCheck {
         val whatsappInstalled = listOf(Selectors.WHATSAPP, Selectors.WHATSAPP_BUSINESS).any {
             runCatching { context.packageManager.getPackageInfo(it, 0) }.isSuccess
         }
-        if (!whatsappInstalled) items += HealthItem(HealthProblem.WHATSAPP_MISSING, "WhatsApp isn't installed.", null, null)
+        if (!whatsappInstalled) {
+            items += HealthItem(
+                HealthProblem.WHATSAPP_MISSING, "WhatsApp isn't installed.",
+                "Install", Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=${Selectors.WHATSAPP}")),
+            )
+        }
         if (!Settings.canDrawOverlays(context)) {
             items += HealthItem(
                 HealthProblem.OVERLAY_DENIED,
