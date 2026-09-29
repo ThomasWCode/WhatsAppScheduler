@@ -17,9 +17,10 @@ import java.time.Instant
 
 /**
  * One exact alarm per enabled schedule. `setAlarmClock` is used because it is the alarm type
- * Samsung's power management is least likely to defer; it falls back to an inexact-while-idle
- * alarm if the user revokes the exact-alarm permission. Each alarm carries the occurrence it is
- * for, which the send queue uses to recognise a request it has already handled (B01).
+ * Samsung's power management is least likely to defer. On Android 14 and later (minSdk 34) the app
+ * always has exact alarms, through USE_EXACT_ALARM, so there is no inexact fallback (R1). Each alarm
+ * carries the occurrence it is for, which the send queue uses to recognise a request it has already
+ * handled (B01).
  */
 class AlarmScheduler(
     private val context: Context,
@@ -30,8 +31,6 @@ class AlarmScheduler(
     private val clearWarning: (scheduleId: Long, unlessAbout: String?) -> Unit = { _, _ -> },
 ) : ScheduleAlarms {
     private val alarmManager get() = context.getSystemService(AlarmManager::class.java)
-
-    fun canScheduleExact(): Boolean = alarmManager.canScheduleExactAlarms()
 
     /** Sets or clears the alarm for a single schedule according to its state. */
     override fun sync(schedule: Schedule) = sync(schedule, recovering = false)
@@ -44,14 +43,10 @@ class AlarmScheduler(
             return
         }
         val fire = firePendingIntent(schedule.id, next)
-        if (canScheduleExact()) {
-            val show = PendingIntent.getActivity(
-                context, 0, Intent(context, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-            )
-            alarmManager.setAlarmClock(AlarmManager.AlarmClockInfo(next, show), fire)
-        } else {
-            alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next, fire)
-        }
+        val show = PendingIntent.getActivity(
+            context, 0, Intent(context, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        alarmManager.setAlarmClock(AlarmManager.AlarmClockInfo(next, show), fire)
         armPreflight(schedule.id, next, recovering)
         // A warning about another time or chat is about a send that is no longer due.
         runCatching { clearWarning(schedule.id, Preflight.warningKey(next, schedule.targetName)) }
@@ -81,8 +76,7 @@ class AlarmScheduler(
             preflightIntent(scheduleId).putExtra(PreflightReceiver.EXTRA_OCCURRENCE_AT, occurrenceAtMillis),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        if (canScheduleExact()) alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, check)
-        else alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, check)
+        alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, check)
     }
 
     private fun cancelPreflight(scheduleId: Long) {
