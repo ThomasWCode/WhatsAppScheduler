@@ -74,6 +74,18 @@ class FallbackNotifier(private val context: Context, private val notifications: 
     )
 
     /**
+     * [schedule]'s alarm couldn't be set, so its next message won't go by itself. Opening the app sets
+     * every alarm again.
+     */
+    fun notifyUnarmed(schedule: Schedule) = show(
+        schedule,
+        title = "Your next message to ${schedule.targetName} may not go",
+        text = "Its alarm couldn't be set. Open the app to set it again.",
+        tap = openRow(schedule),
+        actions = emptyList(),
+    )
+
+    /**
      * What the pre-flight check found would make the send due at [occurrenceAtMillis] fail (features
      * F5), with the way to fix it. It goes once that send is no longer due (it ran, or the schedule was
      * moved, switched off or deleted), or an hour after it was due.

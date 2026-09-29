@@ -149,10 +149,23 @@ class Notifications(private val context: Context) {
     /**
      * Whether a notification on [channel] would pop up over what is on screen: not when the app's
      * notifications are off (on Android 13 and later, also when they were never allowed), nor when that
-     * channel is, or has been turned down to stay in the shade.
+     * channel is, or has been turned down to stay in the shade, nor when Do Not Disturb hides it.
      */
-    fun popsUp(channel: String): Boolean =
-        manager.areNotificationsEnabled() && (manager.getNotificationChannel(channel)?.importance ?: NotificationManager.IMPORTANCE_HIGH) >= NotificationManager.IMPORTANCE_HIGH
+    fun popsUp(channel: String): Boolean {
+        if (!manager.areNotificationsEnabled()) return false
+        val found = manager.getNotificationChannel(channel)
+        if ((found?.importance ?: NotificationManager.IMPORTANCE_HIGH) < NotificationManager.IMPORTANCE_HIGH) return false
+        return when (manager.currentInterruptionFilter) {
+            NotificationManager.INTERRUPTION_FILTER_ALL, NotificationManager.INTERRUPTION_FILTER_UNKNOWN -> true
+            // Total silence hides everything.
+            NotificationManager.INTERRUPTION_FILTER_NONE -> false
+            // Priority only or alarms only: a channel allowed through pops up; otherwise it does unless the
+            // policy hides pop-ups. As well as can be told: the policy Android lets an app read is the
+            // user's default one, which a mode of its own may override.
+            else -> found?.canBypassDnd() == true ||
+                runCatching { manager.notificationPolicy.suppressedVisualEffects and NotificationManager.Policy.SUPPRESSED_EFFECT_PEEK == 0 }.getOrDefault(true)
+        }
+    }
 
     fun isShowing(id: Int): Boolean = runCatching { manager.activeNotifications.any { it.id == id } }.getOrDefault(false)
 
