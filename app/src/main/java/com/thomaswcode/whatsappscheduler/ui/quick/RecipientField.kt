@@ -64,7 +64,7 @@ fun RecipientField(
     onAddDraft: (RecipientDraft) -> Unit,
     onAddContact: (ContactHit) -> Unit,
     onAddSaved: (Recipient) -> Unit,
-    onAddChatName: (String) -> Unit,
+    onAddTyped: (String) -> Unit,
     onAllowContacts: () -> Unit,
     onPickContact: () -> Unit,
 ) {
@@ -90,7 +90,7 @@ fun RecipientField(
             enabled = enabled,
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { if (query.isNotBlank()) onAddChatName(query) }),
+            keyboardActions = KeyboardActions(onDone = { if (query.isNotBlank()) onAddTyped(query) }),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 4.dp)
@@ -143,11 +143,13 @@ fun RecipientField(
                     modifier = Modifier.combinedClickable(role = Role.Button, onClick = { onAddSaved(saved) }),
                 )
             }
+            // A typed number opens that number's chat; anything else is looked for by name.
+            val number = QuickScheduleViewModel.looksLikeNumber(query.trim())
             ListItem(
-                headlineContent = { Text("Use \"${query.trim()}\" as a group or chat name") },
-                supportingContent = { Text("Found by this exact name in WhatsApp's search") },
-                leadingContent = { Icon(Icons.Default.Group, contentDescription = null) },
-                modifier = Modifier.combinedClickable(role = Role.Button, onClick = { onAddChatName(query) }),
+                headlineContent = { Text(if (number) "Use ${query.trim()}" else "Use \"${query.trim()}\" as a group or chat name") },
+                supportingContent = { Text(if (number) "Opens the chat with this number" else "Found by this exact name in WhatsApp's search") },
+                leadingContent = { Icon(if (number) Icons.Default.Person else Icons.Default.Group, contentDescription = null) },
+                modifier = Modifier.combinedClickable(role = Role.Button, onClick = { onAddTyped(query) }),
             )
         }
     }
