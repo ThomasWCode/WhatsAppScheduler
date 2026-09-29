@@ -172,7 +172,6 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         visible = true
     }
 
-    /** Text shared from another app; the sheet opens on the recipient. */
     /**
      * The sheet for text shared from another app, with [recipientId] chosen when it came through one of
      * the recent chats Direct Share offers (features F6), once that chat is looked up.
@@ -518,6 +517,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
                     armFailure?.let { throw it }
                     // Only orders the recent chips, so it doesn't fail the save.
                     runCatching { container.recipients.markUsed(resolved.map { it.id }) }.onFailure { container.log.error("Marking recipients used failed", it) }
+                    container.shareShortcuts.used(resolved)
                     change
                 }
             }

@@ -35,6 +35,15 @@ class ShareShortcuts(private val context: Context) {
         }
     }
 
+    /**
+     * A message was just scheduled to [recipients]: each one's shortcut is reported as used, which is
+     * what the share sheet ranks its Direct Share targets by, so the chats used most are offered first.
+     * Pushed rather than only reported, so a chat new to the recents has its shortcut already.
+     */
+    fun used(recipients: List<Recipient>) {
+        runCatching { recipients.forEach { ShortcutManagerCompat.pushDynamicShortcut(context, shortcutFor(it)) } }
+    }
+
     private fun shortcutFor(recipient: Recipient): ShortcutInfoCompat {
         val id = idFor(recipient.id)
         return ShortcutInfoCompat.Builder(context, id)
