@@ -50,6 +50,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -58,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.thomaswcode.whatsappscheduler.AppContainer
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.data.settings.Settings
 import com.thomaswcode.whatsappscheduler.domain.PhoneNormaliser
 import com.thomaswcode.whatsappscheduler.domain.PinCircuitBreaker
@@ -101,71 +104,77 @@ fun SettingsScreen(
     }
     BackHandler { leave(onBack) }
 
-    Scaffold(topBar = { BackBar("Settings", onBack = { leave(onBack) }) }) { padding ->
+    val confirmItsYou = stringResource(R.string.settings_confirm_its_you)
+    Scaffold(topBar = { BackBar(stringResource(R.string.settings_title), onBack = { leave(onBack) }) }) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).imePadding().padding(16.dp).verticalScroll(rememberScrollState())) {
-            Text("Secrets", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Stored encrypted with a hardware-backed key. This app decrypts them at send time, so anyone who controls this app on this phone can too.",
-                style = MaterialTheme.typography.bodySmall,
-            )
+            Text(stringResource(R.string.settings_secrets), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.settings_secrets_note), style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(if (hasPin) "Lock-screen PIN: stored" else "Lock-screen PIN: not stored", modifier = Modifier.weight(1f))
+                Text(stringResource(if (hasPin) R.string.settings_pin_stored else R.string.settings_pin_not_stored), modifier = Modifier.weight(1f))
                 OutlinedButton(onClick = {
-                    (context as Activity).authenticateThen("Confirm it's you", onFailure = vm::showStatus) { pinDialog = true }
-                }) { Text(if (hasPin) "Change" else "Store") }
+                    (context as Activity).authenticateThen(confirmItsYou, onFailure = vm::showStatus) { pinDialog = true }
+                }) { Text(stringResource(if (hasPin) R.string.action_change else R.string.action_store)) }
             }
             pinBlock?.let { Text(it.describe(is24Hour = DateFormat.is24HourFormat(context)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(if (hasSecret) "Chat Lock secret code: stored" else "Chat Lock secret code: none", modifier = Modifier.weight(1f))
+                Text(stringResource(if (hasSecret) R.string.settings_secret_stored else R.string.settings_secret_none), modifier = Modifier.weight(1f))
                 OutlinedButton(onClick = {
-                    (context as Activity).authenticateThen("Confirm it's you", onFailure = vm::showStatus) { secretDialog = true }
-                }) { Text(if (hasSecret) "Change" else "Store") }
+                    (context as Activity).authenticateThen(confirmItsYou, onFailure = vm::showStatus) { secretDialog = true }
+                }) { Text(stringResource(if (hasSecret) R.string.action_change else R.string.action_store)) }
             }
-            Text("Only needed if you hid the Locked chats folder behind a secret code.", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.settings_secret_note), style = MaterialTheme.typography.bodySmall)
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
-            Text("Sending", style = MaterialTheme.typography.titleMedium)
-            ToggleRow("Notify after each send", "A quiet \"Sent to …\" notification. Test runs always say they sent nothing.", settings.notifyAfterSend) { v ->
+            Text(stringResource(R.string.settings_sending), style = MaterialTheme.typography.titleMedium)
+            ToggleRow(stringResource(R.string.settings_notify_title), stringResource(R.string.settings_notify_text), settings.notifyAfterSend) { v ->
                 update { it.copy(notifyAfterSend = v) }
             }
-            TimeSettingRow("Morning time for quick chips", "Used by This morning, Tomorrow and Mon.", settings.morning) { t ->
+            TimeSettingRow(stringResource(R.string.settings_morning_title), stringResource(R.string.settings_morning_text), settings.morning) { t ->
                 update { it.copy(morningMinutes = t.hour * 60 + t.minute) }
             }
-            TimeSettingRow("Evening time for quick chips", "Used by Tonight.", settings.evening) { t ->
+            TimeSettingRow(stringResource(R.string.settings_evening_title), stringResource(R.string.settings_evening_text), settings.evening) { t ->
                 update { it.copy(eveningMinutes = t.hour * 60 + t.minute) }
             }
             KeepSentRow(settings.keepSentDays, vm::setKeepSentDays)
-            ToggleRow("Re-lock the phone after sending", "Only when it was locked before.", settings.relockAfterSend) { v -> update { it.copy(relockAfterSend = v) } }
+            ToggleRow(stringResource(R.string.settings_relock_title), stringResource(R.string.settings_relock_text), settings.relockAfterSend) { v ->
+                update { it.copy(relockAfterSend = v) }
+            }
             OwnNumberRow(settings.ownNumberE164, settings.defaultCountryIso) { e164 -> update { it.copy(ownNumberE164 = e164) } }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
-            Text("Test mode", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.settings_test_mode), style = MaterialTheme.typography.titleMedium)
             TestModeRow(settings.dryRunUntilMillis) { until -> update { it.copy(dryRunUntilMillis = until) } }
 
             // Tuning that rarely needs touching (R6), out of the way until opened.
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
-            CollapsibleSection("Advanced", "Retries, timeouts, the grace window, the countdown, and more.") {
-                NumberRow("Retries per message", settings.retryCount, 0..5) { v -> update { it.copy(retryCount = v) } }
-                NumberRow("Seconds between retries", settings.retryDelaySeconds, 5..600) { v -> update { it.copy(retryDelaySeconds = v) } }
-                NumberRow("Step timeout (ms)", settings.stepTimeoutMs.toInt(), 2_000..60_000) { v -> update { it.copy(stepTimeoutMs = v.toLong()) } }
-                NumberRow("Whole-send timeout (ms)", settings.jobTimeoutMs.toInt(), 20_000..600_000) { v -> update { it.copy(jobTimeoutMs = v.toLong()) } }
-                NumberRow("Missed-send grace (minutes)", settings.missedGraceMinutes, 0..24 * 60) { v -> update { it.copy(missedGraceMinutes = v) } }
-                NumberRow("Countdown before sending, in use (seconds)", settings.headsUpSeconds, 5..30) { v -> update { it.copy(headsUpSeconds = v) } }
+            CollapsibleSection(stringResource(R.string.settings_advanced), stringResource(R.string.settings_advanced_summary)) {
+                NumberRow(stringResource(R.string.settings_retries), settings.retryCount, 0..5) { v -> update { it.copy(retryCount = v) } }
+                NumberRow(stringResource(R.string.settings_retry_delay), settings.retryDelaySeconds, 5..600) { v -> update { it.copy(retryDelaySeconds = v) } }
+                NumberRow(stringResource(R.string.settings_step_timeout), settings.stepTimeoutMs.toInt(), 2_000..60_000) { v ->
+                    update { it.copy(stepTimeoutMs = v.toLong()) }
+                }
+                NumberRow(stringResource(R.string.settings_job_timeout), settings.jobTimeoutMs.toInt(), 20_000..600_000) { v ->
+                    update { it.copy(jobTimeoutMs = v.toLong()) }
+                }
+                NumberRow(stringResource(R.string.settings_grace), settings.missedGraceMinutes, 0..24 * 60) { v -> update { it.copy(missedGraceMinutes = v) } }
+                NumberRow(stringResource(R.string.settings_countdown), settings.headsUpSeconds, 5..30) { v -> update { it.copy(headsUpSeconds = v) } }
                 CountryRow(settings.defaultCountryIso) { v -> update { it.copy(defaultCountryIso = v) } }
-                ToggleRow("Use phone-number link for locked contacts", "Faster path for locked contact chats; enable only if a dry run shows it works.", settings.deepLinkForLockedChats) { v -> update { it.copy(deepLinkForLockedChats = v) } }
+                ToggleRow(stringResource(R.string.settings_deep_link_title), stringResource(R.string.settings_deep_link_text), settings.deepLinkForLockedChats) { v ->
+                    update { it.copy(deepLinkForLockedChats = v) }
+                }
             }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
             // Logs moved here from the list's top bar (R7): Needs attention now brings failures to you.
-            CollapsibleSection("Diagnostics", "Setup checklist, logs, the UI inspector and re-arming alarms.") {
-                Button(onClick = { leave(onSetup) }, modifier = Modifier.fillMaxWidth()) { Text("Setup checklist") }
-                OutlinedButton(onClick = { leave(onLogs) }, modifier = Modifier.fillMaxWidth()) { Text("Logs: sends and automation trace") }
-                OutlinedButton(onClick = { leave(onInspector) }, modifier = Modifier.fillMaxWidth()) { Text("UI inspector (capture WhatsApp view ids)") }
+            CollapsibleSection(stringResource(R.string.settings_diagnostics), stringResource(R.string.settings_diagnostics_summary)) {
+                Button(onClick = { leave(onSetup) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.settings_setup_checklist)) }
+                OutlinedButton(onClick = { leave(onLogs) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.settings_logs)) }
+                OutlinedButton(onClick = { leave(onInspector) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.settings_inspector)) }
                 OutlinedButton(
                     onClick = vm::rearmAlarms,
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Re-arm all alarms") }
+                ) { Text(stringResource(R.string.settings_rearm)) }
             }
             status?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp)) }
             Spacer(Modifier.height(32.dp))
@@ -182,8 +191,8 @@ fun SettingsScreen(
     }
     if (secretDialog) {
         SecretDialog(
-            title = "Chat Lock secret code",
-            hint = "Leave empty to remove",
+            title = stringResource(R.string.settings_secret_title),
+            hint = stringResource(R.string.settings_secret_hint),
             onDismiss = { secretDialog = false },
             onSave = { value -> vm.saveSecretCode(value) { secretDialog = false } },
         )
@@ -201,7 +210,7 @@ private fun PinDialog(hasPin: Boolean, onDismiss: () -> Unit, onSave: (String) -
     var password by remember { mutableStateOf(false) }
     var first by remember { mutableStateOf("") }
     var second by remember { mutableStateOf("") }
-    val noun = if (password) "password" else "PIN"
+    val kind = stringResource(if (password) R.string.settings_pin_kind_password else R.string.settings_pin_kind_pin)
     val tooShort = first.isNotEmpty() && first.length < MIN_LOCK_LENGTH
     val mismatch = second.isNotEmpty() && second != first
     val valid = first.length >= MIN_LOCK_LENGTH && second == first
@@ -209,7 +218,18 @@ private fun PinDialog(hasPin: Boolean, onDismiss: () -> Unit, onSave: (String) -
     fun accept(text: String) = if (password) text else text.filter(Char::isDigit)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (hasPin) "Change lock-screen $noun" else "Store lock-screen $noun") },
+        title = {
+            Text(
+                stringResource(
+                    when {
+                        hasPin && password -> R.string.settings_pin_change_password
+                        hasPin -> R.string.settings_pin_change_pin
+                        password -> R.string.settings_pin_store_password
+                        else -> R.string.settings_pin_store_pin
+                    },
+                ),
+            )
+        },
         text = {
             Column {
                 SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
@@ -218,41 +238,46 @@ private fun PinDialog(hasPin: Boolean, onDismiss: () -> Unit, onSave: (String) -
                             selected = password == isPassword,
                             onClick = { if (password != isPassword) { password = isPassword; first = ""; second = "" } },
                             shape = SegmentedButtonDefaults.itemShape(i, 2),
-                        ) { Text(if (isPassword) "Password" else "PIN") }
+                        ) { Text(stringResource(if (isPassword) R.string.settings_pin_kind_password else R.string.settings_pin_kind_pin)) }
                     }
                 }
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = first,
                     onValueChange = { first = accept(it) },
-                    label = { Text(noun.replaceFirstChar(Char::uppercase)) },
+                    label = { Text(kind) },
                     singleLine = true,
                     isError = tooShort,
-                    supportingText = { Text(if (tooShort) "At least $MIN_LOCK_LENGTH characters" else "Exactly what you type on the lock screen") },
+                    supportingText = {
+                        Text(
+                            if (tooShort) pluralStringResource(R.plurals.settings_pin_min_length, MIN_LOCK_LENGTH, MIN_LOCK_LENGTH)
+                            else stringResource(R.string.settings_pin_exact),
+                        )
+                    },
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = keyboard,
                 )
                 OutlinedTextField(
                     value = second,
                     onValueChange = { second = accept(it) },
-                    label = { Text("Enter it again") },
+                    label = { Text(stringResource(R.string.settings_pin_again)) },
                     singleLine = true,
                     isError = mismatch,
-                    supportingText = if (mismatch) ({ Text("Doesn't match") }) else null,
+                    supportingText = if (mismatch) ({ Text(stringResource(R.string.settings_pin_mismatch)) }) else null,
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = keyboard,
                 )
                 Text(
-                    "If the phone rejects it, automatic unlocking pauses until you store it again, so a wrong $noun is never typed twice.",
+                    stringResource(if (password) R.string.settings_pin_rejects_password else R.string.settings_pin_rejects_pin),
                     style = MaterialTheme.typography.bodySmall,
                 )
                 if (hasPin) {
-                    TextButton(onClick = onRemove) { Text("Remove stored PIN", color = MaterialTheme.colorScheme.error) }
+                    TextButton(onClick = onRemove) { Text(stringResource(R.string.settings_pin_remove), color = MaterialTheme.colorScheme.error) }
                 }
             }
         },
-        confirmButton = { TextButton(enabled = valid, onClick = { onSave(first) }) { Text("Save") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(enabled = valid, onClick = { onSave(first) }) { Text(stringResource(R.string.action_save)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
     )
 }
 
@@ -275,8 +300,8 @@ private fun SecretDialog(title: String, hint: String, onDismiss: () -> Unit, onS
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             )
         },
-        confirmButton = { TextButton(onClick = { onSave(value) }) { Text("Save") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(onClick = { onSave(value) }) { Text(stringResource(R.string.action_save)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
     )
 }
 
@@ -298,20 +323,20 @@ private fun TestModeRow(untilMillis: Long?, onChange: (Long?) -> Unit) {
     val on = untilMillis != null && untilMillis > now
     val timeFormat = rememberTimeFormat()
     val subtitle = when {
-        !on -> "Runs every step and clears the message instead of sending it. For checking the app works."
-        untilMillis == Settings.UNTIL_TURNED_OFF -> "On until you turn it off: nothing is sent."
-        else -> "On until ${timeFormat(Instant.ofEpochMilli(untilMillis!!).atZone(ZoneId.systemDefault()).toLocalTime())}: nothing is sent."
+        !on -> stringResource(R.string.settings_test_mode_off)
+        untilMillis == Settings.UNTIL_TURNED_OFF -> stringResource(R.string.settings_test_mode_until_off)
+        else -> stringResource(R.string.settings_test_mode_until, timeFormat(Instant.ofEpochMilli(untilMillis!!).atZone(ZoneId.systemDefault()).toLocalTime()))
     }
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("Test mode (dry run)")
+                Text(stringResource(R.string.settings_test_mode_title))
                 Text(subtitle, style = MaterialTheme.typography.bodySmall)
             }
             Switch(checked = on, onCheckedChange = { v -> onChange(if (v) System.currentTimeMillis() + TEST_MODE_MILLIS else null) })
         }
         if (on) {
-            val options = listOf(false to "For 1 hour", true to "Until turned off")
+            val options = listOf(false to stringResource(R.string.settings_test_mode_hour), true to stringResource(R.string.settings_test_mode_always))
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
                 options.forEachIndexed { i, (always, label) ->
                     SegmentedButton(
@@ -330,10 +355,10 @@ private const val TEST_MODE_MILLIS = 60 * 60 * 1000L
 /** How long sent messages stay under Sent before they are cleared (their history stays, up to 90 days). */
 @Composable
 private fun KeepSentRow(days: Int, onChange: (Int) -> Unit) {
-    val options = listOf(7 to "7 days", 30 to "30 days", 90 to "90 days", 0 to "Always")
+    val options = listOf(7, 30, 90).map { it to pluralStringResource(R.plurals.settings_keep_days, it, it) } + (0 to stringResource(R.string.settings_keep_always))
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-        Text("Keep sent messages for")
-        Text("Sent one-offs are cleared from the list after this; Logs keep their history for 90 days.", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.settings_keep_title))
+        Text(stringResource(R.string.settings_keep_text), style = MaterialTheme.typography.bodySmall)
         SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
             options.forEachIndexed { i, (value, label) ->
                 SegmentedButton(
@@ -364,8 +389,10 @@ private fun TimeSettingRow(title: String, subtitle: String, value: LocalTime, on
         val state = rememberTimePickerState(initialHour = value.hour, initialMinute = value.minute, is24Hour = is24)
         AlertDialog(
             onDismissRequest = { picking = false },
-            confirmButton = { TextButton(onClick = { onChange(LocalTime.of(state.hour, state.minute)); picking = false }) { Text("OK") } },
-            dismissButton = { TextButton(onClick = { picking = false }) { Text("Cancel") } },
+            confirmButton = {
+                TextButton(onClick = { onChange(LocalTime.of(state.hour, state.minute)); picking = false }) { Text(stringResource(R.string.action_ok)) }
+            },
+            dismissButton = { TextButton(onClick = { picking = false }) { Text(stringResource(R.string.action_cancel)) } },
             text = { TimePicker(state = state) },
         )
     }
@@ -384,14 +411,14 @@ private fun OwnNumberRow(value: String?, countryIso: String, onSave: (String?) -
         if (valid) onSave(parsed?.e164OrNull)
     }
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-        Text("Your own number")
+        Text(stringResource(R.string.settings_own_number))
         OutlinedTextField(
             value = text,
             onValueChange = { text = it },
-            placeholder = { Text("For a Me chip in the quick sheet") },
+            placeholder = { Text(stringResource(R.string.settings_own_number_hint)) },
             singleLine = true,
             isError = !valid,
-            supportingText = { Text(if (valid) "Leave empty to hide the Me chip." else "Not a valid number.") },
+            supportingText = { Text(stringResource(if (valid) R.string.settings_own_number_help else R.string.recipient_number_invalid)) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { commit() }),
             modifier = Modifier.fillMaxWidth().onFocusChanged { if (!it.isFocused) commit() },
@@ -429,7 +456,7 @@ private fun NumberRow(title: String, value: Int, range: IntRange, onSave: (Int) 
         title = title,
         text = text,
         onText = { t -> text = t.filter(Char::isDigit).take(7) },
-        error = "${range.first}–${range.last}".takeUnless { valid },
+        error = stringResource(R.string.settings_range, range.first, range.last).takeUnless { valid },
         keyboard = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
         onDone = { save(); focus.clearFocus() },
         onLeave = ::save,
@@ -447,10 +474,10 @@ private fun CountryRow(value: String, onSave: (String) -> Unit) {
         if (valid && code != value) onSave(code)
     }
     SettingField(
-        title = "Default country for phone numbers (ISO)",
+        title = stringResource(R.string.settings_country),
         text = text,
         onText = { t -> text = t.take(2) },
-        error = "Two letters, e.g. GB".takeUnless { valid },
+        error = stringResource(R.string.settings_country_error).takeUnless { valid },
         keyboard = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Done),
         onDone = { save(); focus.clearFocus() },
         onLeave = ::save,
@@ -488,8 +515,9 @@ private fun SettingField(
 private fun CollapsibleSection(title: String, summary: String, content: @Composable () -> Unit) {
     var open by rememberSaveable(title) { mutableStateOf(false) }
     val focus = LocalFocusManager.current
+    val toggleLabel = stringResource(if (open) R.string.settings_section_close else R.string.settings_section_open, title)
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClickLabel = if (open) "Close $title" else "Open $title") {
+        modifier = Modifier.fillMaxWidth().clickable(onClickLabel = toggleLabel) {
             // A field being edited saves as it loses focus: before it goes with the section, not lost with it.
             focus.clearFocus()
             open = !open

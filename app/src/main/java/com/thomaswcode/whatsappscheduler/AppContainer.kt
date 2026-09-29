@@ -1,6 +1,8 @@
 package com.thomaswcode.whatsappscheduler
 
 import android.content.Context
+import androidx.annotation.PluralsRes
+import androidx.annotation.StringRes
 import com.thomaswcode.whatsappscheduler.data.Housekeeping
 import com.thomaswcode.whatsappscheduler.data.RecipientRepository
 import com.thomaswcode.whatsappscheduler.data.ScheduleRepository
@@ -24,6 +26,7 @@ import com.thomaswcode.whatsappscheduler.sending.SendService
 import com.thomaswcode.whatsappscheduler.sending.SendStateHolder
 import com.thomaswcode.whatsappscheduler.ui.share.ShareShortcuts
 import com.thomaswcode.whatsappscheduler.util.AutomationLog
+import com.thomaswcode.whatsappscheduler.util.Texts
 import java.time.Clock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +39,15 @@ import kotlinx.coroutines.sync.withLock
 class AppContainer(context: Context) {
 
     private val appContext = context.applicationContext
+
+    /** Text from strings.xml, for code without a Context of its own, such as the view models. */
+    fun text(@StringRes id: Int, vararg args: Any): String = appContext.getString(id, *args)
+
+    /** [text] for the classes that take a [Texts] rather than a Context. */
+    val texts: Texts = Texts.of(appContext.resources)
+
+    /** A plural from strings.xml for [count], formatted with [args]. */
+    fun plural(@PluralsRes id: Int, count: Int, vararg args: Any): String = appContext.resources.getQuantityString(id, count, *args)
 
     val database: AppDatabase by lazy { AppDatabase.build(appContext) }
     val repository: ScheduleRepository by lazy { ScheduleRepository(database) }
@@ -62,7 +74,7 @@ class AppContainer(context: Context) {
     /** Batch occurrences whose Snooze or Postpone couldn't be saved, kept for alarms that come later. */
     val stoppedOccurrences = StoppedOccurrences(Clock.systemUTC())
     val attentionActions: AttentionActions by lazy {
-        AttentionActions(repository, alarmScheduler, { sendState.state.value }, ::send, fallbackNotifier::cancel, admission = sendAdmission)
+        AttentionActions(repository, alarmScheduler, { sendState.state.value }, ::send, fallbackNotifier::cancel, admission = sendAdmission, texts = texts)
     }
     val log: AutomationLog by lazy { AutomationLog(appContext) }
     val alarmScheduler: AlarmScheduler by lazy {

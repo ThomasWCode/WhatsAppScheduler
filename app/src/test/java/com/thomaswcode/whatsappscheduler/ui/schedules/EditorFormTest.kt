@@ -1,7 +1,10 @@
 package com.thomaswcode.whatsappscheduler.ui.schedules
 
+import android.content.Context
+import androidx.annotation.StringRes
 import androidx.compose.runtime.saveable.SaverScope
 import androidx.lifecycle.SavedStateHandle
+import androidx.test.core.app.ApplicationProvider
 import com.thomaswcode.whatsappscheduler.data.RecipientDraft
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.domain.Recurrence
@@ -15,8 +18,16 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+// Robolectric for the resources: a problem names a string, and the test reads what it says.
+@RunWith(RobolectricTestRunner::class)
 class EditorFormTest {
+
+    private val context = ApplicationProvider.getApplicationContext<Context>()
+
+    private fun say(@StringRes id: Int?): String? = id?.let(context::getString)
 
     private val london = ZoneId.of("Europe/London")
     private val workCrew = RecipientDraft(TargetKind.GROUP, "Work crew", whatsappName = "Work crew 🛠", isLocked = true, recipientId = 7)
@@ -68,13 +79,13 @@ class EditorFormTest {
     fun problemsSayWhatIsMissingByField() {
         val ok = EditorForm.blank(LocalDateTime.parse("2026-09-28T12:00").atZone(london)).copy(recipient = workCrew, message = "Hi")
         assertTrue(ok.problems().isEmpty())
-        assertEquals("Choose who it's for.", ok.copy(recipient = null).problems()[EditorForm.Field.RECIPIENT])
-        assertEquals("Enter a message.", ok.copy(message = " ").problems()[EditorForm.Field.MESSAGE])
-        assertEquals("Pick at least one day.", ok.copy(ruleKind = RuleKind.WEEKLY, weekdays = emptySet()).problems()[EditorForm.Field.RULE])
-        assertEquals("A day from 1 to 31.", ok.copy(ruleKind = RuleKind.MONTHLY, monthDay = "32").problems()[EditorForm.Field.RULE])
-        assertEquals("A day from 1 to 31.", ok.copy(ruleKind = RuleKind.MONTHLY, monthDay = "").problems()[EditorForm.Field.RULE])
-        assertEquals("At least 1 hour.", ok.copy(ruleKind = RuleKind.HOURS, every = "0").problems()[EditorForm.Field.RULE])
-        assertEquals("At least 1 day.", ok.copy(ruleKind = RuleKind.DAYS, every = "").problems()[EditorForm.Field.RULE])
+        assertEquals("Choose who it's for.", say(ok.copy(recipient = null).problems()[EditorForm.Field.RECIPIENT]))
+        assertEquals("Enter a message.", say(ok.copy(message = " ").problems()[EditorForm.Field.MESSAGE]))
+        assertEquals("Pick at least one day.", say(ok.copy(ruleKind = RuleKind.WEEKLY, weekdays = emptySet()).problems()[EditorForm.Field.RULE]))
+        assertEquals("A day from 1 to 31.", say(ok.copy(ruleKind = RuleKind.MONTHLY, monthDay = "32").problems()[EditorForm.Field.RULE]))
+        assertEquals("A day from 1 to 31.", say(ok.copy(ruleKind = RuleKind.MONTHLY, monthDay = "").problems()[EditorForm.Field.RULE]))
+        assertEquals("At least 1 hour.", say(ok.copy(ruleKind = RuleKind.HOURS, every = "0").problems()[EditorForm.Field.RULE]))
+        assertEquals("At least 1 day.", say(ok.copy(ruleKind = RuleKind.DAYS, every = "").problems()[EditorForm.Field.RULE]))
         assertNull(ok.copy(ruleKind = RuleKind.MONTHLY, monthDay = "31").problems()[EditorForm.Field.RULE])
     }
 

@@ -1,19 +1,28 @@
 package com.thomaswcode.whatsappscheduler.ui.schedules
 
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
 import com.thomaswcode.whatsappscheduler.data.LatestRuns
 import com.thomaswcode.whatsappscheduler.data.OccurrenceRun
 import com.thomaswcode.whatsappscheduler.data.db.Attention
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.data.db.SendStatus
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
+import com.thomaswcode.whatsappscheduler.util.Texts
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+@RunWith(RobolectricTestRunner::class)
 class ListSectionsTest {
+
+    // The app's own resources, so what is said is checked word for word.
+    private val texts = Texts.of(ApplicationProvider.getApplicationContext<Context>().resources)
 
     private val london = ZoneId.of("Europe/London")
 
@@ -105,7 +114,7 @@ class ListSectionsTest {
     fun statusLinesSayWhenInPlainWords() {
         fun failedRun(detail: String? = null) = OccurrenceRun(ms("2026-09-28T09:00"), ms("2026-09-28T08:40"), detail)
         val runs = mapOf(6L to LatestRuns(mapOf(SendStatus.MISSED to failedRun(), SendStatus.FAILED to failedRun())))
-        fun line(section: Section, s: Schedule) = statusLine(section, listOf(s), now, runs)
+        fun line(section: Section, s: Schedule) = statusLine(section, listOf(s), now, runs, texts)
 
         assertEquals("Today 20:00 · in 3 h", line(Section.UPCOMING, schedule(1)))
         assertEquals("Tomorrow 09:00", line(Section.UPCOMING, schedule(1, next = "2026-09-29T09:00")))
@@ -133,14 +142,14 @@ class ListSectionsTest {
         // Why, in words, when the step that failed is known: from that occurrence's own run, which a later
         // try by hand doesn't change.
         val notFound = mapOf(6L to LatestRuns(mapOf(SendStatus.FAILED to failedRun("search: Timed out after 8000ms waiting for wa.searchInput"))))
-        assertEquals("Couldn't find the chat · Today 08:40", statusLine(Section.ATTENTION, listOf(failed), now, notFound))
+        assertEquals("Couldn't find the chat · Today 08:40", statusLine(Section.ATTENTION, listOf(failed), now, notFound, texts))
         val triedByHand = failed.copy(lastResult = "manual DRY_RUN: composer filled, send not tapped")
-        assertEquals("Couldn't find the chat · Today 08:40", statusLine(Section.ATTENTION, listOf(triedByHand), now, notFound))
+        assertEquals("Couldn't find the chat · Today 08:40", statusLine(Section.ATTENTION, listOf(triedByHand), now, notFound, texts))
         // Nor does a later test run of another occurrence, which leaves the failure waiting.
         val thenTested = mapOf(
             6L to LatestRuns(notFound.getValue(6L).byStatus + (SendStatus.DRY_RUN to OccurrenceRun(ms("2026-09-28T19:00"), ms("2026-09-28T19:00"), "composer filled, send not tapped"))),
         )
-        assertEquals("Couldn't find the chat · Today 08:40", statusLine(Section.ATTENTION, listOf(failed), now, thenTested))
+        assertEquals("Couldn't find the chat · Today 08:40", statusLine(Section.ATTENTION, listOf(failed), now, thenTested, texts))
         // A row from before runs were logged by occurrence has only its last result.
         val legacy = schedule(9, next = null).copy(lastRunAtMillis = ms("2026-09-28T08:40"), attention = Attention.FAILED, lastResult = "FAILED: search: No result")
         assertEquals("Couldn't find the chat · Today 08:40", line(Section.ATTENTION, legacy))
@@ -157,7 +166,7 @@ class ListSectionsTest {
 
     @Test
     fun aScheduleKeptInAnotherZoneSaysItsOwnTimeToo() {
-        fun line(section: Section, s: Schedule) = statusLine(section, listOf(s), now, emptyMap())
+        fun line(section: Section, s: Schedule) = statusLine(section, listOf(s), now, emptyMap(), texts)
         // 09:00 in New York is 14:00 in London, where the phone is.
         val newYork = schedule(1, next = "2026-09-29T14:00", recurrence = "DAILY").copy(zoneId = "America/New_York")
         assertEquals("Daily · next Tomorrow 14:00 (09:00 New York time)", line(Section.REPEATING, newYork))

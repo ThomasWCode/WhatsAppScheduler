@@ -1,6 +1,7 @@
 package com.thomaswcode.whatsappscheduler.sending
 
 import android.app.Application
+import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.thomaswcode.whatsappscheduler.data.ScheduleRepository
@@ -10,6 +11,7 @@ import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.data.db.SendStatus
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
 import com.thomaswcode.whatsappscheduler.scheduling.ScheduleAlarms
+import com.thomaswcode.whatsappscheduler.util.Texts
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -36,6 +38,9 @@ import org.robolectric.annotation.Config
 @Config(application = Application::class)
 class AttentionActionsTest {
 
+    // What the actions say, read from the app's resources: the test checks the wording.
+    private val texts = Texts.of(ApplicationProvider.getApplicationContext<Context>().resources)
+
     private lateinit var db: AppDatabase
     private lateinit var schedules: ScheduleRepository
     private lateinit var actions: AttentionActions
@@ -61,7 +66,7 @@ class AttentionActionsTest {
     fun setUp() {
         db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), AppDatabase::class.java).build()
         schedules = ScheduleRepository(db)
-        actions = AttentionActions(schedules, alarms, { state }, { requested += it }, { cancelled += it }, clock)
+        actions = AttentionActions(schedules, alarms, { state }, { requested += it }, { cancelled += it }, clock, texts = texts)
     }
 
     @After
@@ -102,7 +107,7 @@ class AttentionActionsTest {
     fun aDiscardWaitsForASendTakingTheRow() = runTest {
         val m = missed()
         val admission = Mutex()
-        val guarded = AttentionActions(schedules, alarms, { state }, { requested += it }, { cancelled += it }, clock, admission)
+        val guarded = AttentionActions(schedules, alarms, { state }, { requested += it }, { cancelled += it }, clock, admission, texts)
         admission.lock()
         val discard = async { guarded.discard(m.id) }
         runCurrent()
@@ -118,7 +123,7 @@ class AttentionActionsTest {
     fun aMoveWaitsForASendTakingTheRow() = runTest {
         val m = missed()
         val admission = Mutex()
-        val guarded = AttentionActions(schedules, alarms, { state }, { requested += it }, { cancelled += it }, clock, admission)
+        val guarded = AttentionActions(schedules, alarms, { state }, { requested += it }, { cancelled += it }, clock, admission, texts)
         admission.lock()
         val move = async { guarded.postpone(m, now.plus(Duration.ofHours(2))) }
         runCurrent()
@@ -132,7 +137,7 @@ class AttentionActionsTest {
     @Test
     fun aSendThatCantStartKeepsTheNotification() = runTest {
         val m = missed()
-        val blocked = AttentionActions(schedules, alarms, { state }, { error("not allowed from the background") }, { cancelled += it }, clock)
+        val blocked = AttentionActions(schedules, alarms, { state }, { error("not allowed from the background") }, { cancelled += it }, clock, texts = texts)
         assertTrue(blocked.sendNow(m.id)!!.startsWith("Couldn't start sending"))
         assertTrue(cancelled.isEmpty())
     }

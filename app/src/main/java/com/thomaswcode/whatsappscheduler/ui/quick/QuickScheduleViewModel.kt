@@ -12,6 +12,7 @@ import androidx.lifecycle.viewmodel.compose.saveable
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.thomaswcode.whatsappscheduler.AppContainer
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.data.RecipientDraft
 import com.thomaswcode.whatsappscheduler.data.ScheduleRepository
 import com.thomaswcode.whatsappscheduler.data.SentWhileEditing
@@ -29,6 +30,7 @@ import com.thomaswcode.whatsappscheduler.domain.TargetKind
 import com.thomaswcode.whatsappscheduler.domain.TimeChip
 import com.thomaswcode.whatsappscheduler.sending.accessibility.WaAccessibilityService
 import com.thomaswcode.whatsappscheduler.ui.minuteClock
+import com.thomaswcode.whatsappscheduler.util.Texts
 import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
@@ -115,7 +117,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
                 val stored = container.recipients.byPhone(p)
                 // "Me" is only the chip's label: the chat keeps its real name, which the Locked chats search
                 // and the full editor (Repeat…) need.
-                RecipientDraft(TargetKind.CONTACT, "Me", stored?.chatName, p, stored?.isLocked ?: false, stored?.id)
+                RecipientDraft(TargetKind.CONTACT, container.text(R.string.recipient_me), stored?.chatName, p, stored?.isLocked ?: false, stored?.id)
             }
         }
         .stateIn(viewModelScope, whileShown, null)
@@ -244,8 +246,10 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
             editingIds = kept.map { draft.editingIds[it] },
             editingRuns = if (draft.editingRuns.size == draft.editingIds.size) kept.map { draft.editingRuns[it] } else emptyList(),
         )
-        error = "It went to ${sent.joinToString { it.targetName }} while you were editing, so nothing was saved." +
-            if (draft.isEditing) " Save again to change the rest." else ""
+        error = container.text(
+            if (draft.isEditing) R.string.quick_went_while_editing_save_again else R.string.quick_went_while_editing,
+            sent.joinToString { it.targetName },
+        )
     }
 
     /** Swiping the sheet away keeps the draft for the next time it opens. */
@@ -288,7 +292,8 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         if (saving) return
         when {
             draft.recipients.any { it.sameChatAs(recipient) } -> Unit
-            draft.recipients.size >= ScheduleRepository.MAX_BATCH -> error = "One message can go to at most ${ScheduleRepository.MAX_BATCH} chats."
+            draft.recipients.size >= ScheduleRepository.MAX_BATCH ->
+                error = container.plural(R.plurals.quick_max_recipients, ScheduleRepository.MAX_BATCH, ScheduleRepository.MAX_BATCH)
             else -> draft = draft.copy(recipients = draft.recipients + recipient)
         }
         query = ""
@@ -304,7 +309,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         // Read with the country set now, not the one the results were found with: it may have changed
         // in Settings since, and the search again may not be back yet.
         val picked = when (val input = RecipientInput.fromContact(hit, settings.value.defaultCountryIso)) {
-            is RecipientInput.Refused -> return run { error = input.reason }
+            is RecipientInput.Refused -> return run { error = container.text(input.reason, input.number) }
             is RecipientInput.Chosen -> input.recipient
         }
         val e164 = picked.phoneE164 ?: return
@@ -326,7 +331,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         if (saving) return
         val typedChat = when (val input = RecipientInput.fromTyped(text, settings.value.defaultCountryIso)) {
             null -> return
-            is RecipientInput.Refused -> return run { error = input.reason }
+            is RecipientInput.Refused -> return run { error = container.text(input.reason, input.number) }
             is RecipientInput.Chosen -> input.recipient
         }
         add(typedChat)
@@ -364,15 +369,15 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
             outcome
                 .onSuccess { saved ->
                     if (saved is DetailsSaved.Refused) {
-                        val what = if (updated.phoneE164 != null) "that number" else "that name"
-                        error = "${saved.existing.displayName} already has $what. Choose ${saved.existing.displayName} instead."
+                        val already = if (updated.phoneE164 != null) R.string.recipient_already_has_number else R.string.recipient_already_has_name
+                        error = container.text(already, saved.existing.displayName)
                     } else {
                         applyToDraft()
                     }
                 }
                 .onFailure {
                     container.log.error("Saving recipient details failed", it)
-                    error = "Couldn't save the details (${it.message ?: it.javaClass.simpleName}). Try again."
+                    error = container.text(R.string.recipient_details_save_failed, it.message ?: it.javaClass.simpleName)
                 }
         }
     }
@@ -393,7 +398,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
             saving = false
             // The chip stays linked unless it really went: a failure would otherwise look like success.
             if (removed.isFailure) {
-                error = "Couldn't remove ${recipient.displayName} from recents. Try again."
+                error = container.text(R.string.recipient_remove_failed, recipient.displayName)
                 return@launch
             }
             draft = draft.copy(recipients = draft.recipients.map { if (it.recipientId == id) it.copy(recipientId = null) else it })
@@ -445,11 +450,20 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
             draft = draft.copy(recipients = draft.recipients.map { if (it == recipient) it.copy(recipientId = outcome.recipientId) else it })
         }
         val message = when (val result = outcome.result) {
-            ChatCheck.Found -> "Found “$name” in WhatsApp."
+            ChatCheck.Found -> container.text(R.string.quick_check_found, name)
             // The step's own reason is in the automation log; here, what to do about it.
-            is ChatCheck.NotFound -> "Couldn't find “$name” in WhatsApp's search. Check the name is exactly as WhatsApp shows it."
-            is ChatCheck.Failed -> "Couldn't check “$name”: WhatsApp didn't respond as expected. Logs under Settings → Diagnostics say where."
-            is ChatCheck.NotChecked -> "Didn't check “$name”: ${result.reason}."
+            is ChatCheck.NotFound -> container.text(R.string.quick_check_not_found, name)
+            is ChatCheck.Failed -> container.text(R.string.quick_check_failed, name)
+            is ChatCheck.NotChecked -> container.text(
+                when (result.why) {
+                    ChatCheck.NotChecked.Why.LOCKED -> R.string.quick_check_skipped_locked
+                    ChatCheck.NotChecked.Why.BY_NUMBER -> R.string.quick_check_skipped_by_number
+                    ChatCheck.NotChecked.Why.SENDING -> R.string.quick_check_skipped_sending
+                    ChatCheck.NotChecked.Why.SERVICE_OFF -> R.string.quick_check_skipped_service
+                    ChatCheck.NotChecked.Why.NO_WHATSAPP -> R.string.quick_check_skipped_whatsapp
+                },
+                name,
+            )
         }
         events.trySend(QuickEvent.Checked(message))
         return outcome.result
@@ -471,12 +485,12 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         val d = draft
         val at = resolvedTime(now)
         error = when {
-            d.recipients.isEmpty() -> "Choose who it's for."
-            d.message.isBlank() -> "Enter a message."
-            at == null -> "Choose when to send it."
-            !isSendable(at, now) -> "Pick a time at least a minute from now."
+            d.recipients.isEmpty() -> R.string.problem_choose_recipient
+            d.message.isBlank() -> R.string.problem_enter_message
+            at == null -> R.string.problem_choose_time
+            !isSendable(at, now) -> R.string.pick_a_later_minute
             else -> null
-        }
+        }?.let { container.text(it) }
         if (error != null || at == null) return
         saving = true
         viewModelScope.launch {
@@ -524,7 +538,11 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
             saving = false
             outcome
                 .onSuccess { change ->
-                    val summary = (if (d.isEditing) "Saved: " else "Scheduled: ") + names(d.recipients) + " · " + FriendlyTime.dayAndTime(at, now, time)
+                    val summary = container.text(
+                        if (d.isEditing) R.string.quick_saved else R.string.quick_scheduled,
+                        names(d.recipients, container.texts),
+                        FriendlyTime.dayAndTime(at, now, time),
+                    )
                     pendingCheckOffers = checkOffers
                     events.trySend(QuickEvent.Scheduled(summary, change.saved.map { it.id }.takeUnless { d.isEditing }, checkOffers))
                     draft = QuickDraft()
@@ -538,7 +556,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
                     }
                     container.log.error("Quick schedule failed", it)
                     val reason = it.message ?: it.javaClass.simpleName
-                    error = if (committed) "Saved, but its alarm couldn't be set ($reason). Tap Save to try again." else "Couldn't save ($reason). Try again."
+                    error = container.text(if (committed) R.string.saved_unarmed else R.string.save_failed, reason)
                 }
         }
     }
@@ -564,13 +582,13 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
             saving = false
             outcome
                 .onSuccess {
-                    events.trySend(QuickEvent.Deleted("Deleted: " + names(d.recipients)))
+                    events.trySend(QuickEvent.Deleted(container.text(R.string.list_deleted, names(d.recipients, container.texts))))
                     draft = QuickDraft()
                     visible = false
                 }
                 .onFailure {
                     container.log.error("Quick delete failed", it)
-                    error = "Couldn't delete (${it.message ?: it.javaClass.simpleName}). Try again."
+                    error = container.text(R.string.delete_failed, it.message ?: it.javaClass.simpleName)
                 }
         }
     }
@@ -615,23 +633,23 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         fun looksLikeNumber(text: String): Boolean =
             text.count(Char::isDigit) >= 5 && text.all { it.isDigit() || it in "+ -()." }
 
-        /** "Mum", "Mum and Dad", "Mum, Dad +1". */
         /** “Book club”; “Book club” and “Work crew”; or “Book club”, “Work crew” and 2 more. */
-        fun quoted(chats: List<RecipientDraft>): String {
-            val q = chats.map { "“${it.chatName}”" }
+        fun quoted(chats: List<RecipientDraft>, texts: Texts): String {
+            val q = chats.map { texts.get(R.string.quoted_name, it.chatName) }
             return when (q.size) {
                 0 -> ""
                 1 -> q[0]
-                2 -> "${q[0]} and ${q[1]}"
-                else -> "${q[0]}, ${q[1]} and ${q.size - 2} more"
+                2 -> texts.get(R.string.names_two, q[0], q[1])
+                else -> texts.plural(R.plurals.names_more, q.size - 2, q[0], q[1], q.size - 2)
             }
         }
 
-        fun names(recipients: List<RecipientDraft>): String = when (recipients.size) {
+        /** "Mum", "Mum and Dad", "Mum, Dad +1". */
+        fun names(recipients: List<RecipientDraft>, texts: Texts): String = when (recipients.size) {
             0 -> ""
             1 -> recipients[0].displayName
-            2 -> "${recipients[0].displayName} and ${recipients[1].displayName}"
-            else -> "${recipients[0].displayName}, ${recipients[1].displayName} +${recipients.size - 2}"
+            2 -> texts.get(R.string.names_two, recipients[0].displayName, recipients[1].displayName)
+            else -> texts.get(R.string.names_plus, recipients[0].displayName, recipients[1].displayName, recipients.size - 2)
         }
     }
 }

@@ -39,10 +39,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.data.RecipientDraft
 import com.thomaswcode.whatsappscheduler.data.contacts.ContactHit
 import com.thomaswcode.whatsappscheduler.domain.FriendlyTime
@@ -123,11 +125,15 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
             .imePadding(),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(if (draft.isEditing) "Edit message" else "New message", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            Text(
+                stringResource(if (draft.isEditing) R.string.quick_title_edit else R.string.new_message),
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.weight(1f),
+            )
             if (draft.isEditing) {
-                TextButton(onClick = vm::delete, enabled = !vm.saving) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = vm::delete, enabled = !vm.saving) { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) }
             } else if (draft.recipients.isNotEmpty() || draft.message.isNotBlank() || draft.time != null) {
-                TextButton(onClick = vm::discard, enabled = !vm.saving) { Text("Discard") }
+                TextButton(onClick = vm::discard, enabled = !vm.saving) { Text(stringResource(R.string.action_discard)) }
             }
         }
         // One warning at most: the most serious thing that would stop or change the send.
@@ -168,28 +174,28 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
             onValueChange = vm::setMessage,
             // Frozen while saving: what shows is what is being saved.
             enabled = !vm.saving,
-            label = { Text("Message") },
+            label = { Text(stringResource(R.string.message_label)) },
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             minLines = 3,
             modifier = Modifier.fillMaxWidth().heightIn(min = 96.dp).focusRequester(messageFocus),
         )
         Spacer(Modifier.height(8.dp))
-        Text("When", style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(R.string.quick_when), style = MaterialTheme.typography.titleSmall)
         TimeChips(chips, draft.time, now, vm::choose, enabled = !vm.saving)
         val sendable = at != null && QuickScheduleViewModel.isSendable(at, now)
         at?.let {
             Text(resolvedLine(it, now, timeFormat), style = MaterialTheme.typography.bodyMedium)
             when {
-                !sendable -> Text("That time has passed. Pick a later one.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                !sendable -> Text(stringResource(R.string.quick_time_passed), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 Duration.between(now, it) < Duration.ofMinutes(2) ->
-                    Text("Sends in under 2 minutes", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
+                    Text(stringResource(R.string.quick_sends_soon), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
             }
         }
         vm.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp)) }
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             // Off while saving: the draft would otherwise become both this one-off and a series.
-            if (!draft.isEditing) TextButton(onClick = vm::repeat, enabled = !vm.saving) { Text("Repeat…") }
+            if (!draft.isEditing) TextButton(onClick = vm::repeat, enabled = !vm.saving) { Text(stringResource(R.string.quick_repeat)) }
             Spacer(Modifier.weight(1f).width(8.dp))
             Button(
                 // The confirmation says the time the phone's way, as the sheet does.
@@ -198,10 +204,10 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
             ) {
                 Text(
                     when {
-                        vm.saving -> "Saving…"
-                        draft.isEditing -> "Save"
-                        at != null -> "Schedule · " + FriendlyTime.dayAndTime(at, now, timeFormat)
-                        else -> "Schedule"
+                        vm.saving -> stringResource(R.string.saving)
+                        draft.isEditing -> stringResource(R.string.action_save)
+                        at != null -> stringResource(R.string.quick_schedule_at, FriendlyTime.dayAndTime(at, now, timeFormat))
+                        else -> stringResource(R.string.quick_schedule)
                     },
                 )
             }

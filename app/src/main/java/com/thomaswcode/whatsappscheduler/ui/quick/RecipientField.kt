@@ -33,10 +33,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.data.RecipientDraft
 import com.thomaswcode.whatsappscheduler.data.contacts.ContactHit
 import com.thomaswcode.whatsappscheduler.data.db.Recipient
@@ -75,7 +77,7 @@ fun RecipientField(
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), itemVerticalAlignment = Alignment.CenterVertically) {
-            Text("To", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(end = 4.dp))
+            Text(stringResource(R.string.recipient_to), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(end = 4.dp))
             chosen.forEach { recipient ->
                 RecipientChip(
                     label = recipient.displayName,
@@ -93,11 +95,13 @@ fun RecipientField(
             onValueChange = onQuery,
             placeholder = {
                 Text(
-                    when {
-                        chosen.isEmpty() -> "Search contacts or type a group…"
-                        single -> "Send it to someone else…"
-                        else -> "Add another…"
-                    },
+                    stringResource(
+                        when {
+                            chosen.isEmpty() -> R.string.recipient_search_hint
+                            single -> R.string.recipient_search_hint_single
+                            else -> R.string.recipient_search_hint_more
+                        },
+                    ),
                 )
             },
             enabled = enabled,
@@ -119,7 +123,9 @@ fun RecipientField(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    meAvailable?.let { m -> RecipientChip("Me", TargetKind.CONTACT, m.isLocked, selected = false, onClick = { onAddDraft(m) }) }
+                    meAvailable?.let { m ->
+                        RecipientChip(stringResource(R.string.recipient_me), TargetKind.CONTACT, m.isLocked, selected = false, onClick = { onAddDraft(m) })
+                    }
                     available.forEach { recent ->
                         RecipientChip(
                             label = recent.displayName,
@@ -135,16 +141,16 @@ fun RecipientField(
         } else {
             if (!contactsAllowed) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                    Text("Allow contacts to search them here.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    Text(stringResource(R.string.recipient_allow_contacts_hint), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                     // Off while saving: a contact picked then would come back after the draft was cleared.
-                    TextButton(onClick = onAllowContacts, enabled = enabled) { Text("Allow") }
-                    TextButton(onClick = onPickContact, enabled = enabled) { Text("Pick from contacts") }
+                    TextButton(onClick = onAllowContacts, enabled = enabled) { Text(stringResource(R.string.action_allow)) }
+                    TextButton(onClick = onPickContact, enabled = enabled) { Text(stringResource(R.string.recipient_pick_from_contacts)) }
                 }
             }
             contactHits.forEach { hit ->
                 ListItem(
                     headlineContent = { Text(hit.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    supportingContent = { Text(hit.number + if (hit.onWhatsApp) " · on WhatsApp" else "") },
+                    supportingContent = { Text(if (hit.onWhatsApp) stringResource(R.string.recipient_number_on_whatsapp, hit.number) else hit.number) },
                     leadingContent = { Icon(Icons.Default.Person, contentDescription = null) },
                     modifier = Modifier.combinedClickable(role = Role.Button, onClick = { onAddContact(hit) }),
                 )
@@ -152,7 +158,9 @@ fun RecipientField(
             savedHits.filter { saved -> contactHits.none { it.e164 != null && it.e164 == saved.phoneE164 } }.forEach { saved ->
                 ListItem(
                     headlineContent = { Text(saved.displayName, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    supportingContent = { Text(saved.phoneE164 ?: if (saved.kind == TargetKind.GROUP) "Group or chat name" else "Found by name") },
+                    supportingContent = {
+                        Text(saved.phoneE164 ?: stringResource(if (saved.kind == TargetKind.GROUP) R.string.recipient_group_or_chat_name else R.string.recipient_found_by_name))
+                    },
                     leadingContent = { Icon(if (saved.kind == TargetKind.GROUP) Icons.Default.Group else Icons.Default.Person, contentDescription = null) },
                     modifier = Modifier.combinedClickable(role = Role.Button, onClick = { onAddSaved(saved) }),
                 )
@@ -160,8 +168,8 @@ fun RecipientField(
             // A typed number opens that number's chat; anything else is looked for by name.
             val number = QuickScheduleViewModel.looksLikeNumber(query.trim())
             ListItem(
-                headlineContent = { Text(if (number) "Use ${query.trim()}" else "Use \"${query.trim()}\" as a group or chat name") },
-                supportingContent = { Text(if (number) "Opens the chat with this number" else "Found by this exact name in WhatsApp's search") },
+                headlineContent = { Text(stringResource(if (number) R.string.recipient_use_number else R.string.recipient_use_name, query.trim())) },
+                supportingContent = { Text(stringResource(if (number) R.string.recipient_opens_number else R.string.recipient_found_by_exact_name)) },
                 leadingContent = { Icon(if (number) Icons.Default.Person else Icons.Default.Group, contentDescription = null) },
                 modifier = Modifier.combinedClickable(role = Role.Button, onClick = { onAddTyped(query) }),
             )
@@ -181,18 +189,19 @@ fun RecipientChip(
     onLongClick: (() -> Unit)? = null,
     onRemove: (() -> Unit)? = null,
 ) {
+    val details = stringResource(R.string.recipient_details_action)
     Surface(
         shape = RoundedCornerShape(8.dp),
         color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = Modifier
             .heightIn(min = 48.dp)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick, onLongClickLabel = "Details", role = Role.Button),
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick, onLongClickLabel = details, role = Role.Button),
     ) {
         // With a remove button the chip is that button's height, 48 dp, rather than padded past it.
         val padding = if (onRemove != null) PaddingValues(start = 10.dp) else PaddingValues(horizontal = 10.dp, vertical = 8.dp)
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(padding)) {
-            if (locked) Icon(Icons.Default.Lock, contentDescription = "Chat Lock", modifier = Modifier.size(16.dp).padding(end = 2.dp))
-            else if (kind == TargetKind.GROUP) Icon(Icons.Default.Group, contentDescription = "Group", modifier = Modifier.size(16.dp).padding(end = 2.dp))
+            if (locked) Icon(Icons.Default.Lock, contentDescription = stringResource(R.string.chat_lock), modifier = Modifier.size(16.dp).padding(end = 2.dp))
+            else if (kind == TargetKind.GROUP) Icon(Icons.Default.Group, contentDescription = stringResource(R.string.group), modifier = Modifier.size(16.dp).padding(end = 2.dp))
             Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (onRemove != null) {
                 // The whole 48 dp square is the button, not only the 20 dp cross (improvements I11).
@@ -200,7 +209,7 @@ fun RecipientChip(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier.size(48.dp).combinedClickable(onClick = onRemove, role = Role.Button),
                 ) {
-                    Icon(Icons.Default.Close, contentDescription = "Remove $label", modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.recipient_remove, label), modifier = Modifier.size(20.dp))
                 }
             }
         }

@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.text.format.DateFormat
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.data.OccurrenceRun
 import com.thomaswcode.whatsappscheduler.data.db.Attention
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
@@ -27,11 +28,11 @@ class FallbackNotifier(private val context: Context, private val notifications: 
     /** Failed before Send was tapped, after every retry: the message is delayed, not lost. */
     fun notifyFailed(schedule: Schedule, occurrenceAtMillis: Long?, reason: String) = show(
         schedule,
-        title = "Couldn't send to ${schedule.targetName}",
+        title = context.getString(R.string.notif_failed_title, schedule.targetName),
         text = failedText(reason, occurrenceAtMillis),
         tap = manualSend(schedule),
         actions = listOfNotNull(
-            "Tap to send" to manualSend(schedule),
+            context.getString(R.string.action_tap_to_send) to manualSend(schedule),
             postponeFor(schedule),
         ),
     )
@@ -39,39 +40,40 @@ class FallbackNotifier(private val context: Context, private val notifications: 
     /** Failed after Send was tapped: it may have gone out, so the chat is checked before anything else (B02). */
     fun notifyUncertain(schedule: Schedule, occurrenceAtMillis: Long?) = show(
         schedule,
-        title = "May have been sent to ${schedule.targetName}: check the chat",
-        text = "Auto-send${forOccurrence(occurrenceAtMillis)} was interrupted after tapping Send. Check the chat before sending it again.",
+        title = context.getString(R.string.notif_uncertain_title, schedule.targetName),
+        text = occurrenceAtMillis?.let { context.getString(R.string.notif_uncertain_text_for, stamp(it)) }
+            ?: context.getString(R.string.notif_uncertain_text),
         tap = checkChat(schedule),
         actions = listOf(
-            "Open chat" to checkChat(schedule),
-            "Mark as sent" to broadcast(schedule, AttentionActionReceiver.ACTION_MARK_SENT),
-            "Send again" to broadcast(schedule, AttentionActionReceiver.ACTION_SEND_NOW),
+            context.getString(R.string.action_open_chat) to checkChat(schedule),
+            context.getString(R.string.action_mark_as_sent) to broadcast(schedule, AttentionActionReceiver.ACTION_MARK_SENT),
+            context.getString(R.string.action_send_again) to broadcast(schedule, AttentionActionReceiver.ACTION_SEND_NOW),
         ),
     )
 
     /** An occurrence the alarm could not fire for in time. */
     fun notifyMissed(schedule: Schedule, occurrenceAtMillis: Long) = show(
         schedule,
-        title = "Missed: your message to ${schedule.targetName} (${stamp(occurrenceAtMillis)})",
-        text = "It wasn't sent because the phone was off or the app was stopped at that time. Tap to open the chat with the message ready.",
+        title = context.getString(R.string.notif_missed_title, schedule.targetName, stamp(occurrenceAtMillis)),
+        text = context.getString(R.string.notif_missed_text),
         tap = manualSend(schedule),
         actions = listOfNotNull(
-            "Send now" to broadcast(schedule, AttentionActionReceiver.ACTION_SEND_NOW),
+            context.getString(R.string.action_send_now) to broadcast(schedule, AttentionActionReceiver.ACTION_SEND_NOW),
             postponeFor(schedule),
-            "Discard" to broadcast(schedule, AttentionActionReceiver.ACTION_DISCARD),
+            context.getString(R.string.action_discard) to broadcast(schedule, AttentionActionReceiver.ACTION_DISCARD),
         ),
     )
 
     /** Held until the user picks a new time, e.g. the heads-up's Postpone… was dismissed (features F1). */
     fun notifyHeld(schedule: Schedule) = show(
         schedule,
-        title = "Not sent: choose a new time for ${schedule.targetName}",
+        title = context.getString(R.string.notif_held_title, schedule.targetName),
         text = firstLine(schedule.message),
         tap = openRow(schedule),
         actions = listOfNotNull(
             postponeFor(schedule),
-            "Send now" to broadcast(schedule, AttentionActionReceiver.ACTION_SEND_NOW),
-            "Discard" to broadcast(schedule, AttentionActionReceiver.ACTION_DISCARD),
+            context.getString(R.string.action_send_now) to broadcast(schedule, AttentionActionReceiver.ACTION_SEND_NOW),
+            context.getString(R.string.action_discard) to broadcast(schedule, AttentionActionReceiver.ACTION_DISCARD),
         ),
     )
 
@@ -81,8 +83,8 @@ class FallbackNotifier(private val context: Context, private val notifications: 
      */
     fun notifyUnarmed(schedule: Schedule) = show(
         schedule,
-        title = "Your next message to ${schedule.targetName} may not go",
-        text = "Its alarm couldn't be set. Open the app to set it again.",
+        title = context.getString(R.string.notif_unarmed_title, schedule.targetName),
+        text = context.getString(R.string.notif_unarmed_text),
         tap = openRow(schedule),
         actions = emptyList(),
     )
@@ -104,8 +106,9 @@ class FallbackNotifier(private val context: Context, private val notifications: 
         notifications.show(
             Notifications.ID_PREFLIGHT_BASE + schedule.id.toInt(),
             notifications.fallback(
-                "Your $at message to ${schedule.targetName} will fail", problem.message, tap,
-                listOfNotNull(problem.fixLabel?.let { "Fix" to tap }), lifetimeMs = untilSendIsOver.coerceAtLeast(WILL_FAIL_AFTERWARDS_MS),
+                context.getString(R.string.notif_will_fail_title, at, schedule.targetName), problem.message, tap,
+                listOfNotNull(problem.fixLabel?.let { context.getString(R.string.action_fix) to tap }),
+                lifetimeMs = untilSendIsOver.coerceAtLeast(WILL_FAIL_AFTERWARDS_MS),
                 about = Preflight.warningKey(occurrenceAtMillis, schedule.targetName),
             ),
         )
@@ -129,7 +132,9 @@ class FallbackNotifier(private val context: Context, private val notifications: 
         )
         notifications.show(
             Notifications.ID_PIN_PAUSED,
-            notifications.fallback("Automatic sending paused: update your PIN", reason, open, listOf("Open settings" to open)),
+            notifications.fallback(
+                context.getString(R.string.notif_pin_paused_title), reason, open, listOf(context.getString(R.string.action_open_settings) to open),
+            ),
         )
     }
 
@@ -169,7 +174,7 @@ class FallbackNotifier(private val context: Context, private val notifications: 
      * series' next occurrence, not the one that was missed.
      */
     private fun postponeFor(schedule: Schedule): Pair<String, PendingIntent>? =
-        if (schedule.rule != Recurrence.Once) null else "Postpone…" to PendingIntent.getActivity(
+        if (schedule.rule != Recurrence.Once) null else context.getString(R.string.action_postpone_ellipsis) to PendingIntent.getActivity(
             context, schedule.id.toInt(), PostponeActivity.intent(context, schedule.id).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
@@ -195,12 +200,10 @@ class FallbackNotifier(private val context: Context, private val notifications: 
 
     /** Why it failed, in words where the step is known (improvements I2); the technical text is in Logs. */
     private fun failedText(reason: String, occurrenceAtMillis: Long?): String {
-        val why = PlainResult.reason(reason) ?: "Auto-send failed ($reason)"
-        val which = occurrenceAtMillis?.let { "the message for ${stamp(it)}" } ?: "the message"
-        return "$why, so $which hasn't gone. Tap to open the chat with it ready."
+        val why = PlainResult.reason(reason) ?: context.getString(R.string.notif_failed_reason, reason)
+        return occurrenceAtMillis?.let { context.getString(R.string.notif_failed_text_for, why, stamp(it)) }
+            ?: context.getString(R.string.notif_failed_text, why)
     }
-
-    private fun forOccurrence(millis: Long?): String = millis?.let { " for ${stamp(it)}" } ?: ""
 
     /** In the phone's zone, and its 12/24-hour choice (improvements I1). */
     private fun stamp(millis: Long): String = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault())

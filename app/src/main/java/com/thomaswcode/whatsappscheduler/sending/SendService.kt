@@ -8,6 +8,7 @@ import android.provider.Settings
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.SchedulerApp
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.sending.accessibility.AccessibilitySender
@@ -50,6 +51,7 @@ class SendService : LifecycleService() {
             clock = Clock.systemDefaultZone(),
             jobGuard = WakeLockGuard(getSystemService(PowerManager::class.java)),
             admission = c.sendAdmission,
+            texts = c.texts,
             headsUp = HeadsUpPrompt(this, c.notifications, c.headsUpAnswers),
             stopped = c.stoppedOccurrences,
         )
@@ -57,7 +59,7 @@ class SendService : LifecycleService() {
 
     override fun onCreate() {
         super.onCreate()
-        val notification = container.notifications.sending("Preparing…")
+        val notification = container.notifications.sending(getString(R.string.notif_preparing))
         startForeground(Notifications.ID_SENDING, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         startupLock = getSystemService(PowerManager::class.java)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "WaScheduler:start")
