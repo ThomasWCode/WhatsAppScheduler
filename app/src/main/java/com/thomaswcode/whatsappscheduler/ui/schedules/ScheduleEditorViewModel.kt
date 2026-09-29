@@ -52,6 +52,8 @@ data class EditorForm(
     val pickedName: String? = null,
     /** The user flipped the Chat Lock switch here, rather than it coming from the schedule or its chat. */
     val lockedTouched: Boolean = false,
+    /** The user typed the name here, rather than it coming from the schedule or the contact picker. */
+    val nameTyped: Boolean = false,
 ) {
     fun rule(): Recurrence = when (ruleKind) {
         RuleKind.ONCE -> Recurrence.Once
@@ -101,7 +103,7 @@ data class EditorForm(
                 listOf(
                     it.kind.name, it.name, it.phone, it.locked, it.message, it.date.toEpochDay(), it.time.toSecondOfDay(),
                     it.ruleKind.name, ArrayList(it.weekdays.map(DayOfWeek::getValue)), it.monthDay, it.every, it.pickedName ?: "",
-                    it.lockedTouched,
+                    it.lockedTouched, it.nameTyped,
                 )
             },
             restore = {
@@ -120,6 +122,7 @@ data class EditorForm(
                     every = it[10] as String,
                     pickedName = (it[11] as String).ifEmpty { null },
                     lockedTouched = it[12] as Boolean,
+                    nameTyped = it[13] as Boolean,
                 )
             },
         )
@@ -186,8 +189,11 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
         copy(
             // Kept as picked when it doesn't parse, so the field shows why it can't be saved.
             phone = PhoneNormaliser.toE164(rawNumber, countryIso) ?: rawNumber,
-            name = if (name.isBlank() || name == pickedName) displayName else name,
+            // Replaced unless the user typed a name themselves: one loaded with the schedule belongs to
+            // the contact being replaced.
+            name = if (!nameTyped || name.isBlank() || name == pickedName) displayName else name,
             pickedName = displayName,
+            nameTyped = nameTyped && name.isNotBlank() && name != pickedName,
         )
     }
 
@@ -303,6 +309,9 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
          * the chat. Returns the name to remember, or null when the stored one stands.
          */
         fun typedChatName(form: EditorForm, recipient: Recipient): String? {
+            // Only what the user typed: a name loaded with the schedule or filled in by the picker isn't
+            // a statement about what WhatsApp shows for this chat.
+            if (!form.nameTyped) return null
             val typed = form.name.trim()
             return typed.takeIf { it.isNotEmpty() && it != form.pickedName?.trim() && it != recipient.chatName }
         }
