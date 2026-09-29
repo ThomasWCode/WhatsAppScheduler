@@ -141,6 +141,6 @@ class ListActionsTest {
         val occurrence = series.nextAtMillis!!
         schedules.recordRun(series.id, occurrence, SendStatus.MISSED, "missed by 3 h", "Mum", ranAt.plusSeconds(3 * 3600))
         schedules.recordManual(series.id, SendStatus.DRY_RUN, null, "Mum", ranAt.plusSeconds(4 * 3600))
-        assertEquals(mapOf(series.id to occurrence), schedules.observeLatestOccurrences().first())
+        assertEquals(mapOf(series.id to occurrence), schedules.observeLatestOccurrences().first().mapValues { it.value.behind(Attention.MISSED)?.occurrenceAtMillis })
     }
 }

@@ -4,8 +4,10 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.text.format.DateFormat
+import com.thomaswcode.whatsappscheduler.data.OccurrenceRun
 import com.thomaswcode.whatsappscheduler.data.db.Attention
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
+import com.thomaswcode.whatsappscheduler.domain.PlainResult
 import com.thomaswcode.whatsappscheduler.domain.Preflight
 import com.thomaswcode.whatsappscheduler.domain.Recurrence
 import com.thomaswcode.whatsappscheduler.ui.health.HealthItem
@@ -26,7 +28,7 @@ class FallbackNotifier(private val context: Context, private val notifications: 
     fun notifyFailed(schedule: Schedule, occurrenceAtMillis: Long?, reason: String) = show(
         schedule,
         title = "Couldn't send to ${schedule.targetName}",
-        text = "Auto-send${forOccurrence(occurrenceAtMillis)} failed ($reason). Tap to open the chat with the message ready.",
+        text = failedText(reason, occurrenceAtMillis),
         tap = manualSend(schedule),
         actions = listOfNotNull(
             "Tap to send" to manualSend(schedule),
@@ -35,10 +37,10 @@ class FallbackNotifier(private val context: Context, private val notifications: 
     )
 
     /** Failed after Send was tapped: it may have gone out, so the chat is checked before anything else (B02). */
-    fun notifyUncertain(schedule: Schedule, occurrenceAtMillis: Long?, reason: String) = show(
+    fun notifyUncertain(schedule: Schedule, occurrenceAtMillis: Long?) = show(
         schedule,
         title = "May have been sent to ${schedule.targetName}: check the chat",
-        text = "Auto-send${forOccurrence(occurrenceAtMillis)} was interrupted after tapping Send ($reason). Check the chat before sending it again.",
+        text = "Auto-send${forOccurrence(occurrenceAtMillis)} was interrupted after tapping Send. Check the chat before sending it again.",
         tap = checkChat(schedule),
         actions = listOf(
             "Open chat" to checkChat(schedule),
@@ -138,13 +140,15 @@ class FallbackNotifier(private val context: Context, private val notifications: 
 
     /**
      * Posts again the prompt for what [schedule] waits on, e.g. after Undo on the list put it back.
-     * The reason is the detail its last run recorded ("FAILED: search: …" gives "search: …").
+     * The reason is what its latest scheduled [run] recorded, or for a row from before runs were logged
+     * by occurrence, its last result ("FAILED: search: …" gives "search: …").
      */
-    fun notifyAttention(schedule: Schedule, occurrenceAtMillis: Long?) {
-        val reason = schedule.lastResult?.let { it.substringAfter(": ", missingDelimiterValue = it) } ?: "unknown"
+    fun notifyAttention(schedule: Schedule, run: OccurrenceRun?) {
+        val occurrenceAtMillis = run?.occurrenceAtMillis
+        val reason = run?.detail ?: schedule.lastResult?.let { it.substringAfter(": ", missingDelimiterValue = it) } ?: "unknown"
         when (schedule.attention) {
             Attention.FAILED -> notifyFailed(schedule, occurrenceAtMillis, reason)
-            Attention.UNCERTAIN -> notifyUncertain(schedule, occurrenceAtMillis, reason)
+            Attention.UNCERTAIN -> notifyUncertain(schedule, occurrenceAtMillis)
             Attention.MISSED -> notifyMissed(schedule, occurrenceAtMillis ?: schedule.firstAtMillis)
             Attention.HELD -> notifyHeld(schedule)
             null -> Unit
@@ -188,6 +192,13 @@ class FallbackNotifier(private val context: Context, private val notifications: 
         context, schedule.id.toInt(), intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
+
+    /** Why it failed, in words where the step is known (improvements I2); the technical text is in Logs. */
+    private fun failedText(reason: String, occurrenceAtMillis: Long?): String {
+        val why = PlainResult.reason(reason) ?: "Auto-send failed ($reason)"
+        val which = occurrenceAtMillis?.let { "the message for ${stamp(it)}" } ?: "the message"
+        return "$why, so $which hasn't gone. Tap to open the chat with it ready."
+    }
 
     private fun forOccurrence(millis: Long?): String = millis?.let { " for ${stamp(it)}" } ?: ""
 
