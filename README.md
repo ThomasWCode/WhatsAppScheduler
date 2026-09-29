@@ -8,7 +8,7 @@ Read the honest caveats in `docs/ARCHITECTURE.md` before relying on it: UI autom
 
 ## Requirements
 
-- Android 12 or newer (built and tested against Samsung One UI on Android 14–16).
+- Android 14 or newer (built and tested against Samsung One UI on Android 14–16).
 - Screen lock type PIN or password (with or without biometrics). Pattern is not supported.
 - WhatsApp or WhatsApp Business installed. WhatsApp's whole-app lock must be off; per-chat Chat Lock is fine.
 - To build: JDK 17 or newer (JDK 25, as bundled with current Android Studio, works) and the Android SDK with platform 37 and build tools 36 or newer.

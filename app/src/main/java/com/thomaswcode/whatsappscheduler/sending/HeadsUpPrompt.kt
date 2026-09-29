@@ -3,7 +3,6 @@ package com.thomaswcode.whatsappscheduler.sending
 import android.app.PendingIntent
 import android.content.Context
 import android.media.AudioManager
-import android.os.Build
 import android.os.PowerManager
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import kotlinx.coroutines.withTimeoutOrNull
@@ -23,7 +22,7 @@ class HeadsUpPrompt(
     /** Ringing counts: the call's screen is in front, and the countdown would go unseen behind it. */
     override fun inCall(): Boolean = context.getSystemService(AudioManager::class.java).mode.let {
         it == AudioManager.MODE_RINGTONE || it == AudioManager.MODE_IN_CALL || it == AudioManager.MODE_IN_COMMUNICATION ||
-            (Build.VERSION.SDK_INT >= 30 && it == AudioManager.MODE_CALL_SCREENING)
+            it == AudioManager.MODE_CALL_SCREENING
     }
 
     override fun canShow(): Boolean = notifications.popsUp(Notifications.CHANNEL_HEADS_UP)
