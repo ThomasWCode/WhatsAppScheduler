@@ -53,6 +53,9 @@ class SendQueueProcessor(
      */
     private val approved = mutableSetOf<Pair<Long, Long>>()
 
+    /** Batch occurrences whose Snooze or Postpone couldn't be saved: none of their members goes now. */
+    private val stopped = mutableSetOf<Pair<Long, Long>>()
+
     /** Queues [request] unless the same send is already queued or running; returns whether it was queued. */
     fun enqueue(request: SendRequest): Boolean = synchronized(lock) {
         val key = request.dedupKey
@@ -71,6 +74,7 @@ class SendQueueProcessor(
         while (true) {
             val request = synchronized(lock) { queue.removeFirstOrNull()?.also { current = it; publish() } } ?: run {
                 approved.clear()
+                stopped.clear()
                 return
             }
             try {
@@ -118,6 +122,12 @@ class SendQueueProcessor(
             }
         }
         if (request.kind == SendKind.SCHEDULED && occurrence != null) {
+            if ((schedule.id to occurrence) in stopped) {
+                log.info("Schedule ${schedule.id}: its batch couldn't be snoozed or held; not sending it")
+                return
+            }
+            // Not "Sending…" yet: it may be snoozed or held without a send ever starting.
+            state.update { it.copy(phase = SendPhase.WAITING, attempt = 0) }
             if (!countdown(schedule, occurrence, settings, letThrough)) return
             // The countdown, or a call before it, may have taken a while: the row as it is now.
             schedule = stillWanted(request, occurrence) ?: return
@@ -136,6 +146,12 @@ class SendQueueProcessor(
             notifier.progress("Retrying ${schedule.targetName} in ${settings.retryDelaySeconds} s…")
             delay(settings.retryDelaySeconds * 1000L)
             schedule = stillWanted(request, occurrence) ?: return
+            // A call that began meanwhile isn't interrupted: the send waits five minutes, and counts down again.
+            if (request.kind == SendKind.SCHEDULED && occurrence != null && headsUp.inCall()) {
+                log.info("Schedule ${schedule.id}: a call began before attempt ${attempt + 1}; snoozing")
+                snooze(listOf(schedule), occurrence)
+                return
+            }
         }
         finish(request, occurrence, schedule, result, dryRun)
     }
@@ -269,8 +285,25 @@ class SendQueueProcessor(
     private suspend fun snooze(batch: List<Schedule>, occurrence: Long) {
         val now = clock.instant()
         val to = now.plus(SNOOZE)
-        val unarmed = store.snooze(batch.map { it.id }, occurrence, to, now).filterNot(::arm)
+        val moved = saved(batch, occurrence, "Snooze") { store.snooze(batch.map { it.id }, occurrence, to, now) } ?: return
+        val unarmed = moved.filterNot(::arm)
         if (unarmed.isNotEmpty()) hold(unarmed, to.toEpochMilli(), HELD_UNARMED, pick = false)
+    }
+
+    /**
+     * Saves what the user chose for [batch] with [write]. If that fails nothing moved, and the batch
+     * would still be due: none of it goes now, as the user asked, and each is reported as not sent,
+     * with the ways to send it or pick a time. Null then.
+     */
+    private suspend fun <T> saved(batch: List<Schedule>, occurrence: Long, what: String, write: suspend () -> T): T? = try {
+        write()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        log.error("$what for schedule(s) ${batch.map { it.id }} couldn't be saved", e)
+        stopped += batch.map { it.id to occurrence }
+        batch.forEach { member -> notifier.failed(member, occurrence, "precheck: $what couldn't be saved (${e.message ?: e.javaClass.simpleName})") }
+        null
     }
 
     /**
@@ -279,7 +312,7 @@ class SendQueueProcessor(
      * opens over what the user is doing.
      */
     private suspend fun hold(batch: List<Schedule>, occurrence: Long, detail: String, pick: Boolean) {
-        val runs = store.hold(batch.map { it.id }, occurrence, clock.instant(), detail)
+        val runs = saved(batch, occurrence, "Postpone") { store.hold(batch.map { it.id }, occurrence, clock.instant(), detail) } ?: return
         runs.forEach { run ->
             // A series goes on to its next time; if that can't be armed, its next message wouldn't go by
             // itself, and nothing would say so.
