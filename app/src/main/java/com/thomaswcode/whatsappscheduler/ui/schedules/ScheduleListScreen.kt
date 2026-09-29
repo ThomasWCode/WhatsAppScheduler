@@ -132,9 +132,9 @@ fun ScheduleListScreen(
             when (event) {
                 is QuickEvent.Scheduled -> {
                     val undo = event.createdIds
-                    // A chat found by name, new just now: offered a check once, after the Undo has gone.
-                    val offer = event.checkOffer?.let { chat ->
-                        ScheduleListViewModel.FollowUp("Check “${chat.chatName}” in WhatsApp now?", "Check") { quick.checkChat(chat) }
+                    // Chats found by name, new just now: offered a check once, all together, after the Undo has gone.
+                    val offer = event.checkOffers.takeIf { it.isNotEmpty() }?.let { chats ->
+                        ScheduleListViewModel.FollowUp("Check ${QuickScheduleViewModel.quoted(chats)} in WhatsApp now?", "Check") { quick.checkChats(chats) }
                     }
                     if (undo != null) announce(event.summary, "Undo", offer) { quick.undo(undo) } else announce(event.summary, followUp = offer)
                 }
