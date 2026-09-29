@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -94,7 +95,7 @@ fun ScheduleEditorScreen(
 
     Scaffold(topBar = { BackBar(if (vm.scheduleId == 0L) "New message" else "Edit message", onDone) }) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
+            modifier = Modifier.fillMaxSize().padding(padding).imePadding().padding(16.dp).verticalScroll(rememberScrollState()),
         ) {
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                 TargetKind.entries.forEachIndexed { i, k ->
@@ -108,7 +109,7 @@ fun ScheduleEditorScreen(
             Spacer(Modifier.height(12.dp))
             OutlinedTextField(
                 value = form.name,
-                onValueChange = { vm.update { copy(name = it) } },
+                onValueChange = { vm.update { copy(name = it, nameTyped = true) } },
                 label = { Text(if (form.kind == TargetKind.CONTACT) "Contact name (as shown in WhatsApp)" else "Group name (exact, as shown in WhatsApp)") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
@@ -139,7 +140,7 @@ fun ScheduleEditorScreen(
             }
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Switch(checked = form.locked, onCheckedChange = { locked -> vm.update { copy(locked = locked) } })
+                Switch(checked = form.locked, onCheckedChange = { locked -> vm.update { copy(locked = locked, lockedTouched = true) } })
                 Spacer(Modifier.width(8.dp))
                 Column {
                     Text("This chat is behind WhatsApp Chat Lock")

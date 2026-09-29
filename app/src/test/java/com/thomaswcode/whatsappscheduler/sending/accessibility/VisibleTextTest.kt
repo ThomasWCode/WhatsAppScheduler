@@ -9,8 +9,8 @@ class VisibleTextTest {
 
     @Test
     fun zeroWidthAndDirectionMarksAreIgnored() {
-        // What WhatsApp's search box reported after being set to "Matlock fun" (seen on One UI 8).
-        assertTrue(sameVisibleText("​Matlock fun", "Matlock fun"))
+        // What WhatsApp's search box reported after being set to "Book club" (seen on One UI 8).
+        assertTrue(sameVisibleText("​Book club", "Book club"))
         assertTrue(sameVisibleText("‪Hello‬", "Hello"))
         assertTrue(sameVisibleText(" Hello ", "Hello"))
         assertEquals("", visibleText("​﻿"))
@@ -19,8 +19,8 @@ class VisibleTextTest {
 
     @Test
     fun visibleDifferencesStillCount() {
-        assertFalse(sameVisibleText("Matlock fun", "Matlock  fun"))
-        assertFalse(sameVisibleText("matlock fun", "Matlock fun"))
+        assertFalse(sameVisibleText("Book club", "Book  club"))
+        assertFalse(sameVisibleText("book club", "Book club"))
     }
 
     @Test
@@ -37,6 +37,6 @@ class VisibleTextTest {
 
     @Test
     fun invisibleCharactersAreSpelledOutForLogs() {
-        assertEquals("\\u200BMatlock fun", showInvisible("​Matlock fun"))
+        assertEquals("\\u200BBook club", showInvisible("​Book club"))
     }
 }

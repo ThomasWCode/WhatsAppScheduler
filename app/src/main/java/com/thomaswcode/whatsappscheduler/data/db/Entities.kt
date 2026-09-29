@@ -27,7 +27,12 @@ data class Recipient(
     val useCount: Int = 0,
     /** When "Check this chat now" last found the chat by name (F4). */
     val verifiedAtMillis: Long? = null,
-)
+) {
+    /** The name WhatsApp shows, which the search path looks for; also the schedule's target name. */
+    val chatName: String get() = whatsappName?.takeIf { it.isNotBlank() } ?: displayName
+
+    val target: ChatTarget get() = ChatTarget(kind, chatName, phoneE164, isLocked)
+}
 
 @Entity(
     tableName = "schedules",

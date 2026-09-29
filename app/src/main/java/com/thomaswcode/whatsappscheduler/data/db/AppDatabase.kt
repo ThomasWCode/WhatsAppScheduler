@@ -40,6 +40,7 @@ class Converters {
 abstract class AppDatabase : RoomDatabase() {
     abstract fun scheduleDao(): ScheduleDao
     abstract fun sendLogDao(): SendLogDao
+    abstract fun recipientDao(): RecipientDao
 
     companion object {
         const val NAME = "scheduler.db"

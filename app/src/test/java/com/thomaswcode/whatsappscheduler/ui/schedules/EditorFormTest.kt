@@ -1,6 +1,7 @@
 package com.thomaswcode.whatsappscheduler.ui.schedules
 
 import androidx.compose.runtime.saveable.SaverScope
+import com.thomaswcode.whatsappscheduler.data.db.Recipient
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.domain.Recurrence
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
@@ -10,8 +11,11 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
+import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EditorFormTest {
@@ -34,9 +38,73 @@ class EditorFormTest {
             kind = TargetKind.GROUP, name = "Work crew", phone = "", locked = true, message = "Stand-up in 5",
             date = LocalDate.parse("2026-10-05"), time = LocalTime.parse("09:30"), ruleKind = RuleKind.WEEKLY,
             weekdays = setOf(DayOfWeek.MONDAY, DayOfWeek.THURSDAY), monthDay = "5", every = "3", pickedName = "Work",
+            lockedTouched = true, nameTyped = true,
         )
         val saved = with(EditorForm.Saver) { SaverScope { true }.save(form) }!!
         assertEquals(form, EditorForm.Saver.restore(saved))
+    }
+
+    @Test
+    fun chatLockComesFromTheChatUnlessSwitchedHere() {
+        val lockedChat = Recipient(id = 7, kind = TargetKind.CONTACT, displayName = "Sam", phoneE164 = "+447400123458", isLocked = true)
+        val form = EditorForm.blank(ZonedDateTime.of(2026, 9, 28, 12, 0, 0, 0, london)).copy(name = "Sam", phone = "+447400123458")
+        val elsewhere = Schedule(
+            message = "Hi", targetKind = TargetKind.CONTACT, targetName = "Dad", phoneE164 = "+447400123457", isLocked = false,
+            firstAtMillis = 0L, zoneId = london.id, recurrence = "DAILY", nextAtMillis = null, recipientId = 3,
+        )
+        // New, or moved to a chat already known to be locked: the untouched switch doesn't unlock it.
+        assertTrue(ScheduleEditorViewModel.lockFor(form, lockedChat, existing = null))
+        assertTrue(ScheduleEditorViewModel.lockFor(form, lockedChat, elsewhere))
+        // Still the schedule's own chat: the schedule's own setting stands.
+        assertFalse(ScheduleEditorViewModel.lockFor(form, lockedChat, elsewhere.copy(recipientId = 7)))
+        // Switched here: that decides.
+        assertFalse(ScheduleEditorViewModel.lockFor(form.copy(lockedTouched = true), lockedChat, null))
+    }
+
+    @Test
+    fun theChatsWhatsAppNameStandsUnlessOneIsTypedHere() {
+        val mum = Recipient(id = 7, kind = TargetKind.CONTACT, displayName = "Mum", whatsappName = "Mum (work)", phoneE164 = "+447400123456")
+        val form = EditorForm.blank(ZonedDateTime.of(2026, 9, 28, 12, 0, 0, 0, london)).copy(phone = "+447400123456")
+        // Filled in by the contact picker: the address book's name, not the one WhatsApp shows.
+        assertNull(ScheduleEditorViewModel.typedChatName(form.copy(name = "Mum", pickedName = "Mum"), mum))
+        // As the schedule already had it.
+        assertNull(ScheduleEditorViewModel.typedChatName(form.copy(name = "Mum (work)", nameTyped = true), mum))
+        // Loaded with the schedule for someone else and never typed: not a name for this chat.
+        assertNull(ScheduleEditorViewModel.typedChatName(form.copy(name = "Dad"), mum))
+        // Typed here: what WhatsApp shows, so it is remembered for the chat.
+        assertEquals("Mummy", ScheduleEditorViewModel.typedChatName(form.copy(name = " Mummy ", nameTyped = true), mum))
+    }
+
+    @Test
+    fun aNameTypedForOneContactGoesWhenAnotherIsPicked() {
+        val typed = EditorForm.blank(ZonedDateTime.of(2026, 9, 28, 12, 0, 0, 0, london))
+            .copy(phone = "+447400123456", name = "Mummy", pickedName = "Mum", nameTyped = true)
+        // Someone else: the name typed for Mum isn't theirs.
+        val dad = typed.picked("+447400123457", "Dad", "GB")
+        assertEquals("Dad", dad.name)
+        assertFalse(dad.nameTyped)
+        // Mum again: what was typed for her stands.
+        val again = typed.picked("+447400123456", "Mum", "GB")
+        assertEquals("Mummy", again.name)
+        assertTrue(again.nameTyped)
+        // Nothing typed: the picker's name, whoever it is.
+        assertEquals("Mum", typed.copy(nameTyped = false).picked("+447400123456", "Mum", "GB").name)
+    }
+
+    @Test
+    fun chatLockGoesWithTheContactItWasFor() {
+        val blank = EditorForm.blank(ZonedDateTime.of(2026, 9, 28, 12, 0, 0, 0, london))
+        val lockedMum = blank.copy(phone = "+447400123456", name = "Mum", locked = true)
+        // Someone else: off until what is remembered for them is looked up.
+        assertFalse(lockedMum.picked("+447400123457", "Dad", "GB").locked)
+        // Mum again: as it was.
+        assertTrue(lockedMum.picked("+447400123456", "Mum", "GB").locked)
+        // Switched on before anyone was chosen: for whoever is picked.
+        val flippedFirst = blank.copy(locked = true, lockedTouched = true).picked("+447400123457", "Dad", "GB")
+        assertTrue(flippedFirst.locked && flippedFirst.lockedTouched)
+        // Switched for Mum, then Dad picked: not a statement about Dad.
+        val dad = lockedMum.copy(lockedTouched = true).picked("+447400123457", "Dad", "GB")
+        assertFalse(dad.locked || dad.lockedTouched)
     }
 
     @Test

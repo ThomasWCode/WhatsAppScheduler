@@ -13,6 +13,8 @@ import androidx.lifecycle.viewmodel.compose.saveable
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.thomaswcode.whatsappscheduler.AppContainer
+import com.thomaswcode.whatsappscheduler.data.RecipientDraft
+import com.thomaswcode.whatsappscheduler.data.db.Recipient
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.domain.PhoneNormaliser
 import com.thomaswcode.whatsappscheduler.domain.Recurrence
@@ -48,7 +50,32 @@ data class EditorForm(
     val every: String = "1",
     /** The name the contact picker last filled in, so picking someone else replaces it (B22). */
     val pickedName: String? = null,
+    /** The user flipped the Chat Lock switch here, rather than it coming from the schedule or its chat. */
+    val lockedTouched: Boolean = false,
+    /** The user typed the name here, rather than it coming from the schedule or the contact picker. */
+    val nameTyped: Boolean = false,
 ) {
+    /**
+     * With a contact from the system picker, [number] as it will be saved. A name typed here for the
+     * contact already chosen stands; any other name goes with the contact it came with, so it can't be
+     * remembered as the new one's WhatsApp name.
+     */
+    fun picked(number: String, displayName: String, countryIso: String): EditorForm {
+        val sameContact = hasContact(number, countryIso)
+        val keepName = nameTyped && sameContact && name.isNotBlank() && name != pickedName
+        // Chat Lock belongs to the chat too: it stays for the same contact, or when switched here before
+        // anyone was chosen; otherwise it is off until the new contact's own is looked up.
+        val keepLock = sameContact || (lockedTouched && phone.isBlank())
+        return copy(
+            phone = number, name = if (keepName) name else displayName, pickedName = displayName, nameTyped = keepName,
+            locked = keepLock && locked, lockedTouched = keepLock && lockedTouched,
+        )
+    }
+
+    /** Whether [number] (E.164) is the contact the form already has. */
+    fun hasContact(number: String, countryIso: String): Boolean =
+        phone.isNotBlank() && (PhoneNormaliser.toE164(phone, countryIso) ?: phone) == number
+
     fun rule(): Recurrence = when (ruleKind) {
         RuleKind.ONCE -> Recurrence.Once
         RuleKind.DAILY -> Recurrence.Daily
@@ -97,6 +124,7 @@ data class EditorForm(
                 listOf(
                     it.kind.name, it.name, it.phone, it.locked, it.message, it.date.toEpochDay(), it.time.toSecondOfDay(),
                     it.ruleKind.name, ArrayList(it.weekdays.map(DayOfWeek::getValue)), it.monthDay, it.every, it.pickedName ?: "",
+                    it.lockedTouched, it.nameTyped,
                 )
             },
             restore = {
@@ -114,6 +142,8 @@ data class EditorForm(
                     monthDay = it[9] as String,
                     every = it[10] as String,
                     pickedName = (it[11] as String).ifEmpty { null },
+                    lockedTouched = it[12] as Boolean,
+                    nameTyped = it[13] as Boolean,
                 )
             },
         )
@@ -131,7 +161,10 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
     val scheduleId: Long = handle.get<Long>("id") ?: 0L
     private val zone: ZoneId = ZoneId.systemDefault()
 
-    var form: EditorForm by handle.saveable(stateSaver = EditorForm.Saver) { mutableStateOf(EditorForm.blank(ZonedDateTime.now(zone))) }
+    /** What the quick sheet's Repeat… handed over, for a new schedule. */
+    private val prefill: EditorForm? = if (scheduleId != 0L) null else prefillFrom(handle, zone)
+
+    var form: EditorForm by handle.saveable(stateSaver = EditorForm.Saver) { mutableStateOf(prefill ?: EditorForm.blank(ZonedDateTime.now(zone))) }
         private set
 
     /** Whether [form] already holds the stored schedule; saved with it, so a recreate never reloads over edits. */
@@ -173,13 +206,19 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
     }
 
     /** Fills in a contact picked from the system picker. */
-    fun contactPicked(rawNumber: String, displayName: String) = update {
-        copy(
-            // Kept as picked when it doesn't parse, so the field shows why it can't be saved.
-            phone = PhoneNormaliser.toE164(rawNumber, countryIso) ?: rawNumber,
-            name = if (name.isBlank() || name == pickedName) displayName else name,
-            pickedName = displayName,
-        )
+    fun contactPicked(rawNumber: String, displayName: String) {
+        // Kept as picked when it doesn't parse, so the field shows why it can't be saved.
+        val number = PhoneNormaliser.toE164(rawNumber, countryIso) ?: rawNumber
+        val someoneElse = !form.hasContact(number, countryIso)
+        update { picked(number, displayName, countryIso) }
+        if (!someoneElse || form.lockedTouched) return
+        // The switch then shows the new chat's own Chat Lock: as this schedule has it for its own chat,
+        // as remembered for a chat already known, and off for a new one.
+        val own = existing?.takeIf { it.phoneE164 == number }
+        viewModelScope.launch {
+            val lock = own?.isLocked ?: runCatching { container.recipients.byPhone(number) }.getOrNull()?.isLocked ?: false
+            if (form.phone == number && !form.lockedTouched) update { copy(locked = lock) }
+        }
     }
 
     fun save() {
@@ -208,12 +247,30 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
             // Not cancelled if the screen closes mid-save, which would leave the row without its alarm.
             val outcome = withContext(NonCancellable) {
                 runCatching {
-                    val saved = container.repository.save(schedule)
+                    // Linked to a recipient so it shows in the quick sheet's recents; Chat Lock switched here is
+                    // remembered for that chat (quick-schedule.md §3).
+                    val resolved = container.recipients.resolve(RecipientDraft(f.kind, f.name.trim(), phoneE164 = phoneE164, isLocked = f.locked))
+                    var recipient = resolved
+                    typedChatName(f, recipient)?.let { name -> recipient = recipient.copy(whatsappName = name.takeIf { it != recipient.displayName }) }
+                    if (f.lockedTouched) recipient = recipient.copy(isLocked = f.locked)
+                    // Its other pending messages change target too: re-armed, and stale Tap to send prompts cleared.
+                    if (recipient != resolved) {
+                        container.recipients.updateDetails(recipient).forEach { changed ->
+                            runCatching { container.fallbackNotifier.cancel(changed.id) }.onFailure { container.log.error("Clearing a stale prompt failed", it) }
+                            runCatching { container.alarmScheduler.sync(changed) }.onFailure { container.log.error("Re-arming after a details edit failed", it) }
+                        }
+                    }
+                    // The chat's own name, as the quick sheet uses: what WhatsApp shows, which the search needs.
+                    val saved = container.repository.save(
+                        schedule.copy(recipientId = recipient.id, targetName = recipient.chatName, isLocked = lockFor(f, recipient, existing)),
+                    )
                     // If a later step fails, Save again updates this row rather than inserting another.
                     existing = saved
+                    container.recipients.markUsed(listOf(recipient.id))
+                    // A prompt for the old version of the message is stale now (B10); cleared first, so a
+                    // failure arming the alarm can't leave it behind.
+                    runCatching { container.fallbackNotifier.cancel(saved.id) }.onFailure { container.log.error("Clearing a prompt failed", it) }
                     container.alarmScheduler.sync(saved)
-                    // A prompt for the old version of the message is stale now (B10).
-                    container.fallbackNotifier.cancel(saved.id)
                 }
             }
             outcome
@@ -229,6 +286,56 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
     companion object {
         fun factory(container: AppContainer) = viewModelFactory {
             initializer { ScheduleEditorViewModel(container, createSavedStateHandle()) }
+        }
+
+        /**
+         * The form Repeat… asks for: the sheet's recipient, message and time, repeating daily as a
+         * starting point (the chips offer the rest). Null when nothing was handed over.
+         */
+        fun prefillFrom(handle: SavedStateHandle, zone: ZoneId, now: ZonedDateTime = ZonedDateTime.now(zone)): EditorForm? {
+            val name = handle.get<String>("name")
+            val message = handle.get<String>("message")
+            val at = handle.get<Long>("at")?.takeIf { it > 0 }
+            if (name == null && message == null && at == null) return null
+            val blank = EditorForm.blank(now)
+            val first = at?.let { Instant.ofEpochMilli(it).atZone(zone) }
+            return blank.copy(
+                kind = handle.get<String>("kind")?.let { k -> TargetKind.entries.firstOrNull { it.name == k } } ?: TargetKind.CONTACT,
+                name = name ?: "",
+                phone = handle.get<String>("phone") ?: "",
+                locked = handle.get<Boolean>("locked") ?: false,
+                message = message ?: "",
+                date = first?.toLocalDate() ?: blank.date,
+                time = first?.toLocalTime() ?: blank.time,
+                ruleKind = RuleKind.DAILY,
+                weekdays = setOf((first ?: now).dayOfWeek),
+                monthDay = (first ?: now).dayOfMonth.toString(),
+            )
+        }
+
+        /**
+         * Chat Lock belongs to the chat. A switch flipped here decides (and is remembered for the chat);
+         * otherwise a chat that is already known keeps its remembered setting, so retargeting to a locked
+         * chat can't quietly drop the lock. The schedule's own chat keeps the schedule's setting.
+         */
+        fun lockFor(form: EditorForm, recipient: Recipient, existing: Schedule?): Boolean = when {
+            form.lockedTouched -> form.locked
+            existing != null && existing.recipientId == recipient.id -> form.locked
+            else -> recipient.isLocked
+        }
+
+        /**
+         * The chat's name belongs to the chat too. One the contact picker filled in is the address book's,
+         * so a chat already known by that number keeps the WhatsApp name remembered for it. One typed
+         * here is what the user says WhatsApp shows (the field asks for that), so it is remembered for
+         * the chat. Returns the name to remember, or null when the stored one stands.
+         */
+        fun typedChatName(form: EditorForm, recipient: Recipient): String? {
+            // Only what the user typed: a name loaded with the schedule or filled in by the picker isn't
+            // a statement about what WhatsApp shows for this chat.
+            if (!form.nameTyped) return null
+            val typed = form.name.trim()
+            return typed.takeIf { it.isNotEmpty() && it != form.pickedName?.trim() && it != recipient.chatName }
         }
 
         fun validate(form: EditorForm, phoneE164: String?, rule: Recurrence, firstAt: Instant, now: Instant = Instant.now()): String? = when {
