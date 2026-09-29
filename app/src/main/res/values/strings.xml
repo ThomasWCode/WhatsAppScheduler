@@ -47,7 +47,7 @@
     <string name="list_more_for">More for %1$s</string>
     <string name="list_check_chats_offer">Check %1$s in WhatsApp now?</string>
     <string name="list_being_sent_cant_change">It\'s being sent now. You can change it once that has finished.</string>
-    <string name="list_moved_to">Moved to %1$s</string>
+    <string name="moved_to">Moved to %1$s</string>
     <string name="list_busy_about_to_send">About to send…</string>
     <string name="list_busy_waiting_to_retry">Waiting to try again…</string>
     <string name="list_busy_sending">Sending…</string>
@@ -180,4 +180,12 @@
     <string name="editor_delete_title">Delete this repeating message?</string>
     <string name="editor_delete_text">It won\'t be sent again.</string>
     <string name="editor_once_in_past">A one-off message must be in the future.</string>
+
+    <!-- Postpone -->
+    <string name="action_move">Move</string>
+    <string name="postpone_title">Postpone</string>
+    <string name="postpone_due">Due %1$s</string>
+    <string name="postpone_moves_to">Moves to %1$s · %2$s</string>
+    <string name="postpone_also_skips">This also skips %1$s.</string>
+    <string name="postpone_deleted">It has been deleted.</string>
 </resources>

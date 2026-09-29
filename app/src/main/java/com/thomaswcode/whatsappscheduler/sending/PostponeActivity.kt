@@ -15,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.SchedulerApp
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.domain.FriendlyTime
@@ -66,7 +67,7 @@ class PostponeActivity : ComponentActivity() {
                         first[row.id]?.let { (next, run) -> row.copy(nextAtMillis = next.takeIf { it >= 0 }, lastRunAtMillis = run.takeIf { it >= 0 }) }
                     }.ifEmpty { null }
                     if (seen == null) {
-                        Toast.makeText(this@PostponeActivity, "It has been deleted.", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this@PostponeActivity, R.string.postpone_deleted, Toast.LENGTH_LONG).show()
                         ids.forEach(container.fallbackNotifier::cancel)
                         finish()
                     }
@@ -80,7 +81,7 @@ class PostponeActivity : ComponentActivity() {
                             scope.launch {
                                 // Not cancelled by the activity closing: the move and its alarm belong together.
                                 val problem = withContext(NonCancellable) { container.attentionActions.postpone(group, at) }
-                                val done = problem ?: "Moved to ${FriendlyTime.dayAndTime(at.atZone(now.zone), ZonedDateTime.now(), timeFormat)}"
+                                val done = problem ?: getString(R.string.moved_to, FriendlyTime.dayAndTime(at.atZone(now.zone), ZonedDateTime.now(), timeFormat))
                                 Toast.makeText(this@PostponeActivity, done, Toast.LENGTH_LONG).show()
                                 finish()
                             }
