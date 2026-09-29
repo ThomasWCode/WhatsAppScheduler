@@ -59,11 +59,13 @@ class AccessibilitySender(
         val target = job.target
         log.info("job ${job.scheduleId} attempt ${job.attempt}: to '${target.name}' kind=${target.kind} locked=${target.isLocked} dryRun=${job.dryRun}")
 
-        service.active.set(true)
         val before = wake.snapshot()
         // The app the user was in, to go back to afterwards (features F1); not asked on a locked phone.
         val returnTo = if (before.wasLocked) null else frontApp(driver)
         val relock = before.wasLocked && settings.relockAfterSend
+        // Only now, right before the try whose finally resets it: a send cancelled while looking for the
+        // app in front would otherwise leave the service listening.
+        service.active.set(true)
         try {
             withTimeout(settings.jobTimeoutMs) {
                 wake.ensureUnlocked(driver, before, pin, pinBlock, progress, t)

@@ -157,13 +157,9 @@ class Notifications(private val context: Context) {
         if ((found?.importance ?: NotificationManager.IMPORTANCE_HIGH) < NotificationManager.IMPORTANCE_HIGH) return false
         return when (manager.currentInterruptionFilter) {
             NotificationManager.INTERRUPTION_FILTER_ALL, NotificationManager.INTERRUPTION_FILTER_UNKNOWN -> true
-            // Total silence hides everything.
-            NotificationManager.INTERRUPTION_FILTER_NONE -> false
-            // Priority only or alarms only: a channel allowed through pops up; otherwise it does unless the
-            // policy hides pop-ups. As well as can be told: the policy Android lets an app read is the
-            // user's default one, which a mode of its own may override.
-            else -> found?.canBypassDnd() == true ||
-                runCatching { manager.notificationPolicy.suppressedVisualEffects and NotificationManager.Policy.SUPPRESSED_EFFECT_PEEK == 0 }.getOrDefault(true)
+            // Any Do Not Disturb mode: only a channel allowed to break through it is sure to be seen. An app
+            // can't tell whether the active mode would still let this one pop up, so it's taken not to.
+            else -> found?.canBypassDnd() == true
         }
     }
 

@@ -645,21 +645,20 @@ class SendQueueProcessorTest {
             schedule.batchId?.let { batch -> rows.values.filter { it.batchId == batch && it.nextAtMillis == occurrenceAtMillis }.sortedBy { it.id } }
                 ?: listOf(schedule)
 
-        override suspend fun snooze(id: Long, occurrenceAtMillis: Long, to: Instant, ranAt: Instant): Schedule? {
-            val current = rows[id]?.takeIf { it.nextAtMillis == occurrenceAtMillis } ?: return null
-            return current.copy(nextAtMillis = to.toEpochMilli(), postponedFromMillis = occurrenceAtMillis).also(::put)
+        override suspend fun snooze(ids: List<Long>, occurrenceAtMillis: Long, to: Instant, ranAt: Instant): List<Schedule> = ids.mapNotNull { id ->
+            rows[id]?.takeIf { it.nextAtMillis == occurrenceAtMillis }?.copy(nextAtMillis = to.toEpochMilli(), postponedFromMillis = occurrenceAtMillis)?.also(::put)
         }
 
-        override suspend fun hold(id: Long, occurrenceAtMillis: Long, ranAt: Instant, detail: String): HeldRun? {
-            val current = rows[id]?.takeIf { it.nextAtMillis == occurrenceAtMillis } ?: return null
+        override suspend fun hold(ids: List<Long>, occurrenceAtMillis: Long, ranAt: Instant, detail: String): List<HeldRun> = ids.mapNotNull { id ->
+            val current = rows[id]?.takeIf { it.nextAtMillis == occurrenceAtMillis } ?: return@mapNotNull null
             if (current.recurrence == "ONCE") {
                 val waiting = current.copy(nextAtMillis = null, attention = Attention.HELD).also(::put)
-                return HeldRun(waiting, waiting)
+                return@mapNotNull HeldRun(waiting, waiting)
             }
             // A series goes on to its next day; the occurrence waits as a one-off copy of its own.
             val series = current.copy(nextAtMillis = occurrenceAtMillis + Duration.ofDays(1).toMillis()).also(::put)
             val copy = current.copy(id = 1_000 + id, recurrence = "ONCE", nextAtMillis = null, attention = Attention.HELD, sourceScheduleId = id).also(::put)
-            return HeldRun(series, copy)
+            HeldRun(series, copy)
         }
 
         override suspend fun recordMissed(id: Long, occurrenceAtMillis: Long, detail: String, sentTo: String, ranAt: Instant): HeldRun? {
