@@ -200,12 +200,21 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
     }
 
     /** Text shared from another app; the sheet opens on the recipient. */
-    fun openShared(text: String) {
+    /**
+     * The sheet for text shared from another app, with [recipientId] chosen when it came through one of
+     * the recent chats Direct Share offers (features F6), once that chat is looked up.
+     */
+    fun openShared(text: String, recipientId: Long? = null) {
         draft = QuickDraft(message = text)
         pendingCheckOffers = emptyList()
         query = ""
         error = null
         visible = true
+        val id = recipientId ?: return
+        viewModelScope.launch {
+            val recipient = runCatching { container.recipients.get(id) }.getOrNull() ?: return@launch
+            if (!saving && draft.recipients.isEmpty()) draft = draft.copy(recipients = listOf(recipient.toDraft()))
+        }
     }
 
     /**

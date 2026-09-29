@@ -1,6 +1,7 @@
 package com.thomaswcode.whatsappscheduler
 
 import android.app.Application
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 class SchedulerApp : Application() {
@@ -15,6 +16,12 @@ class SchedulerApp : Application() {
         // Before any screen can remove a recipient (see AppContainer.linkRecipientsOnce).
         container.appScope.launch {
             runCatching { container.linkRecipientsOnce() }.onFailure { container.log.error("Linking recipients failed", it) }
+        }
+        // The share sheet's Direct Share targets follow the recent recipients (features F6).
+        container.appScope.launch {
+            runCatching {
+                container.recipients.observeRecent().distinctUntilChanged().collect { container.shareShortcuts.publish(it) }
+            }.onFailure { container.log.error("Publishing Direct Share targets failed", it) }
         }
     }
 

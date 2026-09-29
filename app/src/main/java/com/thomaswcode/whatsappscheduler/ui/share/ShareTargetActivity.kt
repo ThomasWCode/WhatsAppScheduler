@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.thomaswcode.whatsappscheduler.SchedulerApp
 import com.thomaswcode.whatsappscheduler.ui.AppTheme
@@ -25,7 +26,8 @@ import com.thomaswcode.whatsappscheduler.ui.quick.QuickScheduleViewModel
 
 /**
  * "Schedule on WhatsApp" in Android's share sheet (quick-schedule.md §2). Shows the quick sheet over
- * the app the text was shared from, with the message filled in, then returns to that app.
+ * the app the text was shared from, with the message filled in, then returns to that app. Picked as
+ * one of the recent chats Direct Share offers (features F6), that chat is filled in too.
  */
 class ShareTargetActivity : ComponentActivity() {
 
@@ -36,6 +38,8 @@ class ShareTargetActivity : ComponentActivity() {
         // The app may be opened only this way after being force-stopped, so this recovers alarms too.
         if (savedInstanceState == null) container.recoverOnOpen()
         val shared = sharedText(intent)
+        // Picked as a Direct Share target: the chat it stands for (features F6).
+        val sharedTo = ShareShortcuts.recipientId(intent.getStringExtra(ShortcutManagerCompat.EXTRA_SHORTCUT_ID))
         setContent {
             AppTheme {
                 val vm: QuickScheduleViewModel = viewModel(factory = QuickScheduleViewModel.factory(container))
@@ -43,7 +47,7 @@ class ShareTargetActivity : ComponentActivity() {
                 var opened by rememberSaveable { mutableStateOf(false) }
                 LaunchedEffect(Unit) {
                     if (!opened) {
-                        vm.openShared(shared)
+                        vm.openShared(shared, sharedTo)
                         opened = true
                     }
                 }
