@@ -55,6 +55,8 @@ fun PostponeDialog(schedule: Schedule, now: ZonedDateTime, onDismiss: () -> Unit
     var pickingTime by rememberSaveable { mutableStateOf(false) }
     val at = LocalDate.ofEpochDay(epochDay).atTime(minuteOfDay / 60, minuteOfDay % 60).atZone(now.zone)
     val sendable = QuickScheduleViewModel.isSendable(at, now)
+    // Where it is due already: nothing to move.
+    val unchanged = schedule.nextAtMillis == at.toInstant().toEpochMilli()
     val skipped = remember(at, schedule) {
         schedule.nextAtMillis?.let { from ->
             Postponing.skipped(schedule.rule, Instant.ofEpochMilli(schedule.firstAtMillis), ZoneId.of(schedule.zoneId), Instant.ofEpochMilli(from), at.toInstant())
@@ -84,7 +86,7 @@ fun PostponeDialog(schedule: Schedule, now: ZonedDateTime, onDismiss: () -> Unit
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { onMove(at.toInstant()) }, enabled = sendable) { Text("Move") } },
+        confirmButton = { TextButton(onClick = { onMove(at.toInstant()) }, enabled = sendable && !unchanged) { Text("Move") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 

@@ -204,7 +204,8 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
             runCatching {
                 withContext(NonCancellable) {
                     // Each as the user saw it: one sent or changed since isn't moved.
-                    group.mapNotNull { container.repository.postpone(it.id, at, seen = it) }.onEach { moved ->
+                    // All of it as the user saw it, or nothing: a batch can't end up half moved.
+                    container.repository.postponeAll(group, at).orEmpty().onEach { moved ->
                         container.alarmScheduler.sync(moved.after)
                         // A one-off's prompt was about the time it now leaves. A series' is about an earlier
                         // occurrence that still needs the user, so it stays.
@@ -234,14 +235,14 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch {
             runCatching {
                 withContext(NonCancellable) {
-                    moved.mapNotNull { container.repository.restoreTiming(it) }.onEach { restored ->
+                    container.repository.restoreAll(moved).orEmpty().onEach { restored ->
                         container.alarmScheduler.sync(restored)
                         if (restored.id in prompted && restored.attention != null) container.fallbackNotifier.notifyAttention(restored, dueAt.value[restored.id])
                     }
                 }
             }
                 .onSuccess { restored ->
-                    if (restored.size < moved.size) events.trySend(ListEvent.Failed("It had been sent or changed since, so it wasn't moved back."))
+                    if (restored.isEmpty()) events.trySend(ListEvent.Failed("It had been sent or changed since, so it wasn't moved back."))
                 }
                 .onFailure { fail("Couldn't undo", it) }
         }
