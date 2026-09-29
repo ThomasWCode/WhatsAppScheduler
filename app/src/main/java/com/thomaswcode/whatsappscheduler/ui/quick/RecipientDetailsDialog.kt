@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.thomaswcode.whatsappscheduler.data.RecipientDraft
 import com.thomaswcode.whatsappscheduler.domain.PhoneNormaliser
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
-import com.thomaswcode.whatsappscheduler.ui.formatStamp
+import com.thomaswcode.whatsappscheduler.ui.rememberStampFormat
 
 /**
  * Recipient details (quick-schedule.md §3): the name WhatsApp shows, the number and Chat Lock, set
@@ -38,6 +38,7 @@ internal fun RecipientDetailsDialog(
     onForget: () -> Unit,
     onCheck: (() -> Unit)?,
 ) {
+    val stamp = rememberStampFormat()
     var whatsappName by rememberSaveable { mutableStateOf(recipient.whatsappName ?: "") }
     var number by rememberSaveable { mutableStateOf(recipient.phoneE164 ?: "") }
     var locked by rememberSaveable { mutableStateOf(recipient.isLocked) }
@@ -75,7 +76,7 @@ internal fun RecipientDetailsDialog(
                     Switch(checked = locked, onCheckedChange = { locked = it })
                 }
                 onCheck?.let { check ->
-                    checkedAtMillis?.let { Text("✓ Found in WhatsApp's search ${formatStamp(it)}", style = MaterialTheme.typography.bodySmall) }
+                    checkedAtMillis?.let { Text("✓ Found in WhatsApp's search ${stamp(it)}", style = MaterialTheme.typography.bodySmall) }
                     // It checks the details as saved: after an edit, those aren't what the fields show yet.
                     val edited = whatsappName != (recipient.whatsappName ?: "") || number != (recipient.phoneE164 ?: "") || locked != recipient.isLocked
                     if (edited) Text("Save to check the new details.", style = MaterialTheme.typography.bodySmall)

@@ -49,7 +49,6 @@ import com.thomaswcode.whatsappscheduler.domain.FriendlyTime
 import com.thomaswcode.whatsappscheduler.domain.PhoneNormaliser
 import com.thomaswcode.whatsappscheduler.domain.PinCircuitBreaker
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
-import com.thomaswcode.whatsappscheduler.ui.formatStamp
 import com.thomaswcode.whatsappscheduler.ui.health.HealthStrip
 import com.thomaswcode.whatsappscheduler.ui.health.rememberHealth
 import java.time.Duration

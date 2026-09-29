@@ -156,6 +156,18 @@ class ListSectionsTest {
     }
 
     @Test
+    fun aScheduleKeptInAnotherZoneSaysItsOwnTimeToo() {
+        fun line(section: Section, s: Schedule) = statusLine(section, listOf(s), now, emptyMap())
+        // 09:00 in New York is 14:00 in London, where the phone is.
+        val newYork = schedule(1, next = "2026-09-29T14:00", recurrence = "DAILY").copy(zoneId = "America/New_York")
+        assertEquals("Daily · next Tomorrow 14:00 (09:00 New York time)", line(Section.REPEATING, newYork))
+        assertEquals("Tomorrow 14:00 (09:00 New York time)", line(Section.UPCOMING, newYork.copy(recurrence = "ONCE")))
+        // The same clock as the phone's says nothing more, whatever the zone is called.
+        val lisbon = schedule(2, next = "2026-09-29T14:00", recurrence = "DAILY").copy(zoneId = "Europe/Lisbon")
+        assertEquals("Daily · next Tomorrow 14:00", line(Section.REPEATING, lisbon))
+    }
+
+    @Test
     fun initialsTakeTheFirstLetterOfUpToTwoWords() {
         assertEquals("M", initials("Mum"))
         assertEquals("WC", initials("Work crew"))
