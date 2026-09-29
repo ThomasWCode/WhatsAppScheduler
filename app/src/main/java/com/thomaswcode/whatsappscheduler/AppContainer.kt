@@ -1,7 +1,9 @@
 package com.thomaswcode.whatsappscheduler
 
 import android.content.Context
+import com.thomaswcode.whatsappscheduler.data.RecipientRepository
 import com.thomaswcode.whatsappscheduler.data.ScheduleRepository
+import com.thomaswcode.whatsappscheduler.data.contacts.ContactSearch
 import com.thomaswcode.whatsappscheduler.data.db.AppDatabase
 import com.thomaswcode.whatsappscheduler.data.settings.CryptoBox
 import com.thomaswcode.whatsappscheduler.data.settings.SecretStore
@@ -18,6 +20,9 @@ import java.time.Clock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** Hand-wired dependency container; the app is small enough not to need a DI framework. */
 class AppContainer(context: Context) {
@@ -26,6 +31,8 @@ class AppContainer(context: Context) {
 
     val database: AppDatabase by lazy { AppDatabase.build(appContext) }
     val repository: ScheduleRepository by lazy { ScheduleRepository(database) }
+    val recipients: RecipientRepository by lazy { RecipientRepository(database) }
+    val contactSearch: ContactSearch by lazy { ContactSearch(appContext) }
     val settings: SettingsStore by lazy { SettingsStore(appContext) }
     val secrets: SecretStore by lazy { SecretStore(appContext, CryptoBox()) }
     val pinGuard: PinGuard by lazy { PinGuard(secrets, Clock.systemUTC()) }
@@ -42,4 +49,33 @@ class AppContainer(context: Context) {
 
     /** Queues a send through the foreground service. */
     fun send(request: SendRequest) = SendService.enqueue(appContext, request)
+
+    private val linking = Mutex()
+
+    /**
+     * Links schedules from before recipients existed to recipients, once per install. It runs when the
+     * app starts, whichever screen it starts on (the Share sheet too), and is awaited before a
+     * recipient is removed: removing one unlinks its schedules, and linking afterwards would take them
+     * for old ones and bring the recipient back.
+     */
+    suspend fun linkRecipientsOnce() = linking.withLock {
+        if (!settings.recipientsLinked()) {
+            recipients.linkUnlinkedSchedules()
+            settings.markRecipientsLinked()
+        }
+    }
+
+    /**
+     * What a fresh start of any screen the app can be opened on (the launcher's, the Share target) owes:
+     * every alarm re-armed, since Android drops them when the app is force-stopped and nothing else sets
+     * them again, with an occurrence missed meanwhile handed to the send queue; and, once, old schedules
+     * linked to recipients. In the app's scope, so a recreate while it works doesn't cancel it.
+     */
+    fun recoverOnOpen() {
+        appScope.launch {
+            runCatching { alarmScheduler.rescheduleAll() }.onFailure { log.error("rescheduleAll failed", it) }
+            // Usually done already when the app started; this waits for it if not.
+            runCatching { linkRecipientsOnce() }.onFailure { log.error("Linking recipients failed", it) }
+        }
+    }
 }

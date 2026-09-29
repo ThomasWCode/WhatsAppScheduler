@@ -3,6 +3,7 @@ package com.thomaswcode.whatsappscheduler.data
 import androidx.room.withTransaction
 import com.thomaswcode.whatsappscheduler.data.db.AppDatabase
 import com.thomaswcode.whatsappscheduler.data.db.Attention
+import com.thomaswcode.whatsappscheduler.data.db.Recipient
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.data.db.SendLog
 import com.thomaswcode.whatsappscheduler.data.db.SendStatus
@@ -10,7 +11,14 @@ import com.thomaswcode.whatsappscheduler.domain.Recurrence
 import com.thomaswcode.whatsappscheduler.domain.RecurrenceCalculator
 import java.time.Instant
 import java.time.ZoneId
+import java.util.UUID
 import kotlinx.coroutines.flow.Flow
+
+/** What [ScheduleRepository.saveBatch] did: the members as saved (to arm) and the ones deleted (to disarm). */
+data class BatchChange(val saved: List<Schedule>, val deleted: List<Schedule>)
+
+/** [members] went out, or may have, while their edit was open, so the edit wasn't saved (see saveBatch). */
+class SentWhileEditing(val members: List<Schedule>) : IllegalStateException("sent while it was being edited")
 
 class ScheduleRepository(private val db: AppDatabase) : SendStore {
 
@@ -38,7 +46,66 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
 
     suspend fun delete(schedule: Schedule) = schedules.delete(schedule)
 
-    suspend fun setEnabled(schedule: Schedule, enabled: Boolean): Schedule = save(schedule.copy(enabled = enabled))
+    suspend fun batch(batchId: String): List<Schedule> = schedules.getBatch(batchId)
+
+    /**
+     * Saves one message for several recipients (quick-schedule.md §10): one ordinary schedule each,
+     * so retries, failures and history stay per recipient. Members share a batchId so the list shows
+     * them as one row and edits apply to all. [members] are the batch as it was (empty when new):
+     * [template]'s message and time go to every member, a member whose recipient was removed is
+     * deleted, and an added recipient gets a new member. [lastRunsSeen] is each member's last run when
+     * the edit began: one that has since gone out, or may have, would be armed again by saving it and
+     * send twice, so nothing is saved and [SentWhileEditing] says which.
+     */
+    suspend fun saveBatch(
+        template: Schedule,
+        recipients: List<Recipient>,
+        members: List<Schedule> = emptyList(),
+        now: Instant = Instant.now(),
+        lastRunsSeen: Map<Long, Long?> = emptyMap(),
+    ): BatchChange =
+        db.withTransaction {
+            require(recipients.isNotEmpty() && recipients.size <= MAX_BATCH) { "A message goes to 1–$MAX_BATCH recipients" }
+            // The rows as they are now: a member may have finished sending since the caller read it, and
+            // saving that stale copy would overwrite the run it just recorded (B08).
+            val current = members.mapNotNull { schedules.getById(it.id) }
+            val sentSince = current.filter { m ->
+                m.id in lastRunsSeen && m.lastRunAtMillis != lastRunsSeen[m.id] && (m.lastStatus == SendStatus.SENT || m.lastStatus == SendStatus.UNCERTAIN)
+            }
+            if (sentSince.isNotEmpty()) throw SentWhileEditing(sentSince)
+            // Part of a batch edited on its own (the list shows a batch split by outcome) gets a batch of
+            // its own; keeping the old id would show it again with members it no longer matches.
+            val original = current.firstNotNullOfOrNull { it.batchId }
+            val wholeBatch = original != null && schedules.getBatch(original).all { member -> current.any { it.id == member.id } }
+            val batchId = if (recipients.size > 1) original?.takeIf { wholeBatch } ?: UUID.randomUUID().toString() else null
+            val byRecipient = current.filter { it.recipientId != null }.associateBy { it.recipientId }
+            val saved = recipients.map { recipient ->
+                val base = byRecipient[recipient.id] ?: current.singleOrNull { it.recipientId == null && recipients.size == 1 } ?: template.copy(id = 0)
+                save(
+                    base.copy(
+                        message = template.message,
+                        firstAtMillis = template.firstAtMillis,
+                        zoneId = template.zoneId,
+                        recurrence = template.recurrence,
+                        batchId = batchId,
+                        recipientId = recipient.id,
+                        targetKind = recipient.kind,
+                        targetName = recipient.chatName,
+                        phoneE164 = recipient.phoneE164,
+                        isLocked = recipient.isLocked,
+                        // Edited by the user, so whatever it was waiting on has been dealt with.
+                        attention = null,
+                        // The sheet has no pause: saving schedules the message, for every member alike, so
+                        // an added recipient can't be armed while the rest of the batch stays switched off.
+                        enabled = true,
+                    ),
+                    now,
+                )
+            }
+            val removed = current.filter { member -> saved.none { it.id == member.id } }
+            removed.forEach { schedules.delete(it) }
+            BatchChange(saved, removed)
+        }
 
     /**
      * Switches a schedule on or off starting from the row as stored, not a copy the UI may have
@@ -79,7 +146,9 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
 
     /**
      * A manual run doesn't decide whether the schedule needs attention, except that a real send by
-     * hand resolves whatever it was waiting on: the message has now gone out.
+     * hand resolves whatever it was waiting on: the message has now gone out. Only a run that may have
+     * sent something becomes the last run; a test, or a failure that sent nothing, is noted for
+     * diagnosis without changing what went out, which Send again goes by for a batch.
      */
     override suspend fun recordManual(id: Long, status: SendStatus, detail: String?, sentTo: String, ranAt: Instant): Schedule? =
         db.withTransaction {
@@ -87,6 +156,10 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
             logs.insert(SendLog(scheduleId = current?.id, atMillis = ranAt.toEpochMilli(), status = status, targetName = sentTo, detail = "(manual) " + (detail ?: "")))
             if (current == null) return@withTransaction null
             val result = "manual ${status.name}" + (detail?.let { ": $it" } ?: "")
+            if (status != SendStatus.SENT && status != SendStatus.UNCERTAIN) {
+                schedules.setLastResult(id, result)
+                return@withTransaction current.copy(lastResult = result)
+            }
             val attention = if (status == SendStatus.SENT) null else current.attention
             schedules.updateLastRun(id, ranAt.toEpochMilli(), result, status, attention)
             current.copy(lastRunAtMillis = ranAt.toEpochMilli(), lastResult = result, lastStatus = status, attention = attention)
@@ -95,6 +168,9 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
     suspend fun pruneLogs(olderThan: Instant) = logs.prune(olderThan.toEpochMilli())
 
     companion object {
+        /** At most this many recipients per message, so one mistake can't turn into a flood (§10). */
+        const val MAX_BATCH = 10
+
         /**
          * What an occurrence's outcome leaves the schedule waiting on the user for (T5). A real send
          * clears it; a dry run sent nothing, so it leaves whatever was already waiting.

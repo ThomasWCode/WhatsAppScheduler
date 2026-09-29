@@ -7,9 +7,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -24,16 +26,21 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -41,9 +48,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.thomaswcode.whatsappscheduler.AppContainer
 import com.thomaswcode.whatsappscheduler.data.settings.Settings
+import com.thomaswcode.whatsappscheduler.domain.PhoneNormaliser
 import com.thomaswcode.whatsappscheduler.domain.PinCircuitBreaker
 import com.thomaswcode.whatsappscheduler.ui.BackBar
 import com.thomaswcode.whatsappscheduler.ui.authenticateThen
+import com.thomaswcode.whatsappscheduler.ui.quick.rememberTimeFormat
+import android.text.format.DateFormat
+import java.time.LocalTime
 
 @Composable
 fun SettingsScreen(
@@ -69,7 +80,7 @@ fun SettingsScreen(
     fun update(transform: (Settings) -> Settings) = vm.update(transform)
 
     Scaffold(topBar = { BackBar("Settings", onBack) }) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState())) {
+        Column(modifier = Modifier.fillMaxSize().padding(padding).imePadding().padding(16.dp).verticalScroll(rememberScrollState())) {
             Text("Secrets", style = MaterialTheme.typography.titleMedium)
             Text(
                 "Stored encrypted with a hardware-backed key. This app decrypts them at send time, so anyone who controls this app on this phone can too.",
@@ -95,6 +106,13 @@ fun SettingsScreen(
             Text("Sending", style = MaterialTheme.typography.titleMedium)
             ToggleRow("Dry run (never tap Send)", "Runs every step and clears the composer instead of sending. Use to calibrate.", settings.dryRun) { v -> update { it.copy(dryRun = v) } }
             ToggleRow("Re-lock the phone after sending", "Only when it was locked before.", settings.relockAfterSend) { v -> update { it.copy(relockAfterSend = v) } }
+            TimeSettingRow("Morning time for quick chips", "Used by This morning, Tomorrow and Mon.", settings.morning) { t ->
+                update { it.copy(morningMinutes = t.hour * 60 + t.minute) }
+            }
+            TimeSettingRow("Evening time for quick chips", "Used by Tonight.", settings.evening) { t ->
+                update { it.copy(eveningMinutes = t.hour * 60 + t.minute) }
+            }
+            OwnNumberRow(settings.ownNumberE164, settings.defaultCountryIso) { e164 -> update { it.copy(ownNumberE164 = e164) } }
             ToggleRow("Use phone-number link for locked contacts", "Faster path for locked contact chats; enable only if a dry run shows it works.", settings.deepLinkForLockedChats) { v -> update { it.copy(deepLinkForLockedChats = v) } }
             NumberRow("Retries per message", settings.retryCount) { v -> update { it.copy(retryCount = v.coerceIn(0, 5)) } }
             NumberRow("Seconds between retries", settings.retryDelaySeconds) { v -> update { it.copy(retryDelaySeconds = v.coerceIn(5, 600)) } }
@@ -223,6 +241,59 @@ private fun SecretDialog(title: String, hint: String, onDismiss: () -> Unit, onS
         confirmButton = { TextButton(onClick = { onSave(value) }) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+/** A time of day, changed with the time picker; follows the phone's 12/24-hour setting. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TimeSettingRow(title: String, subtitle: String, value: LocalTime, onChange: (LocalTime) -> Unit) {
+    val timeFormat = rememberTimeFormat()
+    val is24 = DateFormat.is24HourFormat(LocalContext.current)
+    var picking by remember { mutableStateOf(false) }
+    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall)
+        }
+        OutlinedButton(onClick = { picking = true }) { Text(timeFormat(value)) }
+    }
+    if (picking) {
+        val state = rememberTimePickerState(initialHour = value.hour, initialMinute = value.minute, is24Hour = is24)
+        AlertDialog(
+            onDismissRequest = { picking = false },
+            confirmButton = { TextButton(onClick = { onChange(LocalTime.of(state.hour, state.minute)); picking = false }) { Text("OK") } },
+            dismissButton = { TextButton(onClick = { picking = false }) { Text("Cancel") } },
+            text = { TimePicker(state = state) },
+        )
+    }
+}
+
+/**
+ * The user's own number, for the quick sheet's Me chip. The text is kept while typing and saved on
+ * Done or on leaving the field, with an error for a number that doesn't parse (the B13 pattern).
+ */
+@Composable
+private fun OwnNumberRow(value: String?, countryIso: String, onSave: (String?) -> Unit) {
+    var text by rememberSaveable(value) { mutableStateOf(value?.let { PhoneNormaliser.display(it, countryIso) } ?: "") }
+    val parsed = text.takeIf { it.isNotBlank() }?.let { PhoneNormaliser.parse(it, countryIso) }
+    val valid = text.isBlank() || parsed?.e164OrNull != null
+    fun commit() {
+        if (valid) onSave(parsed?.e164OrNull)
+    }
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+        Text("Your own number")
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it },
+            placeholder = { Text("For a Me chip in the quick sheet") },
+            singleLine = true,
+            isError = !valid,
+            supportingText = { Text(if (valid) "Leave empty to hide the Me chip." else "Not a valid number.") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { commit() }),
+            modifier = Modifier.fillMaxWidth().onFocusChanged { if (!it.isFocused) commit() },
+        )
+    }
 }
 
 @Composable

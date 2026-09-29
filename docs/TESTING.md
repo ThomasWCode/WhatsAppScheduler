@@ -1,6 +1,6 @@
 # Device test protocol
 
-Unit tests (`./gradlew test`) cover recurrence arithmetic, selector regexes, the send queue (de-duplication, occurrence keys, which failures are retried), the PIN circuit breaker, composer verification, phone-number parsing, the repository's run updates, the database migrations (against the exported schemas) and the editor's saved form. Everything else needs the phone. Run these in order after every selector change or WhatsApp update. Use **Dry run** first for steps 1–5, then repeat 1, 2 and 5 with Dry run off.
+Unit tests (`./gradlew test`) cover the quick sheet's time chips and friendly times, recipients and batches, recurrence arithmetic, selector regexes, the send queue (de-duplication, occurrence keys, which failures are retried), the PIN circuit breaker, composer verification, phone-number parsing, the repository's run updates, the database migrations (against the exported schemas) and the editor's saved form. Everything else needs the phone. Run these in order after every selector change or WhatsApp update. Use **Dry run** first for steps 1–5, then repeat 1, 2 and 5 with Dry run off.
 
 | # | Scenario | Expected |
 |---|---|---|
@@ -21,6 +21,12 @@ Unit tests (`./gradlew test`) cover recurrence arithmetic, selector regexes, the
 | 15 | Editor: type a local number (`07…`), then one with a typo | The first shows "Opens chat with +44 …"; the second is flagged and Save explains why. Double-tapping Save creates one schedule. |
 | 16 | Install a build with a newer database schema over the installed app (`adb install -r`) | Schedules and Logs → Sends are unchanged. Pull `databases/scheduler.db` with its `-wal` file: `PRAGMA user_version` is the new version. |
 | 17 | Half-fill the editor, then rotate the phone and switch dark mode on and off | Everything typed is still there, and an existing schedule is not reloaded over the edits. |
+| 18 | New message: type two letters of a contact's name, pick it, write a message, tap **In 30 min**, Schedule; then Undo | The contact shows "on WhatsApp" if it is. The row appears with the time; after Undo it is gone and `dumpsys alarm` no longer lists its alarm. Contacts permission denied: **Pick from contacts** still works. |
+| 19 | In Chrome or Notes, share some text and choose **Schedule on WhatsApp** | The sheet opens over that app with the text in Message. After Schedule, a toast confirms and you are back in the other app. |
+| 20 | Schedule one message to two recipients (a contact and a group), then tap the row | One row, "A and B". The sheet opens as Edit message with both chips; **Delete** removes both rows and both alarms. |
+| 21 | Fill the sheet, then **Repeat…** | The full editor opens with the first recipient, the message and the time, set to Daily. Opening New message again shows an empty sheet. |
+| 22 | Half-fill the sheet, swipe it away, rotate, tap New message; then **Discard** | The draft comes back after the rotation; Discard empties it. |
+| 23 | Tap into the editor's message field and Settings' own-number field with the keyboard up (B16) | The keyboard never covers the field being typed in or Save. |
 
 Useful commands:
 

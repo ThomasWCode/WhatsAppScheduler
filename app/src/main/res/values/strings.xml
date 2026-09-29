@@ -5,4 +5,5 @@
     <string name="notification_channel_sending">Sending in progress</string>
     <string name="notification_channel_fallback">Message needs your tap</string>
     <string name="notification_channel_unlock">Unlock for sending</string>
+    <string name="share_target_label">Schedule on WhatsApp</string>
 </resources>

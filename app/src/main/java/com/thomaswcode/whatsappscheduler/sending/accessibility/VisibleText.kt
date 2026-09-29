@@ -3,8 +3,8 @@ package com.thomaswcode.whatsappscheduler.sending.accessibility
 /**
  * Characters that never change what a text says or how it is identified: the zero-width space,
  * direction marks, embeddings and isolates, the word joiner and invisible operators, and the BOM.
- * WhatsApp puts some of these into text it shows: its search box reports "​Matlock fun" after
- * being set to "Matlock fun", and names are commonly wrapped in direction isolates.
+ * WhatsApp puts some of these into text it shows: its search box reports "​Book club" after
+ * being set to "Book club", and names are commonly wrapped in direction isolates.
  *
  * The zero-width joiner and non-joiner (U+200D, U+200C) are deliberately *not* here: they shape
  * emoji sequences (👩‍💻 is not 👩💻) and letters in some scripts, so two names that differ only by
