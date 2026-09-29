@@ -341,13 +341,17 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
         if (busy) return
         savingDetails = true
         viewModelScope.launch {
-            runCatching {
+            val removed = runCatching {
                 withContext(NonCancellable) {
                     container.linkRecipientsOnce()
                     container.recipients.get(id)?.let { container.recipients.remove(it) }
                 }
             }.onFailure { container.log.error("Removing a recipient failed", it) }
             savingDetails = false
+            if (removed.isFailure) {
+                error = "Couldn't remove ${recipient.displayName} from recents. Try again."
+                return@launch
+            }
             if (form.recipient?.recipientId == id) form = form.copy(recipient = form.recipient?.copy(recipientId = null))
             if (initial.recipient?.recipientId == id) initial = initial.copy(recipient = initial.recipient?.copy(recipientId = null))
         }
@@ -462,8 +466,10 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
                 RecipientDraft(
                     kind = handle.get<String>("kind")?.let { k -> TargetKind.entries.firstOrNull { it.name == k } } ?: TargetKind.CONTACT,
                     displayName = it,
+                    whatsappName = handle.get<String>("wa"),
                     phoneE164 = handle.get<String>("phone"),
                     isLocked = handle.get<Boolean>("locked") ?: false,
+                    recipientId = handle.get<Long>("rid")?.takeIf { id -> id > 0 },
                 )
             }
             return blank.copy(

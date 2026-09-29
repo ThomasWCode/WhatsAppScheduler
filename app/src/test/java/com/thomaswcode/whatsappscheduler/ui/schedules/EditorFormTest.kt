@@ -82,10 +82,14 @@ class EditorFormTest {
     fun repeatHandsOverTheSheetsRecipientMessageAndTime() {
         val at = LocalDateTime.parse("2026-10-02T18:30").atZone(london)
         val handle = SavedStateHandle(
-            mapOf("kind" to "GROUP", "name" to "Book club", "locked" to true, "message" to "Chapter 3 tonight", "at" to at.toInstant().toEpochMilli()),
+            mapOf(
+                "kind" to "GROUP", "name" to "Book club", "wa" to "Book club 📚", "rid" to 12L, "locked" to true,
+                "message" to "Chapter 3 tonight", "at" to at.toInstant().toEpochMilli(),
+            ),
         )
         val form = ScheduleEditorViewModel.prefillFrom(handle, london, LocalDateTime.parse("2026-09-28T12:00").atZone(london))!!
-        assertEquals(RecipientDraft(TargetKind.GROUP, "Book club", isLocked = true), form.recipient)
+        // Both names, and the stored recipient it is, as the sheet had them.
+        assertEquals(RecipientDraft(TargetKind.GROUP, "Book club", whatsappName = "Book club 📚", isLocked = true, recipientId = 12), form.recipient)
         assertEquals("Chapter 3 tonight", form.message)
         assertEquals(LocalDate.parse("2026-10-02"), form.date)
         assertEquals(LocalTime.parse("18:30"), form.time)
