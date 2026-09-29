@@ -46,7 +46,7 @@ class Notifications(private val context: Context) {
     fun sending(text: String): Notification =
         Notification.Builder(context, CHANNEL_SENDING)
             .setSmallIcon(R.drawable.ic_stat_send)
-            .setContentTitle("WhatsApp Scheduler")
+            .setContentTitle(context.getString(R.string.app_name))
             .setContentText(text)
             .setOngoing(true)
             .setContentIntent(openApp())
@@ -56,8 +56,8 @@ class Notifications(private val context: Context) {
     fun unlock(fullScreen: PendingIntent): Notification =
         Notification.Builder(context, CHANNEL_UNLOCK)
             .setSmallIcon(R.drawable.ic_stat_send)
-            .setContentTitle("Sending scheduled WhatsApp message")
-            .setContentText("Unlocking to send…")
+            .setContentTitle(context.getString(R.string.notif_unlock_title))
+            .setContentText(context.getString(R.string.notif_unlock_text))
             .setCategory(Notification.CATEGORY_ALARM)
             .setFullScreenIntent(fullScreen, true)
             .setOngoing(true)
@@ -77,7 +77,11 @@ class Notifications(private val context: Context) {
             .setContentTitle(title)
             .setContentText(text)
             // What a screen reader says as it pops up: the clock alone reads as numbers.
-            .setTicker("$title in ${((endsAtMillis - System.currentTimeMillis() + 500) / 1_000).coerceAtLeast(1)} seconds")
+            .setTicker(
+                ((endsAtMillis - System.currentTimeMillis() + 500) / 1_000).coerceAtLeast(1).toInt().let { seconds ->
+                    context.resources.getQuantityString(R.plurals.notif_heads_up_ticker, seconds, title, seconds)
+                },
+            )
             .setCategory(Notification.CATEGORY_REMINDER)
             .setWhen(endsAtMillis)
             .setShowWhen(true)
@@ -85,9 +89,9 @@ class Notifications(private val context: Context) {
             .setChronometerCountDown(true)
             .setOnlyAlertOnce(true)
             .setTimeoutAfter((endsAtMillis - System.currentTimeMillis()).coerceAtLeast(1_000L))
-            .addAction(Notification.Action.Builder(null, "Send now", sendNow).build())
-            .addAction(Notification.Action.Builder(null, "Snooze 5 min", snooze).build())
-            .addAction(Notification.Action.Builder(null, "Postpone…", postpone).build())
+            .addAction(Notification.Action.Builder(null, context.getString(R.string.action_send_now), sendNow).build())
+            .addAction(Notification.Action.Builder(null, context.getString(R.string.action_snooze_5), snooze).build())
+            .addAction(Notification.Action.Builder(null, context.getString(R.string.action_postpone_ellipsis), postpone).build())
             .build()
 
     /** On the "Needs your attention" channel (features F3), with the situation's buttons as [actions]. */
@@ -123,7 +127,7 @@ class Notifications(private val context: Context) {
             .setContentTitle(title)
             .setContentText(text)
             .setContentIntent(openRow)
-            .addAction(Notification.Action.Builder(null, "Open chat", openChat).build())
+            .addAction(Notification.Action.Builder(null, context.getString(R.string.action_open_chat), openChat).build())
             .setGroup(group)
             .setAutoCancel(true)
             .setTimeoutAfter(SENT_LIFETIME_MS)

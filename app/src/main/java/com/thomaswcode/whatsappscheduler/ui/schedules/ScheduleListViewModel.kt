@@ -257,7 +257,7 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
             }
                 .onSuccess { (moved, unarmed) ->
                     when {
-                        moved.isEmpty() -> events.trySend(ListEvent.Failed(container.text(R.string.list_changed_not_moved)))
+                        moved.isEmpty() -> events.trySend(ListEvent.Failed(container.text(R.string.changed_not_moved)))
                         unarmed > 0 -> events.trySend(ListEvent.Postponed(container.text(R.string.list_moved_unarmed, summary), moved, prompted))
                         else -> events.trySend(ListEvent.Postponed(summary, moved, prompted))
                     }

@@ -26,6 +26,7 @@ import com.thomaswcode.whatsappscheduler.sending.SendService
 import com.thomaswcode.whatsappscheduler.sending.SendStateHolder
 import com.thomaswcode.whatsappscheduler.ui.share.ShareShortcuts
 import com.thomaswcode.whatsappscheduler.util.AutomationLog
+import com.thomaswcode.whatsappscheduler.util.Texts
 import java.time.Clock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +42,9 @@ class AppContainer(context: Context) {
 
     /** Text from strings.xml, for code without a Context of its own, such as the view models. */
     fun text(@StringRes id: Int, vararg args: Any): String = appContext.getString(id, *args)
+
+    /** [text] for the classes that take a [Texts] rather than a Context. */
+    val texts = Texts { id, args -> text(id, *args) }
 
     /** A plural from strings.xml for [count], formatted with [args]. */
     fun plural(@PluralsRes id: Int, count: Int, vararg args: Any): String = appContext.resources.getQuantityString(id, count, *args)
@@ -70,7 +74,7 @@ class AppContainer(context: Context) {
     /** Batch occurrences whose Snooze or Postpone couldn't be saved, kept for alarms that come later. */
     val stoppedOccurrences = StoppedOccurrences(Clock.systemUTC())
     val attentionActions: AttentionActions by lazy {
-        AttentionActions(repository, alarmScheduler, { sendState.state.value }, ::send, fallbackNotifier::cancel, admission = sendAdmission)
+        AttentionActions(repository, alarmScheduler, { sendState.state.value }, ::send, fallbackNotifier::cancel, admission = sendAdmission, texts = texts)
     }
     val log: AutomationLog by lazy { AutomationLog(appContext) }
     val alarmScheduler: AlarmScheduler by lazy {

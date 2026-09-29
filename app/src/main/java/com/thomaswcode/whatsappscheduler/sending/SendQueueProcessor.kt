@@ -1,5 +1,7 @@
 package com.thomaswcode.whatsappscheduler.sending
 
+import androidx.annotation.StringRes
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.data.SendStore
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.data.db.SendStatus
@@ -8,6 +10,7 @@ import com.thomaswcode.whatsappscheduler.domain.PlainResult
 import com.thomaswcode.whatsappscheduler.domain.SendJob
 import com.thomaswcode.whatsappscheduler.domain.SendResult
 import com.thomaswcode.whatsappscheduler.scheduling.ScheduleAlarms
+import com.thomaswcode.whatsappscheduler.util.Texts
 import com.thomaswcode.whatsappscheduler.util.TraceLog
 import java.time.Clock
 import java.time.Duration
@@ -44,6 +47,8 @@ class SendQueueProcessor(
     private val headsUp: HeadsUp = HeadsUp.None,
     /** Batch occurrences whose Snooze or Postpone couldn't be saved; shared by every queue in the process. */
     private val stopped: StoppedOccurrences = StoppedOccurrences(clock),
+    /** What the sending notification says, from strings.xml. */
+    private val texts: Texts,
 ) {
     private val lock = Any()
     private val queue = ArrayDeque<SendRequest>()
@@ -137,13 +142,16 @@ class SendQueueProcessor(
         var result: SendResult = SendResult.Failed("init", "not attempted")
         for (attempt in 1..attempts) {
             state.update { it.copy(phase = SendPhase.SENDING, attempt = attempt) }
-            notifier.progress(if (attempt == 1) "Sending to ${schedule.targetName}…" else "Sending to ${schedule.targetName}, attempt $attempt of $attempts…")
+            notifier.progress(
+                if (attempt == 1) texts.get(R.string.notif_progress_sending, schedule.targetName)
+                else texts.get(R.string.notif_progress_attempt, schedule.targetName, attempt, attempts),
+            )
             result = sender.send(SendJob(schedule.id, schedule.target, schedule.message, dryRun, attempt))
             val failed = result as? SendResult.Failed ?: break
             log.warn("Attempt $attempt failed at ${failed.step}: ${failed.reason}")
             if (!failed.retryable || attempt == attempts) break
             state.update { it.copy(phase = SendPhase.WAITING_TO_RETRY) }
-            notifier.progress("Retrying ${schedule.targetName} in ${settings.retryDelaySeconds} s…")
+            notifier.progress(texts.get(R.string.notif_progress_retrying, schedule.targetName, settings.retryDelaySeconds))
             delay(settings.retryDelaySeconds * 1000L)
             schedule = stillWanted(request, occurrence) ?: return
             // A call that began meanwhile isn't interrupted: the send waits five minutes, and counts down again.
@@ -191,14 +199,17 @@ class SendQueueProcessor(
         // Shared by every wait below, so together they can hold a send up for half an hour at most.
         var looks = 0
 
-        /** Waits while [condition] holds, looking every 15 s; returns whether it still did when time ran out. */
-        suspend fun waitWhile(what: String, condition: () -> Boolean): Boolean {
+        /**
+         * Waits while [condition] holds, looking every 15 s; returns whether it still did when time ran out.
+         * [what] is for the trace, [progress] what the sending notification says meanwhile.
+         */
+        suspend fun waitWhile(what: String, @StringRes progress: Int, condition: () -> Boolean): Boolean {
             var waiting = false
             while (condition()) {
                 if (looks >= CALL_LOOKS) return true
                 if (!waiting) {
                     log.info("Schedule ${schedule.id}: waiting for $what")
-                    notifier.progress("Waiting for $what…")
+                    notifier.progress(texts.get(progress))
                     waiting = true
                 }
                 delay(CALL_LOOK_MS)
@@ -212,7 +223,7 @@ class SendQueueProcessor(
          * snoozes the batch, to wait again then. Returns whether the send may go on.
          */
         suspend fun callOver(): Boolean {
-            if (!waitWhile("the call to end") { headsUp.inCall() }) return true
+            if (!waitWhile("the call to end", R.string.notif_progress_waiting_call) { headsUp.inCall() }) return true
             log.info("Schedule ${schedule.id}: still in a call after half an hour; snoozing")
             snooze(store.duePeers(schedule, occurrence), occurrence)
             return false
@@ -229,7 +240,7 @@ class SendQueueProcessor(
                 // its running out can't be taken as a yes: the send waits for the phone to be put down
                 // instead, and if that doesn't happen in the half hour, for the user to choose a time.
                 log.info("Schedule ${schedule.id}: the countdown can't be shown (its notifications are off or don't pop up)")
-                if (waitWhile("the phone to be put down") { headsUp.inUse() || headsUp.inCall() }) {
+                if (waitWhile("the phone to be put down", R.string.notif_progress_waiting_put_down) { headsUp.inUse() || headsUp.inCall() }) {
                     // Quietly: a picker opening over what the user is doing would be a takeover too.
                     hold(batch, occurrence, HELD_UNSEEN, pick = false)
                     return false

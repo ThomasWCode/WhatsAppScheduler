@@ -60,7 +60,7 @@
     <string name="list_couldnt_dismiss">Couldn\'t dismiss</string>
     <string name="list_couldnt_postpone">Couldn\'t postpone</string>
     <string name="list_couldnt_mark_sent">Couldn\'t mark it as sent</string>
-    <string name="list_changed_not_moved">It had just been sent or changed, so it wasn\'t moved.</string>
+    <string name="changed_not_moved">It had just been sent or changed, so it wasn\'t moved.</string>
     <string name="list_moved_unarmed">%1$s, but its alarm couldn\'t be set: use Re-arm all alarms in Settings</string>
     <string name="list_being_sent_cant_move_back">It\'s being sent now, so it can\'t be moved back.</string>
     <string name="list_not_moved_back">It has been sent, changed or is about to be sent, so it wasn\'t moved back.</string>
@@ -187,7 +187,7 @@
     <string name="postpone_due">Due %1$s</string>
     <string name="postpone_moves_to">Moves to %1$s · %2$s</string>
     <string name="postpone_also_skips">This also skips %1$s.</string>
-    <string name="postpone_deleted">It has been deleted.</string>
+    <string name="already_deleted">It has been deleted.</string>
 
     <!-- Settings -->
     <string name="action_change">Change</string>
@@ -307,8 +307,8 @@
     <string name="setup_group_recommended_blurb">Sending works without these, but can be late, or go wrong unnoticed.</string>
     <string name="setup_group_manual">By hand</string>
     <string name="setup_group_manual_blurb">The app can\'t check these: do them once.</string>
-    <string name="setup_open_settings">Open settings</string>
-    <string name="setup_open_app_info">Open app info</string>
+    <string name="action_open_settings">Open settings</string>
+    <string name="action_open_app_info">Open app info</string>
     <string name="setup_whatsapp_title">WhatsApp installed</string>
     <string name="setup_whatsapp_why">The official app is what gets automated.</string>
     <string name="setup_overlay_title">Display over other apps</string>
@@ -354,4 +354,55 @@
     <string name="health_full_screen">Full-screen notifications are off, so a locked phone may not wake up to send.</string>
     <string name="health_notifications">Notifications are blocked, so a failed send can\'t ask you to finish it.</string>
     <string name="health_battery">Battery use is restricted, so the phone may delay or stop sends.</string>
+
+    <!-- Notifications and sending -->
+    <string name="being_sent_now">It\'s being sent now.</string>
+    <string name="action_tap_to_send">Tap to send</string>
+    <string name="action_snooze_5">Snooze 5 min</string>
+    <string name="notif_preparing">Preparing…</string>
+    <string name="notif_unlock_title">Sending scheduled WhatsApp message</string>
+    <string name="notif_unlock_text">Unlocking to send…</string>
+    <string name="notif_heads_up_title">Sending to %1$s</string>
+    <plurals name="notif_heads_up_ticker">
+        <item quantity="one">%1$s in %2$d second</item>
+        <item quantity="other">%1$s in %2$d seconds</item>
+    </plurals>
+    <string name="notif_progress_sending">Sending to %1$s…</string>
+    <string name="notif_progress_attempt">Sending to %1$s, attempt %2$d of %3$d…</string>
+    <string name="notif_progress_retrying">Retrying %1$s in %2$d s…</string>
+    <string name="notif_progress_waiting_call">Waiting for the call to end…</string>
+    <string name="notif_progress_waiting_put_down">Waiting for the phone to be put down…</string>
+    <string name="notif_failed_title">Couldn\'t send to %1$s</string>
+    <string name="notif_failed_reason">Auto-send failed (%1$s)</string>
+    <string name="notif_failed_text">%1$s, so the message hasn\'t gone. Tap to open the chat with it ready.</string>
+    <string name="notif_failed_text_for">%1$s, so the message for %2$s hasn\'t gone. Tap to open the chat with it ready.</string>
+    <string name="notif_uncertain_title">May have been sent to %1$s: check the chat</string>
+    <string name="notif_uncertain_text">Auto-send was interrupted after tapping Send. Check the chat before sending it again.</string>
+    <string name="notif_uncertain_text_for">Auto-send for %1$s was interrupted after tapping Send. Check the chat before sending it again.</string>
+    <string name="notif_missed_title">Missed: your message to %1$s (%2$s)</string>
+    <string name="notif_missed_text">It wasn\'t sent because the phone was off or the app was stopped at that time. Tap to open the chat with the message ready.</string>
+    <string name="notif_held_title">Not sent: choose a new time for %1$s</string>
+    <string name="notif_unarmed_title">Your next message to %1$s may not go</string>
+    <string name="notif_unarmed_text">Its alarm couldn\'t be set. Open the app to set it again.</string>
+    <string name="notif_will_fail_title">Your %1$s message to %2$s will fail</string>
+    <string name="notif_pin_paused_title">Automatic sending paused: update your PIN</string>
+    <string name="notif_sent_title">Sent to %1$s</string>
+    <string name="notif_dry_run_title">Dry run: not sent to %1$s</string>
+    <string name="notif_sent_text">%1$s · %2$s</string>
+    <plurals name="notif_sent_summary">
+        <item quantity="one">Sent to %1$d chat</item>
+        <item quantity="other">Sent to %1$d chats</item>
+    </plurals>
+    <plurals name="notif_dry_run_summary">
+        <item quantity="one">Dry run: not sent to %1$d chat</item>
+        <item quantity="other">Dry run: not sent to %1$d chats</item>
+    </plurals>
+    <string name="attention_start_failed">Couldn\'t start sending (%1$s). Open the app to send it.</string>
+    <string name="attention_moved_unarmed">Moved, but its alarm couldn\'t be set: use Re-arm all alarms in Settings.</string>
+    <string name="fallback_whatsapp_not_found">WhatsApp not found.</string>
+    <string name="fallback_whatsapp_not_found_copied">WhatsApp not found. Message copied to clipboard.</string>
+    <string name="fallback_check_arrived">Check whether your message to \'%1$s\' arrived before sending it again.</string>
+    <string name="fallback_copied_open">Message copied. Open \'%1$s\' and paste if it is not pre-filled.</string>
+    <string name="fallback_clip_label">message</string>
+    <string name="unlock_sending">Sending scheduled WhatsApp message…</string>
 </resources>
