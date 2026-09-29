@@ -25,6 +25,7 @@ import com.thomaswcode.whatsappscheduler.ui.Routes
 import com.thomaswcode.whatsappscheduler.ui.quick.QuickEvent
 import com.thomaswcode.whatsappscheduler.ui.quick.QuickScheduleSheet
 import com.thomaswcode.whatsappscheduler.ui.quick.QuickScheduleViewModel
+import com.thomaswcode.whatsappscheduler.ui.rememberTexts
 
 /**
  * "Schedule on WhatsApp" in Android's share sheet (quick-schedule.md §2). Shows the quick sheet over
@@ -88,7 +89,7 @@ class ShareTargetActivity : ComponentActivity() {
                     AlertDialog(
                         onDismissRequest = { vm.answerCheckOffer(check = false) },
                         title = { Text(stringResource(R.string.share_check_title)) },
-                        text = { Text(stringResource(R.string.share_check_text, QuickScheduleViewModel.quoted(offers))) },
+                        text = { Text(stringResource(R.string.share_check_text, QuickScheduleViewModel.quoted(offers, rememberTexts()))) },
                         confirmButton = { TextButton(onClick = { vm.answerCheckOffer(check = true) }) { Text(stringResource(R.string.action_check)) } },
                         dismissButton = { TextButton(onClick = { vm.answerCheckOffer(check = false) }) { Text(stringResource(R.string.action_not_now)) } },
                     )

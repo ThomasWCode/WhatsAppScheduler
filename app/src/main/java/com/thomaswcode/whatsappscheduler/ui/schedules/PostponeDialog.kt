@@ -31,6 +31,8 @@ import com.thomaswcode.whatsappscheduler.domain.FriendlyTime
 import com.thomaswcode.whatsappscheduler.domain.Postponing
 import com.thomaswcode.whatsappscheduler.ui.quick.QuickScheduleViewModel
 import com.thomaswcode.whatsappscheduler.ui.quick.rememberTimeFormat
+import com.thomaswcode.whatsappscheduler.ui.rememberTexts
+import com.thomaswcode.whatsappscheduler.util.Texts
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -81,7 +83,7 @@ fun PostponeDialog(schedule: Schedule, now: ZonedDateTime, onDismiss: () -> Unit
                 }
                 if (skipped.isNotEmpty()) {
                     Text(
-                        stringResource(R.string.postpone_also_skips, skippedText(skipped, now, timeFormat)),
+                        stringResource(R.string.postpone_also_skips, skippedText(skipped, now, rememberTexts(), timeFormat)),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.tertiary,
                     )
@@ -155,13 +157,13 @@ internal fun postponeStart(due: ZonedDateTime, now: ZonedDateTime): ZonedDateTim
  * "Tue 09:00", "Tue 09:00 and Wed 09:00", or "Tue 09:00, Wed 09:00 and 3 more"; "at least" when the
  * list reached [Postponing.LIMIT] and may have been cut short.
  */
-internal fun skippedText(skipped: List<Instant>, now: ZonedDateTime, time: (LocalTime) -> String = { it.toString() }): String {
+internal fun skippedText(skipped: List<Instant>, now: ZonedDateTime, texts: Texts, time: (LocalTime) -> String = { it.toString() }): String {
     fun day(at: Instant) = FriendlyTime.dayAndTime(at.atZone(now.zone), now, time)
-    val atLeast = if (skipped.size >= Postponing.LIMIT) "at least " else ""
+    val more = if (skipped.size >= Postponing.LIMIT) R.plurals.names_at_least_more else R.plurals.names_more
     return when (skipped.size) {
         0 -> ""
         1 -> day(skipped[0])
-        2 -> "${day(skipped[0])} and ${day(skipped[1])}"
-        else -> "${day(skipped[0])}, ${day(skipped[1])} and $atLeast${skipped.size - 2} more"
+        2 -> texts.get(R.string.names_two, day(skipped[0]), day(skipped[1]))
+        else -> texts.plural(more, skipped.size - 2, day(skipped[0]), day(skipped[1]), skipped.size - 2)
     }
 }

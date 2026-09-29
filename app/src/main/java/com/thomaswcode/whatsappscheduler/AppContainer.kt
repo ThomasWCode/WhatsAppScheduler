@@ -44,7 +44,7 @@ class AppContainer(context: Context) {
     fun text(@StringRes id: Int, vararg args: Any): String = appContext.getString(id, *args)
 
     /** [text] for the classes that take a [Texts] rather than a Context. */
-    val texts = Texts { id, args -> text(id, *args) }
+    val texts: Texts = Texts.of(appContext.resources)
 
     /** A plural from strings.xml for [count], formatted with [args]. */
     fun plural(@PluralsRes id: Int, count: Int, vararg args: Any): String = appContext.resources.getQuantityString(id, count, *args)

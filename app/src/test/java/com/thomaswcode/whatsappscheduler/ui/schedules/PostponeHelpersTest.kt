@@ -1,16 +1,25 @@
 package com.thomaswcode.whatsappscheduler.ui.schedules
 
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.domain.Postponing
 import com.thomaswcode.whatsappscheduler.domain.Recurrence
 import com.thomaswcode.whatsappscheduler.domain.RecurrenceCodec
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
+import com.thomaswcode.whatsappscheduler.util.Texts
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+@RunWith(RobolectricTestRunner::class)
 class PostponeHelpersTest {
+
+    // The app's own resources, so what is said is checked word for word.
+    private val texts = Texts.of(ApplicationProvider.getApplicationContext<Context>().resources)
 
     private val london = ZoneId.of("Europe/London")
 
@@ -46,11 +55,11 @@ class PostponeHelpersTest {
     @Test
     fun skippedOccurrencesAreNamed() {
         val days = listOf(on(6, 9), on(7, 9), on(8, 9), on(9, 9)).map { it.toInstant() }
-        assertEquals("Tomorrow 09:00", skippedText(days.take(1), now))
-        assertEquals("Tomorrow 09:00 and Wed 7 Oct 09:00", skippedText(days.take(2), now))
-        assertEquals("Tomorrow 09:00, Wed 7 Oct 09:00 and 2 more", skippedText(days, now))
+        assertEquals("Tomorrow 09:00", skippedText(days.take(1), now, texts))
+        assertEquals("Tomorrow 09:00 and Wed 7 Oct 09:00", skippedText(days.take(2), now, texts))
+        assertEquals("Tomorrow 09:00, Wed 7 Oct 09:00 and 2 more", skippedText(days, now, texts))
         // A list as long as the limit may be cut short.
         val many = List(Postponing.LIMIT) { i -> on(6, 9).plusHours(i.toLong()).toInstant() }
-        assertEquals("Tomorrow 09:00, Tomorrow 10:00 and at least ${Postponing.LIMIT - 2} more", skippedText(many, now))
+        assertEquals("Tomorrow 09:00, Tomorrow 10:00 and at least ${Postponing.LIMIT - 2} more", skippedText(many, now, texts))
     }
 }

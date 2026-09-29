@@ -1,5 +1,6 @@
 package com.thomaswcode.whatsappscheduler.ui.schedules
 
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.data.LatestRuns
 import com.thomaswcode.whatsappscheduler.data.ScheduleRepository
 import com.thomaswcode.whatsappscheduler.data.db.Attention
@@ -8,6 +9,7 @@ import com.thomaswcode.whatsappscheduler.data.db.SendStatus
 import com.thomaswcode.whatsappscheduler.domain.FriendlyTime
 import com.thomaswcode.whatsappscheduler.domain.PlainResult
 import com.thomaswcode.whatsappscheduler.domain.Recurrence
+import com.thomaswcode.whatsappscheduler.util.Texts
 import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
@@ -70,6 +72,7 @@ fun statusLine(
     group: List<Schedule>,
     now: ZonedDateTime,
     runs: Map<Long, LatestRuns>,
+    texts: Texts,
     time: (LocalTime) -> String = { it.format(hourMinute) },
 ): String {
     val schedule = group.first()
@@ -77,15 +80,17 @@ fun statusLine(
 
     /**
      * Rules keep the zone they were made in (improvements I1): when that zone's clock differs from the
-     * phone's at [millis], its own time too, e.g. " (09:00 London time)".
+     * phone's at [millis], [text] (the phone's time) gets its own too, e.g. "Tue 10:00 (09:00 London time)".
      */
-    fun zoneNote(millis: Long): String {
-        val own = runCatching { ZoneId.of(schedule.zoneId) }.getOrNull() ?: return ""
+    fun withZone(text: String, millis: Long): String {
+        val own = runCatching { ZoneId.of(schedule.zoneId) }.getOrNull() ?: return text
         val at = Instant.ofEpochMilli(millis)
-        if (own.rules.getOffset(at) == now.zone.rules.getOffset(at)) return ""
+        if (own.rules.getOffset(at) == now.zone.rules.getOffset(at)) return text
         val place = own.id.substringAfterLast('/').replace('_', ' ')
-        return " (${time(at.atZone(own).toLocalTime())} $place time)"
+        return texts.get(R.string.status_zone, text, time(at.atZone(own).toLocalTime()), place)
     }
+
+    fun movedFrom(text: String): String = schedule.postponedFromMillis?.let { texts.get(R.string.status_moved_from, text, day(it)) } ?: text
     return when (section) {
         Section.ATTENTION -> {
             // The run that left it waiting: its occurrence is when it was due, and it says when it was tried and why.
@@ -93,42 +98,42 @@ fun statusLine(
             val due = run?.occurrenceAtMillis ?: if (schedule.rule == Recurrence.Once) schedule.firstAtMillis else schedule.lastRunAtMillis ?: schedule.firstAtMillis
             val tried = run?.ranAtMillis ?: schedule.lastRunAtMillis ?: due
             when (schedule.attention) {
-                Attention.MISSED -> "Missed · ${day(due)}"
+                Attention.MISSED -> texts.get(R.string.status_missed, day(due))
                 // Why, in words, where the step that failed is known (improvements I2): from that occurrence's
                 // own run, since a later try by hand changes the last result. Rows from before runs were
                 // logged by occurrence have only the last result.
                 Attention.FAILED -> {
                     val why = if (run != null) PlainResult.reason(run.detail) else PlainResult.fromResult(schedule.lastResult)
-                    "${why ?: "Couldn't send"} · ${day(tried)}"
+                    texts.get(R.string.status_failed, why ?: texts.get(R.string.status_couldnt_send), day(tried))
                 }
-                Attention.UNCERTAIN -> "May have been sent · ${day(tried)}: check the chat"
-                Attention.HELD -> "Not sent: choose a new time"
+                Attention.UNCERTAIN -> texts.get(R.string.status_uncertain, day(tried))
+                Attention.HELD -> texts.get(R.string.status_held)
                 null -> day(due)
             }
         }
         Section.UPCOMING -> {
-            val next = schedule.nextAtMillis ?: return "Finished"
+            val next = schedule.nextAtMillis ?: return texts.get(R.string.status_finished)
             val at = Instant.ofEpochMilli(next).atZone(now.zone)
-            val relative = if (at.toLocalDate() == now.toLocalDate()) " · " + FriendlyTime.relative(at.toInstant(), now.toInstant()) else ""
-            val moved = schedule.postponedFromMillis?.let { " · moved from ${day(it)}" } ?: ""
-            (if (schedule.enabled) "" else "Paused · ") + day(next) + zoneNote(next) + relative + moved
+            val due = withZone(day(next), next).let { if (schedule.enabled) it else texts.get(R.string.status_paused, it) }
+            val today = if (at.toLocalDate() == now.toLocalDate()) texts.get(R.string.status_with_relative, due, FriendlyTime.relative(at.toInstant(), now.toInstant())) else due
+            movedFrom(today)
         }
         Section.REPEATING -> {
             val label = schedule.rule.label()
             val next = schedule.nextAtMillis
             when {
-                !schedule.enabled -> "$label · paused"
-                next == null -> "$label · finished"
-                else -> "$label · next ${day(next)}${zoneNote(next)}" + (schedule.postponedFromMillis?.let { " · moved from ${day(it)}" } ?: "")
+                !schedule.enabled -> texts.get(R.string.status_series_paused, label)
+                next == null -> texts.get(R.string.status_series_finished, label)
+                else -> movedFrom(texts.get(R.string.status_series_next, label, withZone(day(next), next)))
             }
         }
         Section.SENT -> {
             val ranAt = schedule.lastRunAtMillis
             when {
-                ranAt == null -> "Not sent · was due ${day(schedule.firstAtMillis)}"
-                schedule.shownStatus == SendStatus.DRY_RUN -> "Sent ${day(ranAt)} (dry run)"
-                schedule.shownStatus == SendStatus.SENT -> "Sent ${day(ranAt)}"
-                else -> "Finished ${day(ranAt)}"
+                ranAt == null -> texts.get(R.string.status_not_sent_due, day(schedule.firstAtMillis))
+                schedule.shownStatus == SendStatus.DRY_RUN -> texts.get(R.string.status_sent_dry_run, day(ranAt))
+                schedule.shownStatus == SendStatus.SENT -> texts.get(R.string.status_sent, day(ranAt))
+                else -> texts.get(R.string.status_finished_at, day(ranAt))
             }
         }
     }
@@ -159,10 +164,10 @@ fun ListSections.rowOf(id: Long): Pair<Section, String>? =
         .firstNotNullOfOrNull { (section, groups) -> groups.firstOrNull { group -> group.any { it.id == id } }?.let { section to "$section-${it.first().id}" } }
 
 /** "Mum", "Mum and Dad", or "Mum, Dad +1". */
-fun groupTitle(group: List<Schedule>): String = when (group.size) {
+fun groupTitle(group: List<Schedule>, texts: Texts): String = when (group.size) {
     1 -> group[0].targetName
-    2 -> "${group[0].targetName} and ${group[1].targetName}"
-    else -> "${group[0].targetName}, ${group[1].targetName} +${group.size - 2}"
+    2 -> texts.get(R.string.names_two, group[0].targetName, group[1].targetName)
+    else -> texts.get(R.string.names_plus, group[0].targetName, group[1].targetName, group.size - 2)
 }
 
 /**

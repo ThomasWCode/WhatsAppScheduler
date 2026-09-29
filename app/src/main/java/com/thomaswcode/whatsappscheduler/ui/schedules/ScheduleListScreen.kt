@@ -97,6 +97,7 @@ import com.thomaswcode.whatsappscheduler.ui.quick.QuickScheduleSheet
 import com.thomaswcode.whatsappscheduler.ui.quick.QuickScheduleViewModel
 import com.thomaswcode.whatsappscheduler.ui.quick.rememberTimeFormat
 import com.thomaswcode.whatsappscheduler.ui.rememberStampFormat
+import com.thomaswcode.whatsappscheduler.ui.rememberTexts
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -126,6 +127,7 @@ fun ScheduleListScreen(
     val context = LocalContext.current
     // For text needed outside composition (events, callbacks): follows configuration changes, unlike context.
     val resources = LocalResources.current
+    val texts = rememberTexts()
     val schedules by vm.schedules.collectAsStateWithLifecycle()
     val sections = remember(schedules) { ListSections.of(schedules) }
     val latestRuns by vm.latestRuns.collectAsStateWithLifecycle()
@@ -179,7 +181,7 @@ fun ScheduleListScreen(
                     // Chats found by name, new just now: offered a check once, all together, after the Undo has gone.
                     val offer = event.checkOffers.takeIf { it.isNotEmpty() }?.let { chats ->
                         ScheduleListViewModel.FollowUp(
-                            resources.getString(R.string.list_check_chats_offer, QuickScheduleViewModel.quoted(chats)),
+                            resources.getString(R.string.list_check_chats_offer, QuickScheduleViewModel.quoted(chats, texts)),
                             resources.getString(R.string.action_check),
                         ) { quick.checkChats(chats) }
                     }
@@ -230,7 +232,7 @@ fun ScheduleListScreen(
         ScheduleRow(
             group = group,
             outlined = group.any { it.id == outlined },
-            line = busy?.let { stringResource(it) } ?: statusLine(section, group, now, latestRuns, timeFormat),
+            line = busy?.let { stringResource(it) } ?: statusLine(section, group, now, latestRuns, texts, timeFormat),
             busy = busy != null,
             needsYou = section == Section.ATTENTION,
             switchedOn = if (section == Section.REPEATING) first.enabled else null,
@@ -427,6 +429,7 @@ private fun ScheduleRow(
     modifier: Modifier = Modifier,
 ) {
     val first = group.first()
+    val texts = rememberTexts()
     val scope = rememberCoroutineScope()
     val threshold = SwipeToDismissBoxDefaults.positionalThreshold
     // Not saveable: a row brought back by Undo must come back in place, not swiped away.
@@ -463,7 +466,7 @@ private fun ScheduleRow(
                             if (group.size == 1 && first.targetKind == TargetKind.GROUP) {
                                 Icon(Icons.Default.Group, contentDescription = stringResource(R.string.group), modifier = Modifier.size(16.dp).padding(end = 2.dp))
                             }
-                            Text(groupTitle(group), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(groupTitle(group, texts), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (busy) {
@@ -479,7 +482,7 @@ private fun ScheduleRow(
                         Text(first.message, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                     if (switchedOn != null) {
-                        val repeatTo = stringResource(R.string.list_repeat_to, groupTitle(group))
+                        val repeatTo = stringResource(R.string.list_repeat_to, groupTitle(group, texts))
                         Switch(
                             checked = switchedOn,
                             onCheckedChange = if (busy) null else onSwitch,
@@ -488,7 +491,7 @@ private fun ScheduleRow(
                     }
                     Box {
                         IconButton(onClick = { menuOpen = true }, enabled = !busy) {
-                            Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.list_more_for, groupTitle(group)))
+                            Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.list_more_for, groupTitle(group, texts)))
                         }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                             menu.forEach { (label, action) ->
@@ -563,6 +566,7 @@ internal fun busyText(group: List<Schedule>, state: SendState): Int? = when {
 @Composable
 private fun SendNowDialog(group: List<Schedule>, copyOnly: Boolean, onDismiss: () -> Unit, onSend: (List<SendRequest>) -> Unit) {
     val schedule = group.first()
+    val texts = rememberTexts()
     val recurring = schedule.rule != Recurrence.Once
     val plan = sendNowPlan(group)
     val early = plan.early.takeIf { it.isNotEmpty() && !copyOnly }
@@ -573,7 +577,7 @@ private fun SendNowDialog(group: List<Schedule>, copyOnly: Boolean, onDismiss: (
         copyOnly && recurring -> stringResource(R.string.send_now_series_carries_on)
         next == null && recurring -> stringResource(R.string.send_now_extra_copy)
         next == null && !recurring && plan.copies.size < group.size ->
-            stringResource(R.string.send_now_only_to, groupTitle(group.filter { m -> plan.copies.any { it.scheduleId == m.id } }))
+            stringResource(R.string.send_now_only_to, groupTitle(group.filter { m -> plan.copies.any { it.scheduleId == m.id } }, texts))
         next == null && schedule.attention == Attention.UNCERTAIN -> stringResource(R.string.send_now_may_have_gone)
         next == null && sentBefore -> stringResource(R.string.send_now_sent_before)
         next == null -> stringResource(R.string.send_now_missed)
@@ -583,7 +587,7 @@ private fun SendNowDialog(group: List<Schedule>, copyOnly: Boolean, onDismiss: (
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.send_now_title, groupTitle(group))) },
+        title = { Text(stringResource(R.string.send_now_title, groupTitle(group, texts))) },
         text = {
             Column {
                 Text(

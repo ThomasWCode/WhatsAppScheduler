@@ -33,8 +33,8 @@ class HeadsUpPrompt(
         val wait = answers.expect()
         val to = when (schedules.size) {
             1 -> first.targetName
-            2 -> "${first.targetName} and ${schedules[1].targetName}"
-            else -> schedules.dropLast(1).joinToString { it.targetName } + " and " + schedules.last().targetName
+            2 -> context.getString(R.string.names_two, first.targetName, schedules[1].targetName)
+            else -> context.getString(R.string.names_two, schedules.dropLast(1).joinToString { it.targetName }, schedules.last().targetName)
         }
         val text = first.message.lineSequence().firstOrNull().orEmpty().let { if (it.length > 80) it.take(79) + "…" else it }
         notifications.show(

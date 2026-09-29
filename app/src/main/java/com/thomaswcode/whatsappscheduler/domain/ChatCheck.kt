@@ -19,5 +19,8 @@ sealed interface ChatCheck {
      * whatever stopped it would stop the next check too; not when only this chat can't be checked, e.g.
      * it has been put behind Chat Lock since the check was offered.
      */
-    data class NotChecked(val reason: String, val stopsOthers: Boolean = true) : ChatCheck
+    data class NotChecked(val why: Why, val stopsOthers: Boolean = true) : ChatCheck {
+        /** Why it wasn't tried, which the app says in words of its own. */
+        enum class Why { LOCKED, BY_NUMBER, SENDING, SERVICE_OFF, NO_WHATSAPP }
+    }
 }

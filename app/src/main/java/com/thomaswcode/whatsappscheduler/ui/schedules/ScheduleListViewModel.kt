@@ -150,7 +150,7 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
                 }
             }
                 .onSuccess { removed ->
-                    if (removed.schedules.isNotEmpty()) events.trySend(ListEvent.Deleted(container.text(verb, groupTitle(removed.schedules)), removed, prompted))
+                    if (removed.schedules.isNotEmpty()) events.trySend(ListEvent.Deleted(container.text(verb, groupTitle(removed.schedules, container.texts)), removed, prompted))
                 }
                 .onFailure { fail(R.string.list_couldnt_delete, it) }
         }
@@ -187,7 +187,7 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
                     container.fallbackNotifier.cancel(it)
                 }
             }
-                .onSuccess { events.trySend(ListEvent.Dismissed(container.text(R.string.list_dismissed, groupTitle(group)), previous, prompted)) }
+                .onSuccess { events.trySend(ListEvent.Dismissed(container.text(R.string.list_dismissed, groupTitle(group, container.texts)), previous, prompted)) }
                 .onFailure { fail(R.string.list_couldnt_dismiss, it) }
         }
     }

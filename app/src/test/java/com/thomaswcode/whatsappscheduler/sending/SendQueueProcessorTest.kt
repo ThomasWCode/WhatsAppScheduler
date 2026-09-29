@@ -13,6 +13,7 @@ import com.thomaswcode.whatsappscheduler.domain.SendJob
 import com.thomaswcode.whatsappscheduler.domain.SendResult
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
 import com.thomaswcode.whatsappscheduler.scheduling.ScheduleAlarms
+import com.thomaswcode.whatsappscheduler.util.Texts
 import com.thomaswcode.whatsappscheduler.util.TraceLog
 import java.time.Clock
 import java.time.Duration
@@ -41,7 +42,7 @@ class SendQueueProcessorTest {
     private val stopped = StoppedOccurrences(clock)
 
     private fun processor(sender: MessageSender, settings: Settings = Settings(retryCount = 2, retryDelaySeconds = 30), headsUp: HeadsUp = HeadsUp.None) =
-        SendQueueProcessor(store, sender, alarms, notifier, PinGuard(pinStore, clock), state, log, { settings }, clock, headsUp = headsUp, stopped = stopped, texts = { id, _ -> "text $id" })
+        SendQueueProcessor(store, sender, alarms, notifier, PinGuard(pinStore, clock), state, log, { settings }, clock, headsUp = headsUp, stopped = stopped, texts = placeholderTexts)
 
     private fun oneOff(id: Long = 1, at: Instant = due) = schedule(id, at, "ONCE")
 
@@ -832,4 +833,11 @@ class SendQueueProcessorTest {
         override fun getZone(): ZoneId = ZoneOffset.UTC
         override fun withZone(zone: ZoneId?): Clock = this
     }
+}
+
+/** Stands in for strings.xml: what the sending notification says isn't what these tests check. */
+private val placeholderTexts = object : Texts {
+    override fun get(id: Int, vararg args: Any) = "text $id"
+
+    override fun plural(id: Int, count: Int, vararg args: Any) = "text $id"
 }
