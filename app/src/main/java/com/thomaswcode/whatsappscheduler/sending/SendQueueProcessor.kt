@@ -39,10 +39,15 @@ class SendQueueProcessor(
     private val jobGuard: JobGuard = JobGuard.None,
     /** Shared with the attention notifications' Discard (AttentionActions), so the two can't interleave. */
     private val admission: Mutex = Mutex(),
+    /** The countdown before a scheduled send while the phone is in use (features F1). */
+    private val headsUp: HeadsUp = HeadsUp.None,
 ) {
     private val lock = Any()
     private val queue = ArrayDeque<SendRequest>()
     private var current: SendRequest? = null
+
+    /** Batch members whose occurrence a countdown already let through, so theirs doesn't count down again. */
+    private val approved = mutableSetOf<Pair<Long, Long>>()
 
     /** Queues [request] unless the same send is already queued or running; returns whether it was queued. */
     fun enqueue(request: SendRequest): Boolean = synchronized(lock) {
@@ -60,7 +65,10 @@ class SendQueueProcessor(
     /** Sends queued requests one at a time until the queue is empty. */
     suspend fun drain() {
         while (true) {
-            val request = synchronized(lock) { queue.removeFirstOrNull()?.also { current = it; publish() } } ?: return
+            val request = synchronized(lock) { queue.removeFirstOrNull()?.also { current = it; publish() } } ?: run {
+                approved.clear()
+                return
+            }
             try {
                 val settings = settings()
                 jobGuard.around(budgetMs(settings)) { send(request, settings) }
@@ -100,6 +108,11 @@ class SendQueueProcessor(
                 recordMissed(schedule, occurrence, late)
                 return
             }
+        }
+        if (request.kind == SendKind.SCHEDULED && occurrence != null) {
+            if (!countdown(schedule, occurrence, settings)) return
+            // The countdown, or a call before it, may have taken a while: the row as it is now.
+            schedule = stillWanted(request, occurrence) ?: return
         }
         val dryRun = settings.dryRun || request.kind == SendKind.TEST
         val attempts = settings.retryCount + 1
@@ -143,6 +156,41 @@ class SendQueueProcessor(
             ?: return
         alarms.sync(missed.schedule)
         notifier.missed(missed.held, occurrence)
+    }
+
+    /**
+     * Before a scheduled send while the phone is in use, a countdown (features F1) with Send now,
+     * Snooze 5 min and Postpone…, which a batch's members due together share. During a call the send
+     * waits first, looking again every 15 s for up to half an hour. Returns whether to send now.
+     */
+    private suspend fun countdown(schedule: Schedule, occurrence: Long, settings: Settings): Boolean {
+        if (approved.remove(schedule.id to occurrence)) return true
+        var looks = 0
+        while (headsUp.inCall() && looks < CALL_LOOKS) {
+            if (looks == 0) {
+                log.info("Schedule ${schedule.id}: waiting for the call to end")
+                notifier.progress("Waiting for the call to end…")
+            }
+            delay(CALL_LOOK_MS)
+            looks++
+        }
+        if (!headsUp.inUse()) return true
+        val batch = store.duePeers(schedule, occurrence)
+        val choice = headsUp.ask(batch, clock.millis() + settings.headsUpSeconds * 1_000L) ?: HeadsUpChoice.SEND
+        log.info("Schedule ${schedule.id}: countdown ${choice.name.lowercase()}" + if (batch.size > 1) " for ${batch.size} chats" else "")
+        when (choice) {
+            HeadsUpChoice.SEND -> batch.filter { it.id != schedule.id }.forEach { approved += it.id to occurrence }
+            HeadsUpChoice.SNOOZE -> batch.forEach { member ->
+                store.snooze(member.id, occurrence, clock.instant().plus(SNOOZE), clock.instant())?.let(alarms::sync)
+            }
+            HeadsUpChoice.POSTPONE -> batch.forEach { member ->
+                store.hold(member.id, occurrence, clock.instant())?.let { held ->
+                    alarms.sync(held.schedule)
+                    notifier.held(held.held)
+                }
+            }
+        }
+        return choice == HeadsUpChoice.SEND
     }
 
     /** Re-reads the schedule after a retry delay: it may have been deleted, switched off or edited meanwhile. */
@@ -204,7 +252,9 @@ class SendQueueProcessor(
         // long as a check may take, and its backing out of WhatsApp.
         val checkWait = settings.jobTimeoutMs + CHECK_EXIT_ALLOWANCE_MS
         val perAttempt = checkWait + settings.jobTimeoutMs + settings.stepTimeoutMs + TIDY_UP_ALLOWANCE_MS
-        return (settings.retryCount + 1) * perAttempt + settings.retryCount * settings.retryDelaySeconds * 1000L + MARGIN_MS
+        // Before the first attempt, a call may be waited out and the countdown run (features F1).
+        val beforeSending = CALL_LOOKS * CALL_LOOK_MS + settings.headsUpSeconds * 1000L
+        return beforeSending + (settings.retryCount + 1) * perAttempt + settings.retryCount * settings.retryDelaySeconds * 1000L + MARGIN_MS
     }
 
     /** Must be called holding [lock]. */
@@ -224,6 +274,10 @@ class SendQueueProcessor(
         /** How early an alarm without an occurrence key may fire and still count as due. */
         const val LEGACY_ALARM_SLACK_MS = 60_000L
         private const val TIDY_UP_ALLOWANCE_MS = 10_000L
+        /** During a call a scheduled send looks again this often, and this many times: half an hour. */
+        private const val CALL_LOOK_MS = 15_000L
+        private const val CALL_LOOKS = 120
+        private val SNOOZE: Duration = Duration.ofMinutes(5)
         /** A check backs out of WhatsApp in at most six tries of a two-second look and a Back press. */
         private const val CHECK_EXIT_ALLOWANCE_MS = 20_000L
         private const val MARGIN_MS = 60_000L

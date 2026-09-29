@@ -77,6 +77,41 @@ class ScheduleRepositoryTest {
     }
 
     @Test
+    fun theCountdownsSnoozeAndPostpone() = runTest {
+        // Snooze: five minutes on, logged, the series otherwise as it was.
+        val daily = saveDaily()
+        val later = nine.plus(Duration.ofMinutes(5))
+        val snoozed = repository.snooze(daily.id, nine.toEpochMilli(), later, nine)!!
+        assertEquals(later.toEpochMilli(), snoozed.nextAtMillis)
+        assertEquals(nine.toEpochMilli(), snoozed.postponedFromMillis)
+        assertNull(snoozed.lastStatus)
+        assertNull(repository.snooze(daily.id, nine.toEpochMilli(), later, nine))
+        // Postpone… on a series: it goes on, and this occurrence waits on its own for a new time.
+        val held = repository.hold(daily.id, later.toEpochMilli(), later)!!
+        assertNull(held.schedule.attention)
+        assertEquals(nine.plus(Duration.ofDays(1)).toEpochMilli(), repository.get(daily.id)!!.nextAtMillis)
+        assertEquals(Attention.HELD, held.held.attention)
+        assertNull(held.held.lastStatus)
+        assertNull(held.held.nextAtMillis)
+        assertEquals(daily.id, held.held.sourceScheduleId)
+        // A one-off waits itself.
+        val once = repository.save(daily.copy(id = 0, recurrence = "ONCE", firstAtMillis = nine.plus(Duration.ofDays(2)).toEpochMilli()), ranAt)
+        val heldOnce = repository.hold(once.id, once.nextAtMillis!!, nine.plus(Duration.ofDays(2)))!!
+        assertEquals(heldOnce.schedule, heldOnce.held)
+        assertEquals(Attention.HELD, repository.get(once.id)!!.attention)
+        assertNull(repository.get(once.id)!!.nextAtMillis)
+    }
+
+    @Test
+    fun aBatchsMembersDueTogetherShareTheCountdown() = runTest {
+        val daily = saveDaily()
+        val a = repository.save(daily.copy(id = 0, batchId = "b"), ranAt)
+        val b = repository.save(daily.copy(id = 0, batchId = "b", targetName = "Dad"), ranAt)
+        assertEquals(setOf(a.id, b.id), repository.duePeers(a, a.nextAtMillis!!).map { it.id }.toSet())
+        assertEquals(listOf(daily.id), repository.duePeers(daily, daily.nextAtMillis!!).map { it.id })
+    }
+
+    @Test
     fun anOccurrenceEditedAwayIsntMissed() = runTest {
         val daily = saveDaily()
         // Edited to another time between the queue looking at it and holding it.

@@ -13,6 +13,7 @@ import com.thomaswcode.whatsappscheduler.scheduling.AlarmScheduler
 import com.thomaswcode.whatsappscheduler.sending.ChatChecker
 import com.thomaswcode.whatsappscheduler.sending.AttentionActions
 import com.thomaswcode.whatsappscheduler.sending.FallbackNotifier
+import com.thomaswcode.whatsappscheduler.sending.HeadsUpAnswers
 import com.thomaswcode.whatsappscheduler.sending.SentNotifier
 import com.thomaswcode.whatsappscheduler.sending.accessibility.AccessibilitySender
 import com.thomaswcode.whatsappscheduler.sending.Notifications
@@ -49,6 +50,9 @@ class AppContainer(context: Context) {
     val sentNotifier: SentNotifier by lazy { SentNotifier(appContext, notifications) }
     /** Taken by a send as it takes its row, and by Discard from a notification, so the two can't interleave. */
     val sendAdmission = Mutex()
+
+    /** Where the countdown's buttons answer the countdown that is waiting (features F1). */
+    val headsUpAnswers = HeadsUpAnswers()
     val attentionActions: AttentionActions by lazy {
         AttentionActions(repository, alarmScheduler, { sendState.state.value }, ::send, fallbackNotifier::cancel, admission = sendAdmission)
     }

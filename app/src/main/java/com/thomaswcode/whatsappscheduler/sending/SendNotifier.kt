@@ -25,6 +25,12 @@ interface SendNotifier {
 
     /** An occurrence came due too late to send (the alarm could not fire in time); offer the manual send. */
     fun missed(schedule: Schedule, occurrenceAtMillis: Long)
+
+    /**
+     * Held until the user picks a time (Postpone… on the countdown, features F1): the Postpone picker
+     * opens for it, and "Not sent: choose a new time" stays if the picker is dismissed.
+     */
+    fun held(schedule: Schedule)
 }
 
 /** Runs around each job. The service holds a partial wake lock sized to the job's worst case (B12). */

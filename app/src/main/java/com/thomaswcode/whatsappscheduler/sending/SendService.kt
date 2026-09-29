@@ -37,7 +37,7 @@ class SendService : LifecycleService() {
             // Under the same lock as "Check this chat now", so the two never drive WhatsApp at once.
             sender = LockedSender(AccessibilitySender(this, c.settings, c.secrets, c.pinGuard, c.log, c.notifications), c.automationLock),
             alarms = c.alarmScheduler,
-            notifier = ServiceNotifier(c.notifications, c.fallbackNotifier) { schedule, dryRun ->
+            notifier = ServiceNotifier(c.notifications, c.fallbackNotifier, ::choosePostpone) { schedule, dryRun ->
                 // A test run always says it sent nothing (B11); a real send only if wanted (features F2).
                 c.appScope.launch {
                     if (dryRun || c.settings.current().notifyAfterSend) runCatching { c.sentNotifier.notifySent(schedule, dryRun) }
@@ -50,6 +50,7 @@ class SendService : LifecycleService() {
             clock = Clock.systemDefaultZone(),
             jobGuard = WakeLockGuard(getSystemService(PowerManager::class.java)),
             admission = c.sendAdmission,
+            headsUp = HeadsUpPrompt(this, c.notifications, c.headsUpAnswers),
         )
     }
 
@@ -118,9 +119,16 @@ class SendService : LifecycleService() {
         }
     }
 
+    /** Opens the Postpone picker for a message held on the countdown; the user has just asked for it. */
+    private fun choosePostpone(schedule: Schedule) {
+        runCatching { startActivity(PostponeActivity.intent(this, schedule.id).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            .onFailure { container.log.error("Opening the Postpone picker failed", it) }
+    }
+
     private class ServiceNotifier(
         private val notifications: Notifications,
         private val fallback: FallbackNotifier,
+        private val choosePostpone: (Schedule) -> Unit,
         private val confirm: (Schedule, Boolean) -> Unit,
     ) : SendNotifier {
         override fun progress(text: String) = notifications.show(Notifications.ID_SENDING, notifications.sending(text))
@@ -133,6 +141,10 @@ class SendService : LifecycleService() {
         override fun uncertain(schedule: Schedule, occurrenceAtMillis: Long?, reason: String) = fallback.notifyUncertain(schedule, occurrenceAtMillis, reason)
         override fun pinPaused(reason: String) = fallback.notifyPinPaused(reason)
         override fun missed(schedule: Schedule, occurrenceAtMillis: Long) = fallback.notifyMissed(schedule, occurrenceAtMillis)
+        override fun held(schedule: Schedule) {
+            fallback.notifyHeld(schedule)
+            choosePostpone(schedule)
+        }
     }
 
     companion object {

@@ -123,6 +123,10 @@
             android:exported="false" />
 
         <receiver
+            android:name=".sending.HeadsUpActionReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".scheduling.BootReceiver"
             android:exported="true">
             <intent-filter>
