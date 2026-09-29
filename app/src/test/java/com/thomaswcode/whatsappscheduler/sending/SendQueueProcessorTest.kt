@@ -37,8 +37,11 @@ class SendQueueProcessorTest {
     private val state = SendStateHolder()
     private val log = FakeLog()
 
+    /** Shared by every processor in a test, as by every send service in the process. */
+    private val stopped = StoppedOccurrences(clock)
+
     private fun processor(sender: MessageSender, settings: Settings = Settings(retryCount = 2, retryDelaySeconds = 30), headsUp: HeadsUp = HeadsUp.None) =
-        SendQueueProcessor(store, sender, alarms, notifier, PinGuard(pinStore, clock), state, log, { settings }, clock, headsUp = headsUp)
+        SendQueueProcessor(store, sender, alarms, notifier, PinGuard(pinStore, clock), state, log, { settings }, clock, headsUp = headsUp, stopped = stopped)
 
     private fun oneOff(id: Long = 1, at: Instant = due) = schedule(id, at, "ONCE")
 
@@ -431,6 +434,20 @@ class SendQueueProcessorTest {
         assertEquals(1, countdown.asked.size)
         assertTrue(sender.jobs.isEmpty())
         assertEquals(listOf("failed Mum", "failed Dad"), notifier.events)
+    }
+
+    @Test
+    fun aBatchThatCouldntBeSnoozedStaysStoppedForAnAlarmThatComesLater() = runTest {
+        store.put(oneOff(1).copy(batchId = "b"))
+        store.put(oneOff(2).copy(batchId = "b", targetName = "Dad"))
+        store.failWrites = true
+        val sender = FakeSender()
+        val countdown = FakeHeadsUp(choice = HeadsUpChoice.SNOOZE)
+        processor(sender, headsUp = countdown).run { enqueue(scheduled(1)); drain() }
+        // The other member's alarm comes after that queue has gone, to a new send service.
+        processor(sender, headsUp = countdown).run { enqueue(scheduled(2)); drain() }
+        assertEquals(1, countdown.asked.size)
+        assertTrue(sender.jobs.isEmpty())
     }
 
     @Test
