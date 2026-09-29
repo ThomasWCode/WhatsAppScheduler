@@ -1,10 +1,12 @@
 package com.thomaswcode.whatsappscheduler.ui.schedules
 
+import com.thomaswcode.whatsappscheduler.data.LatestRuns
 import com.thomaswcode.whatsappscheduler.data.ScheduleRepository
 import com.thomaswcode.whatsappscheduler.data.db.Attention
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.data.db.SendStatus
 import com.thomaswcode.whatsappscheduler.domain.FriendlyTime
+import com.thomaswcode.whatsappscheduler.domain.PlainResult
 import com.thomaswcode.whatsappscheduler.domain.Recurrence
 import java.time.Instant
 import java.time.LocalTime
@@ -58,26 +60,34 @@ val Schedule.shownStatus: SendStatus?
     get() = lastStatus ?: ScheduleRepository.statusFromResult(lastResult)
 
 /**
- * The line under a row's recipients: when it goes, when it went, or why it needs you. [dueAt] maps a
- * schedule to the occurrence its latest scheduled run was for: a missed message says when it was
+ * The line under a row's recipients: when it goes, when it went, or why it needs you. [runs] maps a
+ * schedule to its latest scheduled runs, the one behind what it waits on saying when that was due: a missed message says when it was
  * due, while a failed one says when it was tried, which differs after Send now.
  */
 fun statusLine(
     section: Section,
     group: List<Schedule>,
     now: ZonedDateTime,
-    dueAt: Map<Long, Long>,
+    runs: Map<Long, LatestRuns>,
     time: (LocalTime) -> String = { it.format(hourMinute) },
 ): String {
     val schedule = group.first()
     fun day(millis: Long) = FriendlyTime.dayAndTime(Instant.ofEpochMilli(millis).atZone(now.zone), now, time)
     return when (section) {
         Section.ATTENTION -> {
-            val due = dueAt[schedule.id] ?: if (schedule.rule == Recurrence.Once) schedule.firstAtMillis else schedule.lastRunAtMillis ?: schedule.firstAtMillis
-            val tried = schedule.lastRunAtMillis ?: due
+            // The run that left it waiting: its occurrence is when it was due, and it says when it was tried and why.
+            val run = runs[schedule.id]?.behind(schedule.attention)
+            val due = run?.occurrenceAtMillis ?: if (schedule.rule == Recurrence.Once) schedule.firstAtMillis else schedule.lastRunAtMillis ?: schedule.firstAtMillis
+            val tried = run?.ranAtMillis ?: schedule.lastRunAtMillis ?: due
             when (schedule.attention) {
                 Attention.MISSED -> "Missed · ${day(due)}"
-                Attention.FAILED -> "Couldn't send · ${day(tried)}"
+                // Why, in words, where the step that failed is known (improvements I2): from that occurrence's
+                // own run, since a later try by hand changes the last result. Rows from before runs were
+                // logged by occurrence have only the last result.
+                Attention.FAILED -> {
+                    val why = if (run != null) PlainResult.reason(run.detail) else PlainResult.fromResult(schedule.lastResult)
+                    "${why ?: "Couldn't send"} · ${day(tried)}"
+                }
                 Attention.UNCERTAIN -> "May have been sent · ${day(tried)}: check the chat"
                 Attention.HELD -> "Not sent: choose a new time"
                 null -> day(due)

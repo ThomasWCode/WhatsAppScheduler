@@ -110,7 +110,16 @@ fun AppNav(container: AppContainer, destination: MutableStateFlow<String?>) {
             )
         }
         composable(Routes.SETUP) { SetupScreen(container = container, onBack = { nav.popBackStack() }) }
-        composable(Routes.LOGS) { LogsScreen(container = container, onBack = { nav.popBackStack() }) }
+        composable(Routes.LOGS) {
+            LogsScreen(
+                container = container,
+                onBack = { nav.popBackStack() },
+                onOpenSchedule = { id ->
+                    nav.popBackStack(Routes.LIST, inclusive = false)
+                    focusRow.value = id
+                },
+            )
+        }
         composable(Routes.INSPECTOR) { InspectorScreen(container = container, onBack = { nav.popBackStack() }) }
     }
 }

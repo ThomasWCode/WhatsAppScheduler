@@ -4,6 +4,7 @@ import com.thomaswcode.whatsappscheduler.data.SendStore
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.data.db.SendStatus
 import com.thomaswcode.whatsappscheduler.data.settings.Settings
+import com.thomaswcode.whatsappscheduler.domain.PlainResult
 import com.thomaswcode.whatsappscheduler.domain.SendJob
 import com.thomaswcode.whatsappscheduler.domain.SendResult
 import com.thomaswcode.whatsappscheduler.scheduling.ScheduleAlarms
@@ -348,7 +349,9 @@ class SendQueueProcessor(
         val untouched = request.kind.manual && result is SendResult.Failed && result.step == SendResult.Failed.PRECHECK
         val now = clock.instant()
         val stored = if (occurrence != null && !untouched) {
-            store.recordRun(schedule.id, occurrence, status, detail, schedule.targetName, now)
+            // A run by hand that uses up the occurrence (Send now) is marked in the log as recordManual's are.
+            val logged = if (request.kind.manual) PlainResult.MANUAL + detail.orEmpty() else detail
+            store.recordRun(schedule.id, occurrence, status, logged, schedule.targetName, now)
         } else {
             store.recordManual(schedule.id, status, detail, schedule.targetName, now)
         }
