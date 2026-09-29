@@ -32,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -57,6 +58,7 @@ import android.text.format.DateFormat
 import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
+import kotlinx.coroutines.delay
 
 @Composable
 fun SettingsScreen(
@@ -256,7 +258,15 @@ private fun SecretDialog(title: String, hint: String, onDismiss: () -> Unit, onS
  */
 @Composable
 private fun TestModeRow(untilMillis: Long?, onChange: (Long?) -> Unit) {
-    val now = System.currentTimeMillis()
+    // Read again at least each minute until the time is up, so the switch goes off with test mode itself.
+    val now by produceState(System.currentTimeMillis(), untilMillis) {
+        while (true) {
+            value = System.currentTimeMillis()
+            val left = (untilMillis ?: break) - value
+            if (untilMillis == Settings.UNTIL_TURNED_OFF || left <= 0) break
+            delay(left.coerceAtMost(60_000L) + 20)
+        }
+    }
     val on = untilMillis != null && untilMillis > now
     val timeFormat = rememberTimeFormat()
     val subtitle = when {
@@ -270,7 +280,7 @@ private fun TestModeRow(untilMillis: Long?, onChange: (Long?) -> Unit) {
                 Text("Test mode (dry run)")
                 Text(subtitle, style = MaterialTheme.typography.bodySmall)
             }
-            Switch(checked = on, onCheckedChange = { v -> onChange(if (v) now + TEST_MODE_MILLIS else null) })
+            Switch(checked = on, onCheckedChange = { v -> onChange(if (v) System.currentTimeMillis() + TEST_MODE_MILLIS else null) })
         }
         if (on) {
             val options = listOf(false to "For 1 hour", true to "Until turned off")
