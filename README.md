@@ -61,8 +61,10 @@ CI (`.github/workflows/ci.yml`) runs the unit tests, lint and a debug build on e
 
 1. Install the APK and open the app. Open **Settings → Setup checklist** and clear every red item. The Samsung-specific steps are in `docs/SAMSUNG_SETUP.md`.
 2. In **Settings**, store your lock-screen PIN. If you hid WhatsApp's Locked chats folder behind a secret code, store that too. Optionally set your own number (for a **Me** chip in the sheet) and the morning and evening times the time chips use.
-3. Turn on **Dry run**, create a message to yourself two minutes ahead, lock the phone and watch it unlock, open the chat, type the text, clear it and re-lock. Check **Settings → Diagnostics → Logs** (Automation trace) if it stops anywhere.
-4. Turn Dry run off.
+3. Turn on **Test mode** (Settings; it switches itself off after an hour unless you choose *Until turned off*), create a message to yourself two minutes ahead, lock the phone and watch it unlock, open the chat, type the text, clear it and re-lock. Check **Settings → Diagnostics → Logs** (Automation trace) if it stops anywhere.
+4. Turn Test mode off (or use **Turn off** on the warning the list shows while it's on).
+
+After each send a quiet notification says *Sent to Mum* (Settings → Sending → Notify after each send), and a test run says *Dry run: not sent to Mum*.
 
 ## Project layout
 

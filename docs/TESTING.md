@@ -1,6 +1,6 @@
 # Device test protocol
 
-Unit tests (`./gradlew test`) cover the quick sheet's time chips and friendly times, recipients and batches, recurrence arithmetic, selector regexes, the send queue (de-duplication, occurrence keys, which failures are retried), the PIN circuit breaker, composer verification, phone-number parsing, the repository's run updates, the database migrations (against the exported schemas) and the editor's saved form. Everything else needs the phone. Run these in order after every selector change or WhatsApp update. Use **Dry run** first for steps 1–5, then repeat 1, 2 and 5 with Dry run off.
+Unit tests (`./gradlew test`) cover the quick sheet's time chips and friendly times, recipients and batches, recurrence arithmetic, selector regexes, the send queue (de-duplication, occurrence keys, which failures are retried), the PIN circuit breaker, composer verification, phone-number parsing, the repository's run updates, the database migrations (against the exported schemas) and the editor's saved form. Everything else needs the phone. Run these in order after every selector change or WhatsApp update. Use **Test mode** first for steps 1–5, then repeat 1, 2 and 5 with it off.
 
 | # | Scenario | Expected |
 |---|---|---|
@@ -35,6 +35,8 @@ Unit tests (`./gradlew test`) cover the quick sheet's time chips and friendly ti
 | 29 | Postpone a daily series' next send past the one after it | The dialog says "This also skips …". After the moved send, the series continues at its usual time the next day. |
 | 30 | Settings → Keep sent messages for → 7 days, with a one-off sent more than 7 days ago; reopen the app | The one-off is gone from Sent; Logs → Sends still lists its send. |
 | 31 | In the sheet, long-press a group's chip → Check this chat now; then a made-up group name | WhatsApp opens, searches, opens the group and backs out to the app; a toast says it was found, and the details show "✓ Found in WhatsApp's search …". The made-up name gives "Couldn't find …". Nothing is typed in either. |
+| 32 | Settings → Test mode on; check the list, wait an hour (or set the phone clock on), check again | While on, the list and the sheet show "Test mode is on until …" in red with Turn off; afterwards it is off by itself and messages send again. "Until turned off" keeps it on. |
+| 33 | A message sent for real, then a test run (⋯ → Test) | "Sent to …" with the time and the first line, and Open chat; then "Dry run: not sent to …". Both quiet, grouped when several, gone after a day. With Notify after each send off, only the dry-run one shows. |
 
 Useful commands:
 
