@@ -3,10 +3,14 @@ package com.thomaswcode.whatsappscheduler.scheduling
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.thomaswcode.whatsappscheduler.AppContainer
 import com.thomaswcode.whatsappscheduler.SchedulerApp
+import com.thomaswcode.whatsappscheduler.data.db.SendStatus
 import com.thomaswcode.whatsappscheduler.sending.SendKind
 import com.thomaswcode.whatsappscheduler.sending.SendRequest
 import com.thomaswcode.whatsappscheduler.sending.SendService
+import java.time.Instant
+import kotlinx.coroutines.launch
 
 class AlarmReceiver : BroadcastReceiver() {
 
@@ -16,8 +20,33 @@ class AlarmReceiver : BroadcastReceiver() {
         if (id < 0) return
         // Alarms armed by a version without occurrence keys have none; the queue copes with that.
         val occurrence = intent.getLongExtra(EXTRA_OCCURRENCE_AT, -1L).takeIf { it >= 0 }
-        SchedulerApp.container(context).log.info("Alarm fired for schedule $id")
-        SendService.enqueue(context, SendRequest(id, SendKind.SCHEDULED, occurrence))
+        val container = SchedulerApp.container(context)
+        container.log.info("Alarm fired for schedule $id")
+        try {
+            SendService.enqueue(context, SendRequest(id, SendKind.SCHEDULED, occurrence))
+        } catch (e: IllegalStateException) {
+            // Android 12 won't start a foreground service from the inexact alarm set when exact alarms are
+            // denied (B19). The occurrence is recorded as not sent, so opening the app later can't send it
+            // again after a send by hand, and the user is offered one.
+            container.log.error("Schedule $id: couldn't start sending from its alarm", e)
+            val pending = goAsync()
+            container.appScope.launch {
+                try {
+                    reportNotStarted(container, id, occurrence)
+                } finally {
+                    pending.finish()
+                }
+            }
+        }
+    }
+
+    private suspend fun reportNotStarted(container: AppContainer, id: Long, occurrenceAtMillis: Long?) {
+        val schedule = container.repository.get(id) ?: return
+        val occurrence = occurrenceAtMillis ?: schedule.nextAtMillis ?: return
+        val detail = "precheck: Android didn't let it start sending in the background"
+        val stored = container.repository.recordRun(id, occurrence, SendStatus.FAILED, detail, schedule.targetName, Instant.now()) ?: return
+        runCatching { container.alarmScheduler.sync(stored) }
+        container.fallbackNotifier.notifyFailed(stored, occurrence, detail)
     }
 
     companion object {
