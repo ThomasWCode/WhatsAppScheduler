@@ -30,6 +30,8 @@ class ShareTargetActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val container = SchedulerApp.container(this)
+        // The app may be opened only this way after being force-stopped, so this recovers alarms too.
+        if (savedInstanceState == null) container.recoverOnOpen()
         val shared = sharedText(intent)
         setContent {
             AppTheme {

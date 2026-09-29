@@ -13,7 +13,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import com.thomaswcode.whatsappscheduler.SchedulerApp
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -33,17 +32,8 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        // Only on a fresh start: a recreate (rotation, dark mode switching at sunset) doesn't need it
-        // again. It runs in the app's scope, not this activity's, so a recreate while it is still
-        // working doesn't cancel the one recovery pass the fresh start was owed.
-        if (savedInstanceState == null) {
-            container.appScope.launch {
-                runCatching { container.alarmScheduler.rescheduleAll() }.onFailure { container.log.error("rescheduleAll failed", it) }
-                // Once: schedules from before recipients existed become recents, keeping their Chat Lock
-                // flag. Usually done already when the app started; this waits for it if not.
-                runCatching { container.linkRecipientsOnce() }.onFailure { container.log.error("Linking recipients failed", it) }
-            }
-        }
+        // Only on a fresh start: a recreate (rotation, dark mode switching at sunset) doesn't need it again.
+        if (savedInstanceState == null) container.recoverOnOpen()
     }
 
     override fun onNewIntent(intent: Intent) {
