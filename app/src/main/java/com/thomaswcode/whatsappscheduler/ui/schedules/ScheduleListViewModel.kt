@@ -85,13 +85,23 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
     /** A second snackbar, shown after the first unless its action was taken, e.g. a one-time offer. */
     data class FollowUp(val message: String, val action: String, val run: () -> Unit)
 
+    /** The follow-up of the message showing now, while that message hasn't finished. */
+    private var ownFollowUp: FollowUp? = null
+
+    /**
+     * Follow-ups not shown yet whose message was replaced before it finished. They still come, after
+     * the newer message: a one-time offer that never showed would otherwise be lost for good.
+     */
+    private val carried = ArrayDeque<FollowUp>()
+
     /**
      * Shows [message], replacing one that is showing so its Undo isn't queued behind it; [onAction] if
-     * tapped, otherwise [followUp] next.
+     * tapped, otherwise [followUp] next, then any follow-up a replaced message didn't get to.
      */
     fun announce(message: String, action: String? = null, followUp: FollowUp? = null, onAction: () -> Unit = {}) {
-        // A newer message replaces the one showing, and with it any follow-up still to come from it.
         announcing?.cancel()
+        ownFollowUp?.let(carried::addFirst)
+        ownFollowUp = followUp
         announcing = viewModelScope.launch {
             snackbar.currentSnackbarData?.dismiss()
             val result = snackbar.showSnackbar(
@@ -100,10 +110,13 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
                 withDismissAction = action == null,
                 duration = if (action != null) SnackbarDuration.Long else SnackbarDuration.Short,
             )
-            when {
-                result == SnackbarResult.ActionPerformed -> onAction()
-                followUp != null ->
-                    if (snackbar.showSnackbar(followUp.message, actionLabel = followUp.action, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) followUp.run()
+            // Its own follow-up only if its action wasn't taken: an offer about a schedule just undone is moot.
+            if (result == SnackbarResult.ActionPerformed) onAction() else ownFollowUp?.let(carried::addFirst)
+            ownFollowUp = null
+            // Each is taken off before it shows: one a newer message then replaces has been seen.
+            while (carried.isNotEmpty()) {
+                val next = carried.removeFirst()
+                if (snackbar.showSnackbar(next.message, actionLabel = next.action, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) next.run()
             }
         }
     }
