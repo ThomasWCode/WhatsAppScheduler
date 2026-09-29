@@ -41,8 +41,6 @@ class ShareTargetActivity : ComponentActivity() {
                 val vm: QuickScheduleViewModel = viewModel(factory = QuickScheduleViewModel.factory(container))
                 // Saved, so a rotation doesn't re-open the sheet over what was typed since.
                 var opened by rememberSaveable { mutableStateOf(false) }
-                // The offered checks are running: this stays until they are done, to show what they found.
-                var checking by rememberSaveable { mutableStateOf(false) }
                 LaunchedEffect(Unit) {
                     if (!opened) {
                         vm.openShared(shared)
@@ -63,18 +61,20 @@ class ShareTargetActivity : ComponentActivity() {
                                 Toast.makeText(this@ShareTargetActivity, event.message, Toast.LENGTH_LONG).show()
                                 return@collect
                             }
-                            // Only the offered checks close this: one started from the open sheet leaves it open.
-                            QuickEvent.ChecksDone -> if (!checking) return@collect
+                            // Only the offered checks close this, after their results: one started from the open
+                            // sheet leaves it open.
+                            QuickEvent.ChecksDone -> if (vm.visible) return@collect
                             // Repeating schedules are made in the app's full editor.
                             is QuickEvent.OpenFullEditor -> startActivity(MainActivity.intent(this@ShareTargetActivity, Routes.repeat(event)))
                         }
                         finish()
                     }
                 }
-                // Swiped away, or scheduled with nothing to offer: there is nothing else here, so go back to
-                // the app that shared.
-                LaunchedEffect(opened, vm.visible, vm.pendingCheckOffers, checking) {
-                    if (opened && !vm.visible && vm.pendingCheckOffers.isEmpty() && !checking) finish()
+                // Swiped away, or scheduled with nothing to offer or check: there is nothing else here, so go
+                // back to the app that shared. Whether checks run is the view model's, so it can't outlive
+                // them, as a saved flag would after the process was killed mid-check.
+                LaunchedEffect(opened, vm.visible, vm.pendingCheckOffers, vm.checksRunning) {
+                    if (opened && !vm.visible && vm.pendingCheckOffers.isEmpty() && !vm.checksRunning) finish()
                 }
                 QuickScheduleSheet(vm)
                 val offers = vm.pendingCheckOffers
@@ -83,12 +83,7 @@ class ShareTargetActivity : ComponentActivity() {
                         onDismissRequest = { vm.answerCheckOffer(check = false) },
                         title = { Text("Check in WhatsApp?") },
                         text = { Text("Check ${QuickScheduleViewModel.quoted(offers)} in WhatsApp now? WhatsApp's search is run for the name while you watch; nothing is typed.") },
-                        confirmButton = {
-                            TextButton(onClick = {
-                                checking = true
-                                vm.answerCheckOffer(check = true)
-                            }) { Text("Check") }
-                        },
+                        confirmButton = { TextButton(onClick = { vm.answerCheckOffer(check = true) }) { Text("Check") } },
                         dismissButton = { TextButton(onClick = { vm.answerCheckOffer(check = false) }) { Text("Not now") } },
                     )
                 }
