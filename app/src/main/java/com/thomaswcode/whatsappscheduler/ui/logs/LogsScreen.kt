@@ -2,6 +2,7 @@ package com.thomaswcode.whatsappscheduler.ui.logs
 
 import android.content.Context
 import android.content.Intent
+import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,10 +34,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.thomaswcode.whatsappscheduler.AppContainer
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.data.db.SendLog
 import com.thomaswcode.whatsappscheduler.data.db.SendStatus
 import com.thomaswcode.whatsappscheduler.domain.PlainResult
@@ -44,22 +47,23 @@ import com.thomaswcode.whatsappscheduler.ui.BackBar
 import com.thomaswcode.whatsappscheduler.ui.rememberStampFormat
 
 /** The Sends tab's filters (improvements I8). */
-enum class LogFilter(val label: String, val statuses: Set<SendStatus>?) {
-    ALL("All", null),
-    SENT("Sent", setOf(SendStatus.SENT)),
+enum class LogFilter(@StringRes val label: Int, val statuses: Set<SendStatus>?) {
+    ALL(R.string.logs_filter_all, null),
+    SENT(R.string.logs_filter_sent, setOf(SendStatus.SENT)),
 
     // With the uncertain ones: both are waiting on the user.
-    FAILED("Failed", setOf(SendStatus.FAILED, SendStatus.UNCERTAIN)),
-    MISSED("Missed", setOf(SendStatus.MISSED)),
+    FAILED(R.string.logs_filter_failed, setOf(SendStatus.FAILED, SendStatus.UNCERTAIN)),
+    MISSED(R.string.logs_filter_missed, setOf(SendStatus.MISSED)),
     ;
 
     /** What the tab says when nothing is left to show. */
-    val empty: String
+    @get:StringRes
+    val empty: Int
         get() = when (this) {
-            ALL -> "Nothing has been sent yet. Every send and test run is recorded here."
-            SENT -> "Nothing has been sent yet."
-            FAILED -> "No failed sends."
-            MISSED -> "No missed sends."
+            ALL -> R.string.logs_empty_all
+            SENT -> R.string.logs_empty_sent
+            FAILED -> R.string.logs_empty_failed
+            MISSED -> R.string.logs_empty_missed
         }
 }
 
@@ -83,20 +87,20 @@ fun LogsScreen(container: AppContainer, onBack: () -> Unit, onOpenSchedule: (Lon
 
     Scaffold(
         topBar = {
-            BackBar("Logs", onBack) {
+            BackBar(stringResource(R.string.logs_title), onBack) {
                 // Only with the trace in view, so it's plain what they act on.
                 if (tab == 1) {
-                    TextButton(onClick = { shareTrace(context, trace) }, enabled = trace.isNotEmpty()) { Text("Share") }
+                    TextButton(onClick = { shareTrace(context, trace) }, enabled = trace.isNotEmpty()) { Text(stringResource(R.string.action_share)) }
                     // Always: it also deletes a window dump the UI inspector saved, which the trace doesn't show.
-                    TextButton(onClick = { container.log.clear() }) { Text("Clear") }
+                    TextButton(onClick = { container.log.clear() }) { Text(stringResource(R.string.action_clear)) }
                 }
             }
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             PrimaryTabRow(selectedTabIndex = tab) {
-                Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Sends") })
-                Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Automation trace") })
+                Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text(stringResource(R.string.logs_tab_sends)) })
+                Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text(stringResource(R.string.logs_tab_trace)) })
             }
             if (tab == 0) {
                 SendsTab(sends, filter, onFilter = { chosen -> filter = chosen }, onOpenSchedule)
@@ -112,12 +116,12 @@ private fun SendsTab(sends: List<SendLog>?, filter: LogFilter, onFilter: (LogFil
     // Wraps, so none is cut off on a narrow window or with large text.
     FlowRow(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         LogFilter.entries.forEach { choice ->
-            FilterChip(selected = filter == choice, onClick = { onFilter(choice) }, label = { Text(choice.label) })
+            FilterChip(selected = filter == choice, onClick = { onFilter(choice) }, label = { Text(stringResource(choice.label)) })
         }
     }
     val shown = sends ?: return
     if (shown.isEmpty()) {
-        EmptyState(filter.empty)
+        EmptyState(stringResource(filter.empty))
         return
     }
     LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -139,14 +143,15 @@ private fun SendEntry(log: SendLog, onOpenSchedule: (Long) -> Unit) {
     val why = PlainResult.reason(log.detail, log.targetName)
     val detail = log.detail?.removePrefix(PlainResult.MANUAL)?.takeIf { it.isNotBlank() }
     val scheduleId = log.scheduleId
+    val showInList = stringResource(R.string.logs_show_in_list)
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (scheduleId != null) Modifier.clickable(onClickLabel = "Show in the list") { onOpenSchedule(scheduleId) } else Modifier)
+            .then(if (scheduleId != null) Modifier.clickable(onClickLabel = showInList) { onOpenSchedule(scheduleId) } else Modifier)
             .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
         Text(PlainResult.headline(log.status.name, log.targetName), style = MaterialTheme.typography.titleSmall)
-        Text(stamp(log.atMillis) + if (manual) " · by hand" else "", style = MaterialTheme.typography.labelSmall)
+        Text(if (manual) stringResource(R.string.logs_by_hand, stamp(log.atMillis)) else stamp(log.atMillis), style = MaterialTheme.typography.labelSmall)
         why?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
         detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
@@ -155,12 +160,12 @@ private fun SendEntry(log: SendLog, onOpenSchedule: (Long) -> Unit) {
 @Composable
 private fun TraceTab(trace: List<String>) {
     Text(
-        "The trace names chats: think before sharing it.",
+        stringResource(R.string.logs_trace_warning),
         style = MaterialTheme.typography.bodySmall,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
     )
     if (trace.isEmpty()) {
-        EmptyState("The trace is empty. Sends and chat checks write to it.")
+        EmptyState(stringResource(R.string.logs_trace_empty))
         return
     }
     // Amber for warnings: the scheme has no warning colour, and its pastel tertiary reads as white on dark.
@@ -194,9 +199,9 @@ private fun shareTrace(context: Context, trace: List<String>) {
     val text = if (all.length <= SHARE_MAX_CHARS) all else all.takeLast(SHARE_MAX_CHARS).substringAfter('\n')
     val send = Intent(Intent.ACTION_SEND)
         .setType("text/plain")
-        .putExtra(Intent.EXTRA_SUBJECT, "WhatsApp Scheduler trace")
+        .putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.logs_trace_subject))
         .putExtra(Intent.EXTRA_TEXT, text)
-    runCatching { context.startActivity(Intent.createChooser(send, "Share trace")) }
+    runCatching { context.startActivity(Intent.createChooser(send, context.getString(R.string.logs_share_trace))) }
 }
 
 private const val SHARE_MAX_CHARS = 100_000

@@ -270,4 +270,33 @@
     <string name="settings_pin_removed">PIN removed: sends that need to unlock the phone will fail</string>
     <string name="settings_alarms_rearmed">Alarms re-armed</string>
     <string name="auth_error_code">error %1$d</string>
+
+    <!-- Logs and the UI inspector -->
+    <string name="action_share">Share</string>
+    <string name="action_clear">Clear</string>
+    <string name="logs_title">Logs</string>
+    <string name="logs_filter_all">All</string>
+    <string name="logs_filter_sent">Sent</string>
+    <string name="logs_filter_failed">Failed</string>
+    <string name="logs_filter_missed">Missed</string>
+    <string name="logs_empty_all">Nothing has been sent yet. Every send and test run is recorded here.</string>
+    <string name="logs_empty_sent">Nothing has been sent yet.</string>
+    <string name="logs_empty_failed">No failed sends.</string>
+    <string name="logs_empty_missed">No missed sends.</string>
+    <string name="logs_tab_sends">Sends</string>
+    <string name="logs_tab_trace">Automation trace</string>
+    <string name="logs_show_in_list">Show in the list</string>
+    <string name="logs_by_hand">%1$s · by hand</string>
+    <string name="logs_trace_warning">The trace names chats: think before sharing it.</string>
+    <string name="logs_trace_empty">The trace is empty. Sends and chat checks write to it.</string>
+    <string name="logs_trace_subject">WhatsApp Scheduler trace</string>
+    <string name="logs_share_trace">Share trace</string>
+    <string name="inspector_title">UI inspector</string>
+    <string name="inspector_help">Tap Capture, then within 8 seconds open the screen you want to inspect (a WhatsApp chat, the search results, the Locked chats prompt, or lock the phone and wake it to the PIN pad). The tree of every window is saved here and shown below.</string>
+    <string name="inspector_capturing">Capturing in %1$d…</string>
+    <string name="inspector_capture">Capture in 8 s</string>
+    <string name="inspector_share_dump">Share dump</string>
+    <string name="inspector_warning">A capture contains chat names and message previews: think before sharing it.</string>
+    <string name="inspector_no_service">Accessibility service is not enabled.</string>
+    <string name="inspector_no_capture">No capture yet.</string>
 </resources>
