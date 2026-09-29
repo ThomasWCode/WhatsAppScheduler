@@ -60,7 +60,7 @@ class SendQueueProcessor(
             log.info("Schedule ${request.scheduleId}: ${request.kind} is already queued or sending; ignoring the duplicate")
             false
         } else {
-            queue.addLast(request)
+            queue.addLast(request.copy(receivedAtMillis = request.receivedAtMillis ?: clock.millis()))
             publish()
             true
         }
@@ -104,17 +104,21 @@ class SendQueueProcessor(
         } else {
             null
         }
-        if (request.kind == SendKind.SCHEDULED && occurrence != null) {
+        // Let through by its batch's countdown (features F1): it doesn't count down again, and however
+        // long that countdown, and the batch before it, took isn't lateness.
+        val letThrough = request.kind == SendKind.SCHEDULED && occurrence != null && approved.remove(schedule.id to occurrence)
+        if (request.kind == SendKind.SCHEDULED && occurrence != null && !letThrough) {
             // Decided here, in the queue, rather than where alarms are re-armed: an alarm delivered at
             // the same moment as a re-arm then can't turn into both a send and a "missed" (B09 interim).
-            val late = Duration.ofMillis(clock.millis() - occurrence)
+            // Measured to when the queue took it: waiting behind other sends isn't the alarm being late.
+            val late = Duration.ofMillis((request.receivedAtMillis ?: clock.millis()) - occurrence)
             if (late > Duration.ofMinutes(settings.missedGraceMinutes.toLong())) {
                 recordMissed(schedule, occurrence, late)
                 return
             }
         }
         if (request.kind == SendKind.SCHEDULED && occurrence != null) {
-            if (!countdown(schedule, occurrence, settings)) return
+            if (!countdown(schedule, occurrence, settings, letThrough)) return
             // The countdown, or a call before it, may have taken a while: the row as it is now.
             schedule = stillWanted(request, occurrence) ?: return
         }
@@ -167,7 +171,7 @@ class SendQueueProcessor(
      * Snooze 5 min and Postpone…, which a batch's members due together share. During a call the send
      * waits first, looking again every 15 s for up to half an hour. Returns whether to send now.
      */
-    private suspend fun countdown(schedule: Schedule, occurrence: Long, settings: Settings): Boolean {
+    private suspend fun countdown(schedule: Schedule, occurrence: Long, settings: Settings, letThrough: Boolean): Boolean {
         // Shared by every wait below, so together they can hold a send up for half an hour at most.
         var looks = 0
 
@@ -199,7 +203,7 @@ class SendQueueProcessor(
         }
 
         // Let through by its batch's countdown: only a call since then holds it up.
-        if (approved.remove(schedule.id to occurrence)) return callOver()
+        if (letThrough) return callOver()
         repeat(MAX_COUNTDOWNS) {
             if (!callOver()) return false
             if (!headsUp.inUse()) return true
