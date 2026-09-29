@@ -19,8 +19,11 @@ class LockedSender(private val inner: MessageSender, private val lock: Mutex) : 
     override suspend fun send(job: SendJob): SendResult = lock.withLock { inner.send(job) }
 }
 
-/** What a check found, and the stored recipient it is remembered on (created for a new chat that was found). */
-data class CheckOutcome(val result: ChatCheck, val recipientId: Long?)
+/**
+ * What a check found, the stored recipient it is remembered on (created for a new chat that was found),
+ * and the [name] that was searched for.
+ */
+data class CheckOutcome(val result: ChatCheck, val recipientId: Long?, val name: String)
 
 /**
  * "Check this chat now" (features F4) for a chat found by name. It takes the automation lock, so it
@@ -34,8 +37,13 @@ class ChatChecker(
     private val recipients: RecipientRepository,
     private val clock: Clock = Clock.systemUTC(),
 ) {
-    suspend fun check(chat: RecipientDraft): CheckOutcome {
-        if (!lock.tryLock()) return CheckOutcome(ChatCheck.NotChecked("a message is being sent"), chat.recipientId)
+    suspend fun check(offered: RecipientDraft): CheckOutcome {
+        // The chat as it is now: one offered a while ago may have had its name edited since, and the
+        // tick is for the name searched.
+        val chat = offered.recipientId?.let { recipients.get(it) }
+            ?.let { RecipientDraft(it.kind, it.displayName, it.whatsappName, it.phoneE164, it.isLocked, it.id) }
+            ?: offered
+        if (!lock.tryLock()) return CheckOutcome(ChatCheck.NotChecked("a message is being sent"), chat.recipientId, chat.chatName)
         val result = try {
             runner.checkChat(chat.chatName)
         } finally {
@@ -46,9 +54,10 @@ class ChatChecker(
             // couldn't tell leaves it.
             recipients.existing(chat)?.let { recipients.clearVerified(it.id) }
         }
-        if (result != ChatCheck.Found) return CheckOutcome(result, chat.recipientId)
-        val id = recipients.resolve(chat).id
-        recipients.markVerified(id, clock.millis())
-        return CheckOutcome(result, id)
+        if (result != ChatCheck.Found) return CheckOutcome(result, chat.recipientId, chat.chatName)
+        val stored = recipients.resolve(chat)
+        // Renamed while WhatsApp was being searched: what was found was the old name, not this one.
+        if (stored.chatName.trim().equals(chat.chatName.trim(), ignoreCase = true)) recipients.markVerified(stored.id, clock.millis())
+        return CheckOutcome(result, stored.id, chat.chatName)
     }
 }

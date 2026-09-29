@@ -38,6 +38,7 @@ import java.time.ZonedDateTime
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import com.thomaswcode.whatsappscheduler.sending.CheckOutcome
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
@@ -173,6 +174,13 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
      * there before that host could finish. The app's list offers it under the Scheduled snackbar instead.
      */
     var pendingCheckOffers by mutableStateOf<List<RecipientDraft>>(emptyList())
+        private set
+
+    /** How many check runs started here are still going: they outlive the sheet, but not the process. */
+    private val runningChecks = AtomicInteger()
+
+    /** Checks started here are running (features F4), so a host that closes with the sheet can wait for them. */
+    var checksRunning by mutableStateOf(false)
         private set
 
     /** Checks the offered chats, or not; either way the offer is answered. */
@@ -453,6 +461,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
      * so the rest are left. [QuickEvent.ChecksDone] follows the results.
      */
     fun checkChats(chats: List<RecipientDraft>) {
+        checksRunning = runningChecks.incrementAndGet() > 0
         container.appScope.launch {
             try {
                 for (recipient in chats) {
@@ -461,13 +470,13 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
                 }
             } finally {
                 events.trySend(QuickEvent.ChecksDone)
+                checksRunning = runningChecks.decrementAndGet() > 0
             }
         }
     }
 
     /** Checks [recipient] and reports what it found. */
     private suspend fun checkOne(recipient: RecipientDraft): ChatCheck {
-        val name = recipient.chatName
         val outcome = try {
             container.chatChecker.check(recipient)
         } catch (e: CancellationException) {
@@ -476,8 +485,10 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
             // Anything the steps don't turn into a result, such as a node gone while WhatsApp changed
             // windows, or the database: a check that failed, rather than the app crashing.
             container.log.error("Checking a chat failed", e)
-            CheckOutcome(ChatCheck.Failed(e.message ?: e.javaClass.simpleName), recipient.recipientId)
+            CheckOutcome(ChatCheck.Failed(e.message ?: e.javaClass.simpleName), recipient.recipientId, recipient.chatName)
         }
+        // The name as searched: the chat's own, which may have been edited since this was offered.
+        val name = outcome.name
         // A chip for a name typed but not saved is linked to the recipient the check stored.
         if (recipient.recipientId == null && outcome.recipientId != null && !saving) {
             draft = draft.copy(recipients = draft.recipients.map { if (it == recipient) it.copy(recipientId = outcome.recipientId) else it })
