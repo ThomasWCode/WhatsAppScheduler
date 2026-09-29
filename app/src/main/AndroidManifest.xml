@@ -72,6 +72,13 @@
             android:noHistory="true"
             android:theme="@style/Theme.WhatsAppScheduler.Translucent" />
 
+        <activity
+            android:name=".sending.PostponeActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:taskAffinity=""
+            android:theme="@style/Theme.WhatsAppScheduler.Translucent" />
+
         <service
             android:name=".sending.SendService"
             android:exported="false"
@@ -96,6 +103,10 @@
 
         <receiver
             android:name=".scheduling.AlarmReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".sending.AttentionActionReceiver"
             android:exported="false" />
 
         <receiver
