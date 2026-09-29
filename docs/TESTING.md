@@ -48,6 +48,9 @@ Unit tests (`./gradlew test`) cover the quick sheet's time chips and friendly ti
 | 42 | Settings → Diagnostics → Logs; try each filter chip, then tap a failed entry | Entries read "Couldn't send to …" or "Test run for …: not sent", with why in words and the technical detail beneath, and "by hand" for manual runs. Each filter shows its own entries, or a line saying there are none. Tapping an entry opens the list at that schedule's row, outlined, with Sent opened if it's there. |
 | 43 | Logs → Automation trace | Share and Clear appear only on this tab, with a note that the trace names chats. Warnings are amber and errors red. Share opens the share sheet; Clear empties the trace and the saved window dump. |
 | 44 | A failed send, as in #34 | The row under *Needs attention* says why ("Couldn't find the chat · Today 09:00"). So does its notification ("Couldn't find the chat, so the message for … hasn't gone"). |
+| 45 | In the quick sheet, choose a made-up group, type a message, pick Tonight, then Repeat… | The full editor opens as "Repeating message" with that chat as a chip (its details behind a tap), the message and the time, repeating daily: "Every day at 20:00, starting today". No Contact/Group or Chat Lock switch. |
+| 46 | In the editor, Weekly: untick every day, then tick Thu; tap the back arrow | "Pick at least one day." while none is ticked, then "Every Thu at 20:00, starting Thu …". Back asks "Discard your changes?"; Keep editing stays. |
+| 47 | Save it, open it from the list, then Delete | The list shows "Weekly on Thu · next Thu …". Opened, it is "Edit repeating message" with Delete, which asks first and removes it. |
 
 Useful commands:
 
