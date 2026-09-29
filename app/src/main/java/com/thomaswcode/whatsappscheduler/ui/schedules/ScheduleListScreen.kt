@@ -153,6 +153,10 @@ fun ScheduleListScreen(
     LaunchedEffect(sendIds, sendState) {
         if (sendIds?.any { sendState.isBusy(it) } == true) sendIds = null
     }
+    // The same for Postpone: the row's occurrence is being sent, so there is nothing to move.
+    LaunchedEffect(vm.postponing, sendState) {
+        if (vm.postponing?.any { sendState.isBusy(it.id) } == true) vm.cancelPostpone()
+    }
 
     fun askToSend(group: List<Schedule>, copyOnly: Boolean = false) {
         sendIds = group.map { it.id }.toLongArray()
