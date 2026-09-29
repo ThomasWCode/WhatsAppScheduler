@@ -202,12 +202,15 @@ class FallbackNotifier(private val context: Context, private val notifications: 
 
     private fun forOccurrence(millis: Long?): String = millis?.let { " for ${stamp(it)}" } ?: ""
 
-    private fun stamp(millis: Long): String = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).format(stampFormat)
+    /** In the phone's zone, and its 12/24-hour choice (improvements I1). */
+    private fun stamp(millis: Long): String = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault())
+        .format(if (DateFormat.is24HourFormat(context)) stampFormat else stampFormat12)
 
     private fun firstLine(message: String): String = message.lineSequence().firstOrNull().orEmpty().let { if (it.length > 80) it.take(79) + "…" else it }
 
     private companion object {
         val stampFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE d MMM HH:mm")
+        val stampFormat12: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE d MMM h:mm a")
         const val REQUEST_PIN_PAUSED = -2
         /** A pre-flight warning stays this long after its send was due, unless that send removes it first. */
         const val WILL_FAIL_AFTERWARDS_MS = 60 * 60 * 1000L

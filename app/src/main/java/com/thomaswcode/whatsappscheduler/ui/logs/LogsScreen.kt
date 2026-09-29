@@ -41,7 +41,7 @@ import com.thomaswcode.whatsappscheduler.data.db.SendLog
 import com.thomaswcode.whatsappscheduler.data.db.SendStatus
 import com.thomaswcode.whatsappscheduler.domain.PlainResult
 import com.thomaswcode.whatsappscheduler.ui.BackBar
-import com.thomaswcode.whatsappscheduler.ui.formatStamp
+import com.thomaswcode.whatsappscheduler.ui.rememberStampFormat
 
 /** The Sends tab's filters (improvements I8). */
 enum class LogFilter(val label: String, val statuses: Set<SendStatus>?) {
@@ -134,6 +134,7 @@ private fun SendsTab(sends: List<SendLog>?, filter: LogFilter, onFilter: (LogFil
  */
 @Composable
 private fun SendEntry(log: SendLog, onOpenSchedule: (Long) -> Unit) {
+    val stamp = rememberStampFormat()
     val manual = log.detail?.startsWith(PlainResult.MANUAL) == true
     val why = PlainResult.reason(log.detail, log.targetName)
     val detail = log.detail?.removePrefix(PlainResult.MANUAL)?.takeIf { it.isNotBlank() }
@@ -145,7 +146,7 @@ private fun SendEntry(log: SendLog, onOpenSchedule: (Long) -> Unit) {
             .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
         Text(PlainResult.headline(log.status.name, log.targetName), style = MaterialTheme.typography.titleSmall)
-        Text(formatStamp(log.atMillis) + if (manual) " · by hand" else "", style = MaterialTheme.typography.labelSmall)
+        Text(stamp(log.atMillis) + if (manual) " · by hand" else "", style = MaterialTheme.typography.labelSmall)
         why?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
         detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
