@@ -310,6 +310,8 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
     fun saveDetails(original: RecipientDraft, updated: RecipientDraft) {
         if (busy) return
         savingDetails = true
+        // Cleared, so an error afterwards is this save's own: leaving waits on that (see the screen).
+        error = null
         viewModelScope.launch {
             val outcome = withContext(NonCancellable) { runCatching { container.saveRecipientDetails(original, updated) } }
             savingDetails = false
@@ -343,6 +345,7 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
         val id = recipient.recipientId ?: return
         if (busy) return
         savingDetails = true
+        error = null
         viewModelScope.launch {
             val removed = runCatching {
                 withContext(NonCancellable) {
