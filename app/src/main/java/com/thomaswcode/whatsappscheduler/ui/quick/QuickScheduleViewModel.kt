@@ -100,7 +100,9 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         .mapLatest { phone ->
             phone?.let { p ->
                 val stored = container.recipients.byPhone(p)
-                RecipientDraft(TargetKind.CONTACT, "Me", stored?.whatsappName, p, stored?.isLocked ?: false, stored?.id)
+                // "Me" is only the chip's label: the chat keeps its real name, which the Locked chats search
+                // and the full editor (Repeat…) need.
+                RecipientDraft(TargetKind.CONTACT, "Me", stored?.chatName, p, stored?.isLocked ?: false, stored?.id)
             }
         }
         .stateIn(viewModelScope, whileShown, null)
@@ -290,13 +292,14 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         fun applyToDraft() {
             draft = draft.copy(recipients = draft.recipients.map { if (it == original) updated else it }.distinctChats())
         }
-        val id = original.recipientId ?: return applyToDraft()
         // Counts as saving, so Schedule waits for it: a message saved meanwhile would go to the chat as it was.
         saving = true
         viewModelScope.launch {
             val outcome = withContext(NonCancellable) {
                 runCatching {
-                    val stored = container.recipients.get(id) ?: return@runCatching null
+                    // Also a chip not linked to it yet (a number typed, a lookup still running): saving would
+                    // resolve it to the stored recipient anyway, and the edit must land there.
+                    val stored = container.recipients.existing(original) ?: return@runCatching null
                     val edited = stored.copy(whatsappName = updated.whatsappName, phoneE164 = updated.phoneE164, isLocked = updated.isLocked, kind = updated.kind)
                     // Refused rather than leaving two stored identities for one chat.
                     container.recipients.sameChatElsewhere(edited)?.let { return@runCatching it }
@@ -334,7 +337,12 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         if (saving) return
         saving = true
         viewModelScope.launch {
-            runCatching { withContext(NonCancellable) { container.recipients.get(id)?.let { container.recipients.remove(it) } } }
+            runCatching {
+                withContext(NonCancellable) {
+                    container.linkRecipientsOnce()
+                    container.recipients.get(id)?.let { container.recipients.remove(it) }
+                }
+            }
                 .onFailure { container.log.error("Removing a recipient failed", it) }
             saving = false
             draft = draft.copy(recipients = draft.recipients.map { if (it.recipientId == id) it.copy(recipientId = null) else it })
@@ -424,13 +432,13 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         viewModelScope.launch {
             val outcome = withContext(NonCancellable) {
                 runCatching {
-                    d.editingIds.mapNotNull { container.repository.get(it) }.forEach {
+                    d.editingIds.mapNotNull { container.repository.get(it) }.forEach { member ->
                         // The row first: if that fails, the alarm must still be there. A stale alarm for a
                         // deleted row is harmless, as the send queue drops it.
-                        container.repository.delete(it)
-                        container.alarmScheduler.cancel(it.id)
-                        // Its Tap to send prompt would otherwise outlive it (B10).
-                        container.fallbackNotifier.cancel(it.id)
+                        container.repository.delete(member)
+                        // Then its prompt (B10) and alarm, each on its own: a retry can't find the row again.
+                        runCatching { container.fallbackNotifier.cancel(member.id) }.onFailure { container.log.error("Clearing a prompt failed", it) }
+                        runCatching { container.alarmScheduler.cancel(member.id) }.onFailure { container.log.error("Cancelling an alarm failed", it) }
                     }
                 }
             }
