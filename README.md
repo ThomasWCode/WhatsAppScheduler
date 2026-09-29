@@ -41,7 +41,7 @@ Or open the project in a current Android Studio (one that supports AGP 9.4), whi
 ./gradlew test
 ```
 
-Unit tests cover the recurrence arithmetic (including daylight-saving transitions and month clamping) and the text regexes the automation relies on. Everything that touches WhatsApp's UI can only be tested on a phone; the protocol is in `docs/TESTING.md`.
+Unit tests cover the recurrence arithmetic (including daylight-saving transitions and month clamping), the send queue (sending each occurrence once, which failures are retried, the countdown's answers), the PIN circuit breaker, the quick sheet's times and recipients, the list's sections, the editor's form and rule sentence, plain-language results, the setup checklist, the database migrations against the exported schemas, and the text regexes the automation relies on. Everything that touches WhatsApp's UI can only be tested on a phone; the protocol is in `docs/TESTING.md`.
 
 CI (`.github/workflows/ci.yml`) runs the unit tests, lint and a debug build on every pull request and on `main`, and keeps the debug APK as a build artifact.
 
@@ -49,17 +49,20 @@ CI (`.github/workflows/ci.yml`) runs the unit tests, lint and a debug build on e
 
 - **New message** opens a sheet: pick who (recent chats, a contact from the type-ahead, or a group typed by its exact name), write the message and tap a time (**In 30 min**, **Tonight**, **Tomorrow 09:00**, … or **Pick date & time…**). **Schedule** saves it, with **Undo** in case it was a mistake.
 - Up to 10 recipients get the same message at the same time. They are kept together as one row, and tapping it reopens the sheet to change or delete them all.
-- **Repeat…** hands the draft to the full editor for daily, weekly, monthly or custom repeats.
-- **Share** text from any app and choose **Schedule on WhatsApp**: the sheet opens over that app and you are back where you were after scheduling.
+- **Repeat…** hands the draft, recipient and all, to the full editor for daily, weekly, monthly or custom repeats. The editor says the rule back in words ("On the 5th of every month at 09:00, starting Mon 5 Oct"), points at what is missing as you go, and asks before Back throws a change away.
+- **Share** text from any app and choose **Schedule on WhatsApp**: the sheet opens over that app and you are back where you were after scheduling. Your most recent chats are also offered in the share sheet itself (Direct Share, where the phone shows them), which opens the sheet with that chat already chosen.
 - The list puts what needs you first (**Needs attention**: missed, failed, or may have been sent, with Send now, Discard or Mark as sent), then **Upcoming**, **Repeating** (with a Pause switch) and a collapsed **Sent**. Swipe a row away to delete it; **Undo** brings it back with its history. The strip at the top says whether auto-send is ready, and what to fix if not.
 - **Postpone…** (in a row's ⋯ menu, and on missed or failed messages) moves a message to a new time; for a repeating one it moves only the next send, and says which later ones that skips.
+- Before an automatic send while you are using the phone, a notification counts down (10 s; Settings → Advanced) with **Send now**, **Snooze 5 min** and **Postpone…**, so WhatsApp never takes over the screen unannounced. A call is never interrupted: the send waits for it to end. If the countdown can't pop up (notifications off, or silenced by Do Not Disturb), the send waits for you to put the phone down instead.
+- Times follow the phone's 12- or 24-hour setting. A repeating message keeps the time zone it was made in, and its row says so when the phone is in another.
+- **Settings → Diagnostics → Logs** lists every send, filtered by All, Sent, Failed or Missed, with what happened in plain words; tapping one shows its message in the list. The **Automation trace** tab has the step-by-step detail (it names chats, so think before sharing it).
 - Sent messages are cleared from the list after 30 days (Settings → Sending → Keep sent messages for); Logs keep their history for 90 days.
 - Long-press a chip for the recipient's details. For a group or a chat found by name, **Check this chat now** looks it up in WhatsApp while you watch (nothing is typed), so a name that doesn't match shows up now rather than at send time. A new name-based chat is offered this once after scheduling.
 - Contacts permission is optional. It lets the type-ahead search your contacts on the phone and mark the ones that are on WhatsApp; without it you can pick one contact at a time or type a number.
 
 ## First-time setup on the phone
 
-1. Install the APK and open the app. Open **Settings → Setup checklist** and clear every red item. The Samsung-specific steps are in `docs/SAMSUNG_SETUP.md`.
+1. Install the APK and open the app. The **setup checklist** opens by itself until everything it lists as *Required* is done; *Recommended* and *By hand* items follow, each with a button to the right settings page. It is always at **Settings → Diagnostics → Setup checklist**. The Samsung-specific steps are in `docs/SAMSUNG_SETUP.md`.
 2. In **Settings**, store your lock-screen PIN. If you hid WhatsApp's Locked chats folder behind a secret code, store that too. Optionally set your own number (for a **Me** chip in the sheet) and the morning and evening times the time chips use.
 3. Turn on **Test mode** (Settings; it switches itself off after an hour unless you choose *Until turned off*), create a message to yourself two minutes ahead, lock the phone and watch it unlock, open the chat, type the text, clear it and re-lock. Check **Settings → Diagnostics → Logs** (Automation trace) if it stops anywhere.
 4. Turn Test mode off (or use **Turn off** on the warning the list shows while it's on).
@@ -72,7 +75,7 @@ After each send a quiet notification says *Sent to Mum* (Settings → Sending �
 - `data` – Room database, repository, encrypted secret store, settings.
 - `scheduling` – exact alarms, boot recovery, missed-send handling.
 - `sending` – foreground service, wake/unlock flow, fallback notification, and `accessibility/` with the UI driver, the selector catalogue and the individual automation steps.
-- `ui` – Compose screens: schedule list, quick sheet (`quick/`), share target (`share/`), editor, settings, setup checklist, logs, UI inspector; `health/` works out what would stop a send.
+- `ui` – Compose screens: schedule list, quick sheet (`quick/`), share target and Direct Share shortcuts (`share/`), editor, settings, setup checklist (`onboarding/`), logs, UI inspector; `health/` works out what would stop a send.
 - `docs/` – architecture, Samsung setup, maintenance (refreshing view ids), device test protocol.
 
 ## Licence
