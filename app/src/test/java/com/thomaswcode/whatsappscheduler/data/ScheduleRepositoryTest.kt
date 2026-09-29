@@ -112,6 +112,18 @@ class ScheduleRepositoryTest {
     }
 
     @Test
+    fun aSendThatCouldntStartIsRecordedOnlyWhileItsStillDue() = runTest {
+        val daily = saveDaily()
+        repository.save(daily.copy(firstAtMillis = nine.plus(Duration.ofHours(8)).toEpochMilli()), ranAt)
+        // Its alarm was for 09:00, but the schedule has since moved to 17:00.
+        assertNull(repository.recordNotStarted(daily.id, nine.toEpochMilli(), "precheck: …", ranAt))
+        assertNull(repository.get(daily.id)!!.lastStatus)
+        val moved = repository.get(daily.id)!!
+        val failed = repository.recordNotStarted(daily.id, moved.nextAtMillis!!, "precheck: …", ranAt)!!
+        assertEquals(SendStatus.FAILED, failed.lastStatus)
+    }
+
+    @Test
     fun anOccurrenceEditedAwayIsntMissed() = runTest {
         val daily = saveDaily()
         // Edited to another time between the queue looking at it and holding it.

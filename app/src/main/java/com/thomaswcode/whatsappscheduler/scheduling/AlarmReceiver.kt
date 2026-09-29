@@ -43,8 +43,10 @@ class AlarmReceiver : BroadcastReceiver() {
     private suspend fun reportNotStarted(container: AppContainer, id: Long, occurrenceAtMillis: Long?) {
         val schedule = container.repository.get(id) ?: return
         val occurrence = occurrenceAtMillis ?: schedule.nextAtMillis ?: return
+        // A send started meanwhile, e.g. by opening the app, has this occurrence in hand.
+        if (container.sendState.state.value.holdsOccurrence(id)) return
         val detail = "precheck: Android didn't let it start sending in the background"
-        val stored = container.repository.recordRun(id, occurrence, SendStatus.FAILED, detail, schedule.targetName, Instant.now()) ?: return
+        val stored = container.repository.recordNotStarted(id, occurrence, detail, Instant.now()) ?: return
         runCatching { container.alarmScheduler.sync(stored) }
         container.fallbackNotifier.notifyFailed(stored, occurrence, detail)
     }
