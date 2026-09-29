@@ -37,16 +37,29 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.thomaswcode.whatsappscheduler.AppContainer
+import com.thomaswcode.whatsappscheduler.sending.accessibility.WaAccessibilityService
 import com.thomaswcode.whatsappscheduler.ui.BackBar
 
+/**
+ * The setup checklist (improvements I9), grouped by what it blocks: Required, Recommended, By hand.
+ * It opens by itself at launch until everything required is done ([onboardingDone][com.thomaswcode.whatsappscheduler.data.settings.Settings.onboardingDone]).
+ */
 @Composable
 fun SetupScreen(container: AppContainer, onBack: () -> Unit) {
     val context = LocalContext.current
     val hasPin by container.secrets.hasPin().collectAsState(initial = false)
+    // Observed, so "running" turns green as the service connects, without leaving the screen.
+    val service by WaAccessibilityService.instance.collectAsState()
     var items by remember { mutableStateOf(PermissionChecks.evaluate(context, hasPin)) }
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    LaunchedEffect(hasPin) { items = PermissionChecks.evaluate(context, hasPin) }
+    LaunchedEffect(hasPin, service) { items = PermissionChecks.evaluate(context, hasPin) }
+    // Once everything required is done, it no longer opens by itself.
+    LaunchedEffect(items) {
+        if (PermissionChecks.allRequiredOk(items) && !container.settings.current().onboardingDone) {
+            container.settings.update { it.copy(onboardingDone = true) }
+        }
+    }
     // Looked at again on each return from a settings screen. Keyed on hasPin, so the observer isn't
     // left with the value it started with, and removed when the screen goes rather than left behind.
     DisposableEffect(lifecycleOwner, hasPin) {
@@ -60,35 +73,57 @@ fun SetupScreen(container: AppContainer, onBack: () -> Unit) {
     Scaffold(topBar = { BackBar("Setup checklist", onBack) }) { padding ->
         LazyColumn(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
             item {
+                val missing = items.count { it.group == SetupGroup.REQUIRED && it.state == CheckState.MISSING }
                 Text(
-                    "Every item marked red blocks automatic sending. Items marked grey cannot be verified by the app; do them once by hand.",
+                    if (missing == 0) "Everything required is done: messages can go by themselves."
+                    else "$missing required ${if (missing == 1) "item is" else "items are"} still to do before messages can go by themselves.",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(vertical = 12.dp),
                 )
             }
-            items(items, key = { it.key }) { item ->
-                Card(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        val (icon, tint) = when (item.state) {
-                            CheckState.OK -> Icons.Default.CheckCircle to MaterialTheme.colorScheme.primary
-                            CheckState.MISSING -> Icons.Default.Error to MaterialTheme.colorScheme.error
-                            CheckState.MANUAL -> Icons.Default.Info to MaterialTheme.colorScheme.outline
-                        }
-                        Icon(icon, contentDescription = item.state.name, tint = tint)
-                        Spacer(Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(item.title, style = MaterialTheme.typography.titleSmall)
-                            Text(item.why, style = MaterialTheme.typography.bodySmall)
-                            item.action?.let { intent ->
-                                TextButton(onClick = { runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }) {
-                                    Text(item.actionLabel)
-                                }
-                            }
-                        }
+            SetupGroup.entries.forEach { group ->
+                val inGroup = items.filter { it.group == group }
+                if (inGroup.isEmpty()) return@forEach
+                item(key = "group-${group.name}") {
+                    Column(modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)) {
+                        Text(group.title, style = MaterialTheme.typography.titleMedium)
+                        Text(group.blurb, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                items(inGroup, key = { it.key }) { item -> SetupCard(item) }
+            }
+            item { Spacer(Modifier.height(24.dp)) }
+        }
+    }
+}
+
+@Composable
+private fun SetupCard(item: SetupItem) {
+    val context = LocalContext.current
+    Card(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            val (icon, tint) = when (item.state) {
+                CheckState.OK -> Icons.Default.CheckCircle to MaterialTheme.colorScheme.primary
+                CheckState.MISSING -> Icons.Default.Error to MaterialTheme.colorScheme.error
+                CheckState.MANUAL -> Icons.Default.Info to MaterialTheme.colorScheme.outline
+            }
+            // Said, not only shown by colour.
+            val said = when (item.state) {
+                CheckState.OK -> "Done"
+                CheckState.MISSING -> "To do"
+                CheckState.MANUAL -> "Check by hand"
+            }
+            Icon(icon, contentDescription = said, tint = tint)
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(item.title, style = MaterialTheme.typography.titleSmall)
+                Text(item.why, style = MaterialTheme.typography.bodySmall)
+                item.action?.let { intent ->
+                    TextButton(onClick = { runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }) {
+                        Text(item.actionLabel)
                     }
                 }
             }
-            item { Spacer(Modifier.height(24.dp)) }
         }
     }
 }

@@ -51,6 +51,9 @@ Unit tests (`./gradlew test`) cover the quick sheet's time chips and friendly ti
 | 45 | In the quick sheet, choose a made-up group, type a message, pick Tonight, then Repeat… | The full editor opens as "Repeating message" with that chat as a chip (its details behind a tap), the message and the time, repeating daily: "Every day at 20:00, starting today". No Contact/Group or Chat Lock switch. |
 | 46 | In the editor, Weekly: untick every day, then tick Thu; tap the back arrow | "Pick at least one day." while none is ticked, then "Every Thu at 20:00, starting Thu …". Back asks "Discard your changes?"; Keep editing stays. |
 | 47 | Save it, open it from the list, then Delete | The list shows "Weekly on Thu · next Thu …". Opened, it is "Edit repeating message" with Delete, which asks first and removes it. |
+| 48 | Settings → Diagnostics → Setup checklist | Grouped as Required, Recommended and By hand, with a line saying whether everything required is done. The PIN item mentions One UI's Auto factory reset. |
+| 49 | Switch the accessibility service off, clear the app's data or install it fresh, and open it | The checklist opens by itself, and does so at each launch until everything required is done; after that, never by itself. An app opened from a notification goes where the notification said instead. |
+| 50 | With the service switched on, force-stop the app (One UI can leave the service switched on but not running) and open the checklist | "Accessibility service running" is red until it connects, or until it's turned off and on again. |
 
 Useful commands:
 
