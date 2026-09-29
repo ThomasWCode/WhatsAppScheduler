@@ -110,6 +110,25 @@ class RecipientsAndBatchesTest {
     }
 
     @Test
+    fun aMemberSentWhileItWasBeingEditedStopsTheSave() = runTest {
+        val (m, d) = listOf(mum, dad).map { recipients.resolve(it) }
+        val members = schedules.saveBatch(template(), listOf(m, d), now = now).saved
+        val seen = members.associate { it.id to it.lastRunAtMillis }
+        // Mum's goes out while the sheet is open.
+        schedules.recordRun(members[0].id, members[0].nextAtMillis!!, SendStatus.SENT, null, "Mum", tomorrowNine.plusSeconds(20))
+        val later = tomorrowNine.plus(Duration.ofHours(2))
+        val stopped = runCatching { schedules.saveBatch(template("Lunch at 1?", later), listOf(m, d), members, now, seen) }.exceptionOrNull()
+        assertEquals(listOf(members[0].id), (stopped as SentWhileEditing).members.map { it.id })
+        // Nothing was saved: Mum's stays sent, Dad's as it was.
+        assertNull(schedules.get(members[0].id)!!.nextAtMillis)
+        assertEquals(tomorrowNine.toEpochMilli(), schedules.get(members[1].id)!!.nextAtMillis)
+        // A failure meanwhile sent nothing, so saving goes ahead.
+        schedules.recordRun(members[1].id, members[1].nextAtMillis!!, SendStatus.FAILED, "search: Timed out", "Dad", tomorrowNine.plusSeconds(20))
+        val saved = schedules.saveBatch(template("Lunch at 1?", later), listOf(d), members.drop(1), now, seen).saved.single()
+        assertEquals(later.toEpochMilli(), saved.nextAtMillis)
+    }
+
+    @Test
     fun editedDetailsReachPendingSchedulesButNotSentOnes() = runTest {
         val m = recipients.resolve(mum)
         val pending = schedules.saveBatch(template(), listOf(m), now = now).saved.single()
