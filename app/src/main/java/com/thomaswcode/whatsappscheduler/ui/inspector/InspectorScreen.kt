@@ -79,6 +79,7 @@ fun InspectorScreen(container: AppContainer, onBack: () -> Unit) {
                     },
                 ) { Text("Share") }
             }
+            Text("A capture contains chat names and message previews: think before sharing it.", style = MaterialTheme.typography.bodySmall)
             if (service == null) Text("Accessibility service is not enabled.", color = MaterialTheme.colorScheme.error)
             SelectionContainer {
                 Text(
