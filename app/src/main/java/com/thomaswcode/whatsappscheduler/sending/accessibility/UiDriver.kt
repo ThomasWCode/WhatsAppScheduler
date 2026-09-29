@@ -6,6 +6,7 @@ import android.graphics.Path
 import android.graphics.Rect
 import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import com.thomaswcode.whatsappscheduler.util.AutomationLog
 import kotlin.coroutines.resume
 import kotlinx.coroutines.delay
@@ -208,6 +209,15 @@ class UiDriver(
     fun lockScreen(): Boolean = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
 
     fun foregroundPackage(): String? = service.rootInActiveWindow?.packageName?.toString()
+
+    /**
+     * The app in front, by its application window: the active window can be a keyboard or the system
+     * UI over it, which isn't the app the user is in.
+     */
+    fun foregroundAppPackage(): String? = runCatching {
+        val apps = service.windows.filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
+        (apps.firstOrNull { it.isFocused || it.isActive } ?: apps.firstOrNull())?.root?.packageName?.toString()
+    }.getOrNull()
 
     /** Full tree of every window, one node per line, for logs and the inspector. */
     fun dump(): String {
