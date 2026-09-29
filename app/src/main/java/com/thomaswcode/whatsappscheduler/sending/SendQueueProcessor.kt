@@ -236,7 +236,8 @@ class SendQueueProcessor(
                     return false
                 }
                 HeadsUpChoice.POSTPONE -> {
-                    hold(batch, occurrence, HELD_POSTPONED, pick = true)
+                    // Not opened over a call that began meanwhile: the held notification offers it then.
+                    hold(batch, occurrence, HELD_POSTPONED, pick = !headsUp.inCall())
                     return false
                 }
             }
@@ -279,7 +280,13 @@ class SendQueueProcessor(
      */
     private suspend fun hold(batch: List<Schedule>, occurrence: Long, detail: String, pick: Boolean) {
         val now = clock.instant()
-        val held = batch.mapNotNull { member -> store.hold(member.id, occurrence, now, detail)?.also { arm(it.schedule) }?.held }
+        val held = batch.mapNotNull { member ->
+            store.hold(member.id, occurrence, now, detail)?.also { run ->
+                // A series goes on to its next time; if that can't be armed, its next message wouldn't go
+                // by itself, and nothing would say so.
+                if (!arm(run.schedule) && run.schedule.id != run.held.id) notifier.unarmed(run.schedule)
+            }?.held
+        }
         if (held.isNotEmpty()) notifier.held(held, pick)
     }
 
