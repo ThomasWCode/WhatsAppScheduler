@@ -16,6 +16,8 @@ Alternative from a computer:
 adb shell uiautomator dump /sdcard/ui.xml && adb pull /sdcard/ui.xml
 ```
 
+`uiautomator dump` unbinds every accessibility service while it runs, this app's included: the strip says "switched on but not running" for a moment, and a send in progress would lose its automation. Never run it during a send, and use screenshots to watch one.
+
 `uiautomator dump` fails with `could not get idle state` on WhatsApp's chat list (it animates continuously). The app's own failure dump does not have that problem, and on a debug build can be pulled directly:
 
 ```bash

@@ -115,7 +115,7 @@ fun SettingsScreen(
                     (context as Activity).authenticateThen("Confirm it's you", onFailure = vm::showStatus) { pinDialog = true }
                 }) { Text(if (hasPin) "Change" else "Store") }
             }
-            pinBlock?.let { Text(it.describe(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            pinBlock?.let { Text(it.describe(is24Hour = DateFormat.is24HourFormat(context)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(if (hasSecret) "Chat Lock secret code: stored" else "Chat Lock secret code: none", modifier = Modifier.weight(1f))
                 OutlinedButton(onClick = {
@@ -176,7 +176,7 @@ fun SettingsScreen(
         PinDialog(
             hasPin = hasPin,
             onDismiss = { pinDialog = false },
-            onSave = { value -> vm.savePin(value) { pinDialog = false } },
+            onSave = { value -> vm.savePin(value, DateFormat.is24HourFormat(context)) { pinDialog = false } },
             onRemove = { vm.removePin { pinDialog = false } },
         )
     }

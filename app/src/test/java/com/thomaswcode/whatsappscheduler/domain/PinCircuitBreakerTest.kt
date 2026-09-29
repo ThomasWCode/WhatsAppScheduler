@@ -57,5 +57,8 @@ class PinCircuitBreakerTest {
         assertTrue(PinBlock.Rejected(start).describe(ZoneOffset.UTC).contains("Update it in Settings"))
         val daily = PinBlock.DailyLimit(start).describe(ZoneOffset.UTC)
         assertTrue(daily, daily.contains("paused until") && daily.contains("08:00"))
+        // As the phone shows times: "8:00 am" on a 12-hour phone.
+        val daily12 = PinBlock.DailyLimit(start).describe(ZoneOffset.UTC, is24Hour = false)
+        assertTrue(daily12, daily12.contains(" 8:00") && !daily12.contains("08:00"))
     }
 }

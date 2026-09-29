@@ -26,18 +26,47 @@ class ShareShortcuts(private val context: Context) {
     fun publish(recents: List<Recipient>) {
         runCatching {
             val max = ShortcutManagerCompat.getMaxShortcutCountPerActivity(context).coerceIn(1, MAX)
-            val shortcuts = recents.take(max).map(::shortcutFor)
+            // Ranked by recency, so a push that has to make room (see [used]) drops the least recent.
+            val shortcuts = recents.take(max).mapIndexed { rank, recipient -> shortcutFor(recipient, rank) }
             val kept = shortcuts.map { it.id }.toSet()
-            // Long-lived shortcuts stay in the share sheet's cache until removed as well.
-            val gone = ShortcutManagerCompat.getDynamicShortcuts(context).map { it.id }.filter { it !in kept }
+            // Long-lived shortcuts stay in the share sheet's cache until removed, also once they are no
+            // longer dynamic, as after a push made room for another: so the cached ones count too.
+            val gone = published().filter { it !in kept }
             if (gone.isNotEmpty()) ShortcutManagerCompat.removeLongLivedShortcuts(context, gone)
             ShortcutManagerCompat.setDynamicShortcuts(context, shortcuts)
         }
     }
 
-    private fun shortcutFor(recipient: Recipient): ShortcutInfoCompat {
+    /**
+     * A message was just scheduled to [recipients]: each one's shortcut is reported as used, which is
+     * what the share sheet ranks its Direct Share targets by, so the chats used most are offered first.
+     * Pushed rather than only reported, so a chat new to the recents has its shortcut already.
+     */
+    fun used(recipients: List<Recipient>) {
+        runCatching {
+            recipients.forEach { recipient ->
+                val before = dynamic()
+                ShortcutManagerCompat.pushDynamicShortcut(context, shortcutFor(recipient, rank = 0))
+                // At the launcher's limit the push drops another shortcut, which as a long-lived one would
+                // stay in the share sheet's cache: it goes from there too. The recents' own publish puts
+                // it back if it still belongs.
+                val dropped = before - dynamic()
+                if (dropped.isNotEmpty()) ShortcutManagerCompat.removeLongLivedShortcuts(context, dropped.toList())
+            }
+        }
+    }
+
+    private fun dynamic(): Set<String> = ShortcutManagerCompat.getDynamicShortcuts(context).map { it.id }.toSet()
+
+    /** This app's shortcuts that are dynamic, or cached as long-lived ones for the share sheet. */
+    private fun published(): List<String> = ShortcutManagerCompat
+        .getShortcuts(context, ShortcutManagerCompat.FLAG_MATCH_DYNAMIC or ShortcutManagerCompat.FLAG_MATCH_CACHED)
+        .map { it.id }
+
+    private fun shortcutFor(recipient: Recipient, rank: Int): ShortcutInfoCompat {
         val id = idFor(recipient.id)
         return ShortcutInfoCompat.Builder(context, id)
+            .setRank(rank)
             .setShortLabel(recipient.displayName)
             .setLongLabel("${recipient.displayName} · Schedule on WhatsApp")
             .setIcon(IconCompat.createWithAdaptiveBitmap(avatar(recipient.displayName)))
