@@ -54,6 +54,10 @@ Unit tests (`./gradlew test`) cover the quick sheet's time chips and friendly ti
 | 48 | Settings → Diagnostics → Setup checklist | Grouped as Required, Recommended and By hand, with a line saying whether everything required is done. The PIN item mentions One UI's Auto factory reset. |
 | 49 | Switch the accessibility service off, clear the app's data or install it fresh, and open it | The checklist opens by itself, and does so at each launch until everything required is done; after that, never by itself. An app opened from a notification goes where the notification said instead. |
 | 50 | With the service switched on, force-stop the app (One UI can leave the service switched on but not running) and open the checklist | "Accessibility service running" is red until it connects, or until it's turned off and on again. |
+| 51 | With TalkBack on, let a countdown pop up; then go through a list row and the quick sheet's chosen chip | The countdown is announced as "Sending to … in 10 seconds". A repeating row's switch is "Repeat to …" and its menu "More for …". The avatar isn't read out. A chosen chip's remove button is a full 48 dp target. |
+| 52 | Switch the phone to 12-hour time; open Logs and a notification that names a time | Times read "6:34 am", not "06:34". |
+| 53 | A repeating message made in one time zone, with the phone then set to another | Its row adds its own zone's time, e.g. "next Tomorrow 14:00 (09:00 New York time)". |
+| 54 | Light mode; and themed icons on in the home screen settings | The app uses the phone's own colours in light mode as in dark. Its icon follows the theme. |
 
 Useful commands:
 
