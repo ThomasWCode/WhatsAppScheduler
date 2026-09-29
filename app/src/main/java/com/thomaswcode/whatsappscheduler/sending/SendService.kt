@@ -3,7 +3,6 @@ package com.thomaswcode.whatsappscheduler.sending
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.content.ContextCompat
@@ -59,11 +58,7 @@ class SendService : LifecycleService() {
     override fun onCreate() {
         super.onCreate()
         val notification = container.notifications.sending("Preparing…")
-        if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(Notifications.ID_SENDING, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        } else {
-            startForeground(Notifications.ID_SENDING, notification)
-        }
+        startForeground(Notifications.ID_SENDING, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         startupLock = getSystemService(PowerManager::class.java)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "WaScheduler:start")
             .apply { setReferenceCounted(false) }

@@ -7,7 +7,6 @@ Work through the in-app **Setup checklist**; it deep-links to most of these scre
 | Item | Where | Why |
 |---|---|---|
 | Accessibility service | Settings → Accessibility → Installed apps → WhatsApp Scheduler auto-send → On | Types the PIN, opens chats, taps Send. Idle at all other times. |
-| Alarms & reminders | Settings → Apps → WhatsApp Scheduler → Alarms & reminders | Exact alarms at the scheduled minute, also in Doze. |
 | Appear on top | Settings → Apps → WhatsApp Scheduler → Appear on top | Lets a background service bring WhatsApp to the front. |
 | Notifications | Prompted on first launch | Foreground service notice and the tap-to-send fallback. |
 | Full-screen notifications | Settings → Apps → WhatsApp Scheduler → Notifications → Allow full-screen notifications (Android 14+) | Wakes the screen when locked. |

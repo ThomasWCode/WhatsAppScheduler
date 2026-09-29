@@ -1,12 +1,10 @@
 package com.thomaswcode.whatsappscheduler.ui.health
 
-import android.app.AlarmManager
 import android.app.KeyguardManager
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
@@ -31,9 +29,6 @@ enum class HealthProblem(val blocksSending: Boolean, val fixedInAppSettings: Boo
     NO_PIN(true, fixedInAppSettings = true),
     /** Test mode: nothing is sent at all, so it is shown as prominently as what stops a send (B11). */
     DRY_RUN(true),
-
-    /** Alarms fall back to inexact ones, which the phone may deliver minutes late. */
-    EXACT_ALARMS_DENIED(false),
 
     /** A locked phone is woken through the full-screen notification as well as directly. */
     FULL_SCREEN_DENIED(false),
@@ -97,21 +92,14 @@ object HealthCheck {
             }
             items += HealthItem(HealthProblem.DRY_RUN, "Test mode is on $until: messages are typed but not sent.", "Turn off", null)
         }
-        if (!context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()) {
-            items += HealthItem(
-                HealthProblem.EXACT_ALARMS_DENIED,
-                "\"Alarms & reminders\" is off, so messages may go out late.",
-                "Fix", Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, pkgUri),
-            )
-        }
-        if (Build.VERSION.SDK_INT >= 34 && !context.getSystemService(NotificationManager::class.java).canUseFullScreenIntent()) {
+        if (!context.getSystemService(NotificationManager::class.java).canUseFullScreenIntent()) {
             items += HealthItem(
                 HealthProblem.FULL_SCREEN_DENIED,
                 "Full-screen notifications are off, so a locked phone may not wake up to send.",
                 "Fix", Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, pkgUri),
             )
         }
-        // The app-level switch, which on Android 13+ also reflects the notification permission; on 12 there is no permission.
+        // The app-level switch, which also reflects the notification permission.
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
             items += HealthItem(
                 HealthProblem.NOTIFICATIONS_BLOCKED,
