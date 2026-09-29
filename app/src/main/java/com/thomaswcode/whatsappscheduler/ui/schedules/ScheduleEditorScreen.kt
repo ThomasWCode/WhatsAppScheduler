@@ -109,7 +109,7 @@ fun ScheduleEditorScreen(
             Spacer(Modifier.height(12.dp))
             OutlinedTextField(
                 value = form.name,
-                onValueChange = { vm.update { copy(name = it) } },
+                onValueChange = { vm.update { copy(name = it, nameTyped = true) } },
                 label = { Text(if (form.kind == TargetKind.CONTACT) "Contact name (as shown in WhatsApp)" else "Group name (exact, as shown in WhatsApp)") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,

@@ -38,7 +38,7 @@ class EditorFormTest {
             kind = TargetKind.GROUP, name = "Work crew", phone = "", locked = true, message = "Stand-up in 5",
             date = LocalDate.parse("2026-10-05"), time = LocalTime.parse("09:30"), ruleKind = RuleKind.WEEKLY,
             weekdays = setOf(DayOfWeek.MONDAY, DayOfWeek.THURSDAY), monthDay = "5", every = "3", pickedName = "Work",
-            lockedTouched = true,
+            lockedTouched = true, nameTyped = true,
         )
         val saved = with(EditorForm.Saver) { SaverScope { true }.save(form) }!!
         assertEquals(form, EditorForm.Saver.restore(saved))
@@ -68,9 +68,11 @@ class EditorFormTest {
         // Filled in by the contact picker: the address book's name, not the one WhatsApp shows.
         assertNull(ScheduleEditorViewModel.typedChatName(form.copy(name = "Mum", pickedName = "Mum"), mum))
         // As the schedule already had it.
-        assertNull(ScheduleEditorViewModel.typedChatName(form.copy(name = "Mum (work)"), mum))
+        assertNull(ScheduleEditorViewModel.typedChatName(form.copy(name = "Mum (work)", nameTyped = true), mum))
+        // Loaded with the schedule for someone else and never typed: not a name for this chat.
+        assertNull(ScheduleEditorViewModel.typedChatName(form.copy(name = "Dad"), mum))
         // Typed here: what WhatsApp shows, so it is remembered for the chat.
-        assertEquals("Mummy", ScheduleEditorViewModel.typedChatName(form.copy(name = " Mummy "), mum))
+        assertEquals("Mummy", ScheduleEditorViewModel.typedChatName(form.copy(name = " Mummy ", nameTyped = true), mum))
     }
 
     @Test

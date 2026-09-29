@@ -40,6 +40,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.debounce
@@ -126,7 +127,8 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
 
     init {
         viewModelScope.launch {
-            snapshotFlow { query }.debounce(150).collect { q -> search(q) }
+            // collectLatest: a newer query cancels a search still running for an older one.
+            snapshotFlow { query }.debounce(150).collectLatest { q -> search(q) }
         }
     }
 
@@ -137,8 +139,12 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
             savedHits = emptyList()
             return
         }
-        contactHits = container.contactSearch.search(q, settings.value.defaultCountryIso)
-        savedHits = container.recipients.search(q)
+        val contacts = container.contactSearch.search(q, settings.value.defaultCountryIso)
+        val saved = container.recipients.search(q)
+        // Only if the field still shows that query: a result for another one could add the wrong chat.
+        if (q != query) return
+        contactHits = contacts
+        savedHits = saved
     }
 
     fun chips(now: ZonedDateTime = this.now.value, time: (LocalTime) -> String = { it.toString() }): List<TimeChip> =
@@ -226,6 +232,11 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
 
     fun updateQuery(text: String) {
         if (saving) return
+        // The rows for the old text go at once, rather than staying tappable until the new search is back.
+        if (text != query) {
+            contactHits = emptyList()
+            savedHits = emptyList()
+        }
         query = text
     }
 
