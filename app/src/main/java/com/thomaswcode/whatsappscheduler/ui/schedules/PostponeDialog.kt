@@ -57,11 +57,7 @@ fun PostponeDialog(schedule: Schedule, now: ZonedDateTime, onDismiss: () -> Unit
     val sendable = QuickScheduleViewModel.isSendable(at, now)
     // Where it is due already: nothing to move.
     val unchanged = schedule.nextAtMillis == at.toInstant().toEpochMilli()
-    val skipped = remember(at, schedule) {
-        schedule.nextAtMillis?.let { from ->
-            Postponing.skipped(schedule.rule, Instant.ofEpochMilli(schedule.firstAtMillis), ZoneId.of(schedule.zoneId), Instant.ofEpochMilli(from), at.toInstant())
-        }.orEmpty()
-    }
+    val skipped = remember(at, schedule) { skippedByMove(schedule, at.toInstant()) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -127,6 +123,16 @@ fun PostponeDialog(schedule: Schedule, now: ZonedDateTime, onDismiss: () -> Unit
             text = { TimePicker(state = state) },
         )
     }
+}
+
+/**
+ * The occurrences a move to [to] skips, counted from where the occurrence was originally due: moved
+ * before, it still resumes after that time (ScheduleRepository.nextAfterRun), so a second move to an
+ * earlier time skips what lies between the original time and the new one.
+ */
+internal fun skippedByMove(schedule: Schedule, to: Instant): List<Instant> {
+    val from = schedule.postponedFromMillis ?: schedule.nextAtMillis ?: return emptyList()
+    return Postponing.skipped(schedule.rule, Instant.ofEpochMilli(schedule.firstAtMillis), ZoneId.of(schedule.zoneId), Instant.ofEpochMilli(from), to)
 }
 
 /**

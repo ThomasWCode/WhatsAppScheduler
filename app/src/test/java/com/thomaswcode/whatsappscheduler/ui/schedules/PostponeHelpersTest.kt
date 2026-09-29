@@ -1,6 +1,10 @@
 package com.thomaswcode.whatsappscheduler.ui.schedules
 
+import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.domain.Postponing
+import com.thomaswcode.whatsappscheduler.domain.Recurrence
+import com.thomaswcode.whatsappscheduler.domain.RecurrenceCodec
+import com.thomaswcode.whatsappscheduler.domain.TargetKind
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
@@ -22,6 +26,21 @@ class PostponeHelpersTest {
         assertEquals(on(6, 9), postponeStart(on(5, 9), now))
         // Missed yesterday evening: this evening, which is still ahead.
         assertEquals(on(5, 20), postponeStart(on(4, 20), now))
+    }
+
+    @Test
+    fun aSecondMoveCountsSkipsFromTheOriginalTime() {
+        val daily = Schedule(
+            message = "Morning!", targetKind = TargetKind.CONTACT, targetName = "Mum", phoneE164 = "+447400123456", isLocked = false,
+            firstAtMillis = on(1, 9).toInstant().toEpochMilli(), zoneId = london.id, recurrence = RecurrenceCodec.encode(Recurrence.Daily),
+            nextAtMillis = on(6, 9).toInstant().toEpochMilli(),
+        )
+        assertEquals(listOf(on(7, 9).toInstant()), skippedByMove(daily, on(7, 18).toInstant()))
+        // Tuesday's moved to Thursday evening, then back to Wednesday evening: Wednesday morning is still skipped.
+        val moved = daily.copy(nextAtMillis = on(8, 18).toInstant().toEpochMilli(), postponedFromMillis = on(6, 9).toInstant().toEpochMilli())
+        assertEquals(listOf(on(7, 9).toInstant()), skippedByMove(moved, on(7, 18).toInstant()))
+        // Back before the original time: nothing.
+        assertEquals(emptyList<java.time.Instant>(), skippedByMove(moved, on(6, 8).toInstant()))
     }
 
     @Test
