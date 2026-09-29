@@ -47,8 +47,10 @@ class AppContainer(context: Context) {
     val notifications: Notifications by lazy { Notifications(appContext) }
     val fallbackNotifier: FallbackNotifier by lazy { FallbackNotifier(appContext, notifications) }
     val sentNotifier: SentNotifier by lazy { SentNotifier(appContext, notifications) }
+    /** Taken by a send as it takes its row, and by Discard from a notification, so the two can't interleave. */
+    val sendAdmission = Mutex()
     val attentionActions: AttentionActions by lazy {
-        AttentionActions(repository, alarmScheduler, { sendState.state.value }, ::send, fallbackNotifier::cancel)
+        AttentionActions(repository, alarmScheduler, { sendState.state.value }, ::send, fallbackNotifier::cancel, admission = sendAdmission)
     }
     val log: AutomationLog by lazy { AutomationLog(appContext) }
     val alarmScheduler: AlarmScheduler by lazy { AlarmScheduler(appContext, repository, sendState, log) }
