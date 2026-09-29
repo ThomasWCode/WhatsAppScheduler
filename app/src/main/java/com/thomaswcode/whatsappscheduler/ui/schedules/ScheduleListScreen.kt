@@ -140,6 +140,7 @@ fun ScheduleListScreen(
                 }
                 // A toast, not the snackbar: the result usually arrives with the sheet open, which covers it.
                 is QuickEvent.Checked -> Toast.makeText(context, event.message, Toast.LENGTH_LONG).show()
+                QuickEvent.ChecksDone -> Unit
                 is QuickEvent.Deleted -> announce(event.summary)
                 is QuickEvent.OpenFullEditor -> onRepeat(event)
             }

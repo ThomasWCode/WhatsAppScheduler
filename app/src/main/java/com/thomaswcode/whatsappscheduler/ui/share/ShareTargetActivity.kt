@@ -6,6 +6,9 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,6 +41,8 @@ class ShareTargetActivity : ComponentActivity() {
                 val vm: QuickScheduleViewModel = viewModel(factory = QuickScheduleViewModel.factory(container))
                 // Saved, so a rotation doesn't re-open the sheet over what was typed since.
                 var opened by rememberSaveable { mutableStateOf(false) }
+                // The offered checks are running: this stays until they are done, to show what they found.
+                var checking by rememberSaveable { mutableStateOf(false) }
                 LaunchedEffect(Unit) {
                     if (!opened) {
                         vm.openShared(shared)
@@ -47,22 +52,46 @@ class ShareTargetActivity : ComponentActivity() {
                 LaunchedEffect(vm) {
                     vm.eventFlow.collect { event ->
                         when (event) {
-                            is QuickEvent.Scheduled -> Toast.makeText(this@ShareTargetActivity, event.summary, Toast.LENGTH_LONG).show()
+                            is QuickEvent.Scheduled -> {
+                                Toast.makeText(this@ShareTargetActivity, event.summary, Toast.LENGTH_LONG).show()
+                                // A new chat found by name is offered its check here, as there is no list to offer it under.
+                                if (vm.pendingCheckOffers.isNotEmpty()) return@collect
+                            }
                             is QuickEvent.Deleted -> Unit
                             // Shown over whatever is in front; the sheet stays open.
                             is QuickEvent.Checked -> {
                                 Toast.makeText(this@ShareTargetActivity, event.message, Toast.LENGTH_LONG).show()
                                 return@collect
                             }
+                            // Only the offered checks close this: one started from the open sheet leaves it open.
+                            QuickEvent.ChecksDone -> if (!checking) return@collect
                             // Repeating schedules are made in the app's full editor.
                             is QuickEvent.OpenFullEditor -> startActivity(MainActivity.intent(this@ShareTargetActivity, Routes.repeat(event)))
                         }
                         finish()
                     }
                 }
-                // Swiped away: there is nothing else here, so go back to the app that shared.
-                LaunchedEffect(opened, vm.visible) { if (opened && !vm.visible) finish() }
+                // Swiped away, or scheduled with nothing to offer: there is nothing else here, so go back to
+                // the app that shared.
+                LaunchedEffect(opened, vm.visible, vm.pendingCheckOffers, checking) {
+                    if (opened && !vm.visible && vm.pendingCheckOffers.isEmpty() && !checking) finish()
+                }
                 QuickScheduleSheet(vm)
+                val offers = vm.pendingCheckOffers
+                if (offers.isNotEmpty() && !vm.visible) {
+                    AlertDialog(
+                        onDismissRequest = { vm.answerCheckOffer(check = false) },
+                        title = { Text("Check in WhatsApp?") },
+                        text = { Text("Check ${QuickScheduleViewModel.quoted(offers)} in WhatsApp now? WhatsApp's search is run for the name while you watch; nothing is typed.") },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                checking = true
+                                vm.answerCheckOffer(check = true)
+                            }) { Text("Check") }
+                        },
+                        dismissButton = { TextButton(onClick = { vm.answerCheckOffer(check = false) }) { Text("Not now") } },
+                    )
+                }
             }
         }
     }
