@@ -2,6 +2,7 @@ package com.thomaswcode.whatsappscheduler.ui.schedules
 
 import android.content.Intent
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
@@ -57,6 +59,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -88,7 +91,14 @@ import com.thomaswcode.whatsappscheduler.ui.quick.QuickEvent
 import com.thomaswcode.whatsappscheduler.ui.quick.QuickScheduleSheet
 import com.thomaswcode.whatsappscheduler.ui.quick.QuickScheduleViewModel
 import com.thomaswcode.whatsappscheduler.ui.quick.rememberTimeFormat
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The main list (quick-schedule.md §7): a health strip, then Needs attention, Upcoming, Repeating and
@@ -102,6 +112,8 @@ fun ScheduleListScreen(
     onRepeat: (QuickEvent.OpenFullEditor) -> Unit,
     onSettings: () -> Unit,
     onSetup: () -> Unit,
+    /** A row to show, from a notification: its section opens, and it is scrolled to and outlined for a moment. */
+    focusRow: MutableStateFlow<Long?> = remember { MutableStateFlow<Long?>(null) },
     vm: ScheduleListViewModel = viewModel(factory = ScheduleListViewModel.factory(container)),
     quick: QuickScheduleViewModel = viewModel(factory = QuickScheduleViewModel.factory(container)),
 ) {
@@ -115,13 +127,37 @@ fun ScheduleListScreen(
     val hasPin by vm.hasPin.collectAsStateWithLifecycle()
     val pinFailures by vm.pinFailures.collectAsStateWithLifecycle()
     val serviceConnected by vm.serviceConnected.collectAsStateWithLifecycle()
-    val health = rememberHealth(serviceConnected, hasPin, PinCircuitBreaker.block(pinFailures, now.toInstant().toEpochMilli()), settings?.dryRun == true)
+    val nowMillis = now.toInstant().toEpochMilli()
+    val health = rememberHealth(serviceConnected, hasPin, PinCircuitBreaker.block(pinFailures, nowMillis), settings?.dryRunUntilMillis, nowMillis)
     val timeFormat = rememberTimeFormat()
     val snackbar = vm.snackbar
     // Held by id and saved, so an open dialog survives rotation and always shows the current rows.
     var sendIds by rememberSaveable { mutableStateOf<LongArray?>(null) }
     var sendCopyOnly by rememberSaveable { mutableStateOf(false) }
     var sentOpen by rememberSaveable { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    var outlined by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(focusRow) {
+        focusRow.filterNotNull().collectLatest { id ->
+            // After a cold start the rows are still loading: waited for, but not for ever, as the row may
+            // have been cleared since the notification was posted.
+            val found = withTimeoutOrNull(5_000) { vm.schedules.map { ListSections.of(it).rowOf(id) }.filterNotNull().first() }
+            focusRow.value = null
+            val (section, key) = found ?: return@collectLatest
+            if (section == Section.SENT) sentOpen = true
+            val index = ListSections.of(vm.schedules.value).keys(sentOpen).indexOf(key)
+            if (index < 0) return@collectLatest
+            // The Sent rows appear a frame after the section opens.
+            withTimeoutOrNull(2_000) { snapshotFlow { listState.layoutInfo.totalItemsCount }.first { it > index } }
+            runCatching { listState.animateScrollToItem(index) }
+            outlined = id
+            try {
+                delay(2_500)
+            } finally {
+                if (outlined == id) outlined = null
+            }
+        }
+    }
 
     // Shown from the ViewModel, so a rotation doesn't lose a snackbar or its Undo.
     fun announce(message: String, action: String? = null, followUp: ScheduleListViewModel.FollowUp? = null, onAction: () -> Unit = {}) =
@@ -182,6 +218,7 @@ fun ScheduleListScreen(
         val canPostpone = once || (first.enabled && first.nextAtMillis != null)
         ScheduleRow(
             group = group,
+            outlined = group.any { it.id == outlined },
             line = busy ?: statusLine(section, group, now, dueAt, timeFormat),
             busy = busy != null,
             needsYou = section == Section.ATTENTION,
@@ -263,11 +300,15 @@ fun ScheduleListScreen(
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 96.dp),
         ) {
             item(key = "health") {
-                HealthStrip(health, showReady = true, onOpenSettings = onSettings, onClick = onSetup, modifier = Modifier.padding(bottom = 4.dp))
+                HealthStrip(
+                    health, showReady = true, onOpenSettings = onSettings, onClick = onSetup,
+                    onTurnOffDryRun = vm::turnOffDryRun, modifier = Modifier.padding(bottom = 4.dp),
+                )
             }
             if (sections.isEmpty) {
                 item(key = "empty") {
@@ -352,6 +393,7 @@ private fun SectionHeader(title: String, expanded: Boolean? = null, onToggle: ((
 @Composable
 private fun ScheduleRow(
     group: List<Schedule>,
+    outlined: Boolean,
     line: String,
     busy: Boolean,
     needsYou: Boolean,
@@ -386,6 +428,7 @@ private fun ScheduleRow(
             onClick = onOpen,
             modifier = Modifier.fillMaxWidth(),
             colors = if (needsYou) CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer) else CardDefaults.cardColors(),
+            border = if (outlined) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
         ) {
             Column(modifier = Modifier.padding(start = 12.dp, top = 12.dp, bottom = if (actions.isEmpty()) 12.dp else 2.dp)) {
                 Row(verticalAlignment = Alignment.Top) {

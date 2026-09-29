@@ -18,7 +18,11 @@ import kotlinx.coroutines.flow.map
 private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 data class Settings(
-    val dryRun: Boolean = false,
+    /**
+     * Test mode (improvements I6): until when every send is a dry run, typed but never sent. Null is
+     * off; [UNTIL_TURNED_OFF] stays on; any other time switches it off by itself then (B11).
+     */
+    val dryRunUntilMillis: Long? = null,
     val relockAfterSend: Boolean = true,
     val retryCount: Int = 2,
     val retryDelaySeconds: Int = 30,
@@ -35,7 +39,20 @@ data class Settings(
     val ownNumberE164: String? = null,
     /** Sent one-offs are cleared this many days after sending; 0 keeps them (quick-schedule.md §8). */
     val keepSentDays: Int = 30,
+    /** A quiet "Sent to Mum" notification after each real send (features F2); dry runs always say so. */
+    val notifyAfterSend: Boolean = true,
 ) {
+    /** Whether test mode is on at [nowMillis]. */
+    fun dryRunAt(nowMillis: Long): Boolean = dryRunUntilMillis?.let { it > nowMillis } ?: false
+
+    /** Whether test mode is on now; what a send decides by. */
+    val dryRun: Boolean get() = dryRunAt(System.currentTimeMillis())
+
+    companion object {
+        /** Test mode that stays on until switched off. */
+        const val UNTIL_TURNED_OFF = Long.MAX_VALUE
+    }
+
     val morning: LocalTime get() = LocalTime.of(morningMinutes / 60, morningMinutes % 60)
     val evening: LocalTime get() = LocalTime.of(eveningMinutes / 60, eveningMinutes % 60)
 }
@@ -43,7 +60,10 @@ data class Settings(
 class SettingsStore(private val context: Context) {
 
     private object Keys {
-        val dryRun = booleanPreferencesKey("dry_run")
+        /** Before test mode had an end: on or off. Read once, as "until turned off", then removed. */
+        val legacyDryRun = booleanPreferencesKey("dry_run")
+        val dryRunUntil = longPreferencesKey("dry_run_until")
+        val notifyAfterSend = booleanPreferencesKey("notify_after_send")
         val relock = booleanPreferencesKey("relock_after_send")
         val retryCount = intPreferencesKey("retry_count")
         val retryDelay = intPreferencesKey("retry_delay_seconds")
@@ -87,7 +107,8 @@ class SettingsStore(private val context: Context) {
     }
 
     private fun read(p: Preferences) = Settings(
-        dryRun = p[Keys.dryRun] ?: false,
+        dryRunUntilMillis = p[Keys.dryRunUntil] ?: Settings.UNTIL_TURNED_OFF.takeIf { p[Keys.legacyDryRun] == true },
+        notifyAfterSend = p[Keys.notifyAfterSend] ?: true,
         relockAfterSend = p[Keys.relock] ?: true,
         retryCount = p[Keys.retryCount] ?: 2,
         retryDelaySeconds = p[Keys.retryDelay] ?: 30,
@@ -104,7 +125,9 @@ class SettingsStore(private val context: Context) {
     )
 
     private fun write(p: MutablePreferences, s: Settings) {
-        p[Keys.dryRun] = s.dryRun
+        s.dryRunUntilMillis?.let { p[Keys.dryRunUntil] = it } ?: p.remove(Keys.dryRunUntil)
+        p.remove(Keys.legacyDryRun)
+        p[Keys.notifyAfterSend] = s.notifyAfterSend
         p[Keys.relock] = s.relockAfterSend
         p[Keys.retryCount] = s.retryCount
         p[Keys.retryDelay] = s.retryDelaySeconds

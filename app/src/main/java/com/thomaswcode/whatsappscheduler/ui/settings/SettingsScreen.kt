@@ -32,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -54,7 +55,10 @@ import com.thomaswcode.whatsappscheduler.ui.BackBar
 import com.thomaswcode.whatsappscheduler.ui.authenticateThen
 import com.thomaswcode.whatsappscheduler.ui.quick.rememberTimeFormat
 import android.text.format.DateFormat
+import java.time.Instant
 import java.time.LocalTime
+import java.time.ZoneId
+import kotlinx.coroutines.delay
 
 @Composable
 fun SettingsScreen(
@@ -104,7 +108,10 @@ fun SettingsScreen(
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
             Text("Sending", style = MaterialTheme.typography.titleMedium)
-            ToggleRow("Dry run (never tap Send)", "Runs every step and clears the composer instead of sending. Use to calibrate.", settings.dryRun) { v -> update { it.copy(dryRun = v) } }
+            TestModeRow(settings.dryRunUntilMillis) { until -> update { it.copy(dryRunUntilMillis = until) } }
+            ToggleRow("Notify after each send", "A quiet \"Sent to …\" notification. Test runs always say they sent nothing.", settings.notifyAfterSend) { v ->
+                update { it.copy(notifyAfterSend = v) }
+            }
             ToggleRow("Re-lock the phone after sending", "Only when it was locked before.", settings.relockAfterSend) { v -> update { it.copy(relockAfterSend = v) } }
             TimeSettingRow("Morning time for quick chips", "Used by This morning, Tomorrow and Mon.", settings.morning) { t ->
                 update { it.copy(morningMinutes = t.hour * 60 + t.minute) }
@@ -244,6 +251,53 @@ private fun SecretDialog(title: String, hint: String, onDismiss: () -> Unit, onS
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
+
+/**
+ * Test mode (improvements I6): every step runs and the composer is cleared instead of sending. It
+ * switches itself off after an hour unless "Until turned off" is chosen, so it can't be forgotten (B11).
+ */
+@Composable
+private fun TestModeRow(untilMillis: Long?, onChange: (Long?) -> Unit) {
+    // Read again at least each minute until the time is up, so the switch goes off with test mode itself.
+    val now by produceState(System.currentTimeMillis(), untilMillis) {
+        while (true) {
+            value = System.currentTimeMillis()
+            val left = (untilMillis ?: break) - value
+            if (untilMillis == Settings.UNTIL_TURNED_OFF || left <= 0) break
+            delay(left.coerceAtMost(60_000L) + 20)
+        }
+    }
+    val on = untilMillis != null && untilMillis > now
+    val timeFormat = rememberTimeFormat()
+    val subtitle = when {
+        !on -> "Runs every step and clears the message instead of sending it. For checking the app works."
+        untilMillis == Settings.UNTIL_TURNED_OFF -> "On until you turn it off: nothing is sent."
+        else -> "On until ${timeFormat(Instant.ofEpochMilli(untilMillis!!).atZone(ZoneId.systemDefault()).toLocalTime())}: nothing is sent."
+    }
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Test mode (dry run)")
+                Text(subtitle, style = MaterialTheme.typography.bodySmall)
+            }
+            Switch(checked = on, onCheckedChange = { v -> onChange(if (v) System.currentTimeMillis() + TEST_MODE_MILLIS else null) })
+        }
+        if (on) {
+            val options = listOf(false to "For 1 hour", true to "Until turned off")
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                options.forEachIndexed { i, (always, label) ->
+                    SegmentedButton(
+                        selected = (untilMillis == Settings.UNTIL_TURNED_OFF) == always,
+                        onClick = { onChange(if (always) Settings.UNTIL_TURNED_OFF else System.currentTimeMillis() + TEST_MODE_MILLIS) },
+                        shape = SegmentedButtonDefaults.itemShape(i, options.size),
+                    ) { Text(label, maxLines = 1) }
+                }
+            }
+        }
+    }
+}
+
+private const val TEST_MODE_MILLIS = 60 * 60 * 1000L
 
 /** How long sent messages stay under Sent before they are cleared (their history stays, up to 90 days). */
 @Composable

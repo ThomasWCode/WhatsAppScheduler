@@ -348,7 +348,7 @@ class SendQueueProcessorTest {
         // Found on the phone: a failed dry run posted "Tap to send", inviting a real message to a group.
         store.put(oneOff())
         val sender = FakeSender(failed("search"), failed("search"), failed("search"))
-        processor(sender, Settings(dryRun = true, retryCount = 2)).run { enqueue(scheduled()); drain() }
+        processor(sender, Settings(dryRunUntilMillis = Settings.UNTIL_TURNED_OFF, retryCount = 2)).run { enqueue(scheduled()); drain() }
         assertTrue(sender.jobs.all { it.dryRun })
         assertEquals(listOf(SendStatus.FAILED), store.logged)
         assertTrue(notifier.events.isEmpty())

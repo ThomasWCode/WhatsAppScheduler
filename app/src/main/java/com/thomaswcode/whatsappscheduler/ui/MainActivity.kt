@@ -55,11 +55,16 @@ class MainActivity : ComponentActivity() {
     companion object {
         private const val EXTRA_DESTINATION = "destination"
         const val DESTINATION_SETTINGS = "settings"
+        /** Followed by a schedule id: the list, scrolled to that schedule's row. */
+        const val DESTINATION_ROW = "row/"
 
         /** Opens the app on [destination] (Settings, or a navigation route), reusing the running instance if there is one. */
         fun intent(context: Context, destination: String): Intent =
             Intent(context, MainActivity::class.java)
                 .putExtra(EXTRA_DESTINATION, destination)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+
+        /** Opens the app on schedule [scheduleId]'s row, e.g. from its "Sent" notification. */
+        fun rowIntent(context: Context, scheduleId: Long): Intent = intent(context, DESTINATION_ROW + scheduleId)
     }
 }

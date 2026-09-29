@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
+import com.thomaswcode.whatsappscheduler.data.settings.Settings as AppSettings
 import com.thomaswcode.whatsappscheduler.domain.PinBlock
 import com.thomaswcode.whatsappscheduler.sending.accessibility.Selectors
 import com.thomaswcode.whatsappscheduler.sending.accessibility.WaAccessibilityService
@@ -28,7 +29,8 @@ enum class HealthProblem(val blocksSending: Boolean, val fixedInAppSettings: Boo
     OVERLAY_DENIED(true),
     PIN_PAUSED(true, fixedInAppSettings = true),
     NO_PIN(true, fixedInAppSettings = true),
-    DRY_RUN(false),
+    /** Test mode: nothing is sent at all, so it is shown as prominently as what stops a send (B11). */
+    DRY_RUN(true),
 
     /** Alarms fall back to inexact ones, which the phone may deliver minutes late. */
     EXACT_ALARMS_DENIED(false),
@@ -50,7 +52,8 @@ object HealthCheck {
         serviceConnected: Boolean,
         hasPin: Boolean,
         pinBlock: PinBlock?,
-        dryRun: Boolean,
+        /** When test mode ends, if it is on; [AppSettings.UNTIL_TURNED_OFF] when it doesn't by itself. */
+        dryRunUntilMillis: Long?,
     ): List<HealthItem> {
         val items = mutableListOf<HealthItem>()
         val pkgUri = Uri.parse("package:${context.packageName}")
@@ -81,7 +84,14 @@ object HealthCheck {
         } else if (!hasPin && context.getSystemService(KeyguardManager::class.java).isDeviceSecure) {
             items += HealthItem(HealthProblem.NO_PIN, "No lock-screen PIN is stored, so a locked phone can't be unlocked to send.", "Settings", null)
         }
-        if (dryRun) items += HealthItem(HealthProblem.DRY_RUN, "Dry run is on: messages are typed but never sent.", null, null)
+        if (dryRunUntilMillis != null) {
+            val until = if (dryRunUntilMillis == AppSettings.UNTIL_TURNED_OFF) {
+                "until you turn it off"
+            } else {
+                "until " + android.text.format.DateFormat.getTimeFormat(context).format(java.util.Date(dryRunUntilMillis))
+            }
+            items += HealthItem(HealthProblem.DRY_RUN, "Test mode is on $until: messages are typed but not sent.", "Turn off", null)
+        }
         if (!context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()) {
             items += HealthItem(
                 HealthProblem.EXACT_ALARMS_DENIED,

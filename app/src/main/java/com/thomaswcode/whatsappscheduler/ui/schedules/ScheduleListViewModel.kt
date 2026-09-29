@@ -315,6 +315,11 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
         events.trySend(ListEvent.Failed("$what (${error.message ?: error.javaClass.simpleName})."))
     }
 
+    /** "Turn off" on the test-mode warning (B11). */
+    fun turnOffDryRun() {
+        viewModelScope.launch { container.settings.update { it.copy(dryRunUntilMillis = null) } }
+    }
+
     companion object {
         /** What to do about an alarm that couldn't be set: the app re-arms every alarm only on a fresh start. */
         private const val REARM = "use Re-arm all alarms in Settings"
