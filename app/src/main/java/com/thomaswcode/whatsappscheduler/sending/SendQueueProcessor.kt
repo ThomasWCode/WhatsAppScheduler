@@ -42,6 +42,8 @@ class SendQueueProcessor(
     private val admission: Mutex = Mutex(),
     /** The countdown before a scheduled send while the phone is in use (features F1). */
     private val headsUp: HeadsUp = HeadsUp.None,
+    /** Batch occurrences whose Snooze or Postpone couldn't be saved; shared by every queue in the process. */
+    private val stopped: StoppedOccurrences = StoppedOccurrences(clock),
 ) {
     private val lock = Any()
     private val queue = ArrayDeque<SendRequest>()
@@ -54,8 +56,6 @@ class SendQueueProcessor(
      */
     private val approved = mutableSetOf<Pair<Long, Long>>()
 
-    /** Batch occurrences whose Snooze or Postpone couldn't be saved: none of their members goes now. */
-    private val stopped = mutableSetOf<Pair<Long, Long>>()
 
     /** Queues [request] unless the same send is already queued or running; returns whether it was queued. */
     fun enqueue(request: SendRequest): Boolean = synchronized(lock) {
@@ -75,7 +75,6 @@ class SendQueueProcessor(
         while (true) {
             val request = synchronized(lock) { queue.removeFirstOrNull()?.also { current = it; publish() } } ?: run {
                 approved.clear()
-                stopped.clear()
                 return
             }
             try {
@@ -123,7 +122,7 @@ class SendQueueProcessor(
             }
         }
         if (request.kind == SendKind.SCHEDULED && occurrence != null) {
-            if ((schedule.id to occurrence) in stopped) {
+            if (stopped.isStopped(schedule.id, occurrence)) {
                 log.info("Schedule ${schedule.id}: its batch couldn't be snoozed or held; not sending it")
                 return
             }
@@ -302,7 +301,7 @@ class SendQueueProcessor(
         throw e
     } catch (e: Exception) {
         log.error("$what for schedule(s) ${batch.map { it.id }} couldn't be saved", e)
-        stopped += batch.map { it.id to occurrence }
+        stopped.stop(batch.map { it.id }, occurrence)
         batch.forEach { member -> notifier.failed(member, occurrence, "precheck: $what couldn't be saved (${e.message ?: e.javaClass.simpleName})") }
         null
     }
