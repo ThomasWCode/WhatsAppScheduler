@@ -3,7 +3,6 @@ package com.thomaswcode.whatsappscheduler.ui.quick
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.createSavedStateHandle
@@ -22,7 +21,6 @@ import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.data.settings.Settings
 import com.thomaswcode.whatsappscheduler.domain.ChatCheck
 import com.thomaswcode.whatsappscheduler.domain.FriendlyTime
-import com.thomaswcode.whatsappscheduler.domain.PhoneNormaliser
 import com.thomaswcode.whatsappscheduler.domain.PinFailures
 import com.thomaswcode.whatsappscheduler.domain.QuickTimes
 import com.thomaswcode.whatsappscheduler.domain.Recurrence
@@ -44,11 +42,8 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -95,16 +90,19 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         private set
     var error by mutableStateOf<String?>(null)
         private set
-    var contactHits by mutableStateOf<List<ContactHit>>(emptyList())
-        private set
-    var savedHits by mutableStateOf<List<Recipient>>(emptyList())
-        private set
-    var contactsAllowed by mutableStateOf(container.contactSearch.hasPermission())
-        private set
 
     private val whileShown = SharingStarted.WhileSubscribed(5_000)
     val recents: StateFlow<List<Recipient>> = container.recipients.observeRecent().stateIn(viewModelScope, whileShown, emptyList())
     val settings: StateFlow<Settings> = container.settings.settings.stateIn(viewModelScope, whileShown, Settings())
+
+    /** The To field's type-ahead, shared with the full editor. */
+    private val search = RecipientSearch(
+        container, viewModelScope, query = { query }, setQuery = { query = it },
+        countryIso = settings.map { it.defaultCountryIso }, currentCountryIso = { settings.value.defaultCountryIso },
+    )
+    val contactHits: List<ContactHit> get() = search.contactHits
+    val savedHits: List<Recipient> get() = search.savedHits
+    val contactsAllowed: Boolean get() = search.contactsAllowed
 
     /**
      * The pinned Me chip (quick-schedule.md §3), when the user's own number is set. It stands for the
@@ -132,31 +130,6 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
 
     private val events = Channel<QuickEvent>(Channel.BUFFERED)
     val eventFlow: Flow<QuickEvent> = events.receiveAsFlow()
-
-    init {
-        viewModelScope.launch {
-            // collectLatest: a newer query cancels a search still running for an older one. Numbers are
-            // read with the default country, so changing it in Settings searches again.
-            combine(snapshotFlow { query }, settings.map { it.defaultCountryIso }.distinctUntilChanged()) { q, iso -> q to iso }
-                .debounce(150)
-                .collectLatest { (q, iso) -> search(q, iso) }
-        }
-    }
-
-    private suspend fun search(q: String, countryIso: String) {
-        contactsAllowed = container.contactSearch.hasPermission()
-        if (q.isBlank()) {
-            contactHits = emptyList()
-            savedHits = emptyList()
-            return
-        }
-        val contacts = container.contactSearch.search(q, countryIso)
-        val saved = container.recipients.search(q)
-        // Only if the field still shows that query: a result for another one could add the wrong chat.
-        if (q != query) return
-        contactHits = contacts
-        savedHits = saved
-    }
 
     fun chips(now: ZonedDateTime = this.now.value, time: (LocalTime) -> String = { it.toString() }): List<TimeChip> =
         QuickTimes.suggest(now, settings.value.morning, settings.value.evening, time)
@@ -247,9 +220,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
     }
 
     /** The stored recipient a schedule went to, or its own copy of the target when it isn't linked. */
-    private suspend fun recipientOf(schedule: Schedule): RecipientDraft =
-        schedule.recipientId?.let { container.recipients.get(it) }?.toDraft()
-            ?: RecipientDraft(schedule.targetKind, schedule.targetName, phoneE164 = schedule.phoneE164, isLocked = schedule.isLocked)
+    private suspend fun recipientOf(schedule: Schedule): RecipientDraft = container.recipientDraftFor(schedule)
 
     /**
      * Members that went out (or may have) while the sheet was open: nothing was saved, and they leave
@@ -288,12 +259,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
 
     fun updateQuery(text: String) {
         if (saving) return
-        // The rows for the old text go at once, rather than staying tappable until the new search is back.
-        if (text != query) {
-            contactHits = emptyList()
-            savedHits = emptyList()
-        }
-        query = text
+        search.update(text)
     }
 
     fun setMessage(text: String) {
@@ -307,10 +273,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         error = null
     }
 
-    fun contactsPermissionChanged() {
-        contactsAllowed = container.contactSearch.hasPermission()
-        viewModelScope.launch { search(query, settings.value.defaultCountryIso) }
-    }
+    fun contactsPermissionChanged() = search.permissionChanged()
 
     /** Adds [recipient] to the To field, unless it is already there; clears the search. */
     fun add(recipient: RecipientDraft) {
@@ -332,14 +295,13 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
     fun add(hit: ContactHit) {
         // Read with the country set now, not the one the results were found with: it may have changed
         // in Settings since, and the search again may not be back yet.
-        val e164 = PhoneNormaliser.toE164(hit.number, settings.value.defaultCountryIso)
-        if (e164 == null) {
-            error = "${hit.number} isn't a number WhatsApp can open. Edit the contact, or type the number with its country code."
-            return
+        val picked = when (val input = RecipientInput.fromContact(hit, settings.value.defaultCountryIso)) {
+            is RecipientInput.Refused -> return run { error = input.reason }
+            is RecipientInput.Chosen -> input.recipient
         }
+        val e164 = picked.phoneE164 ?: return
         // At once, so a Schedule tapped straight after can't leave it out; saving resolves it by number
         // anyway. The lookup only shows sooner what is known about the chat, such as Chat Lock.
-        val picked = RecipientDraft(TargetKind.CONTACT, hit.name, phoneE164 = e164)
         add(picked)
         viewModelScope.launch {
             val saved = container.recipients.byPhone(e164) ?: return@launch
@@ -354,17 +316,14 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
      */
     fun addTyped(text: String) {
         if (saving) return
-        val typed = text.trim()
-        if (typed.isEmpty()) return
-        if (!looksLikeNumber(typed)) return add(RecipientDraft(TargetKind.GROUP, typed))
-        val iso = settings.value.defaultCountryIso
-        val e164 = PhoneNormaliser.toE164(typed, iso)
-        if (e164 == null) {
-            error = "$typed isn't a number WhatsApp can open. Type it with its country code."
-            return
+        val typedChat = when (val input = RecipientInput.fromTyped(text, settings.value.defaultCountryIso)) {
+            null -> return
+            is RecipientInput.Refused -> return run { error = input.reason }
+            is RecipientInput.Chosen -> input.recipient
         }
-        val typedChat = RecipientDraft(TargetKind.CONTACT, PhoneNormaliser.display(e164, iso), phoneE164 = e164)
         add(typedChat)
+        // A group or chat name has nothing to look up by number.
+        val e164 = typedChat.phoneE164 ?: return
         // A number already saved shows what is known about it, as a picked contact does.
         viewModelScope.launch {
             val saved = container.recipients.byPhone(e164) ?: return@launch
@@ -391,29 +350,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         saving = true
         viewModelScope.launch {
             val outcome = withContext(NonCancellable) {
-                runCatching {
-                    // Also a chip not linked to it yet (a number typed, a lookup still running): saving would
-                    // resolve it to the stored recipient anyway, and the edit must land there.
-                    val stored = container.recipients.existing(original) ?: return@runCatching null
-                    // Only what the user changed: a chip that isn't linked yet may not know the stored name or
-                    // Chat Lock, and saving the dialog unchanged mustn't wipe them.
-                    val edited = stored.copy(
-                        whatsappName = if (updated.whatsappName != original.whatsappName) updated.whatsappName else stored.whatsappName,
-                        phoneE164 = if (updated.phoneE164 != original.phoneE164) updated.phoneE164 else stored.phoneE164,
-                        isLocked = if (updated.isLocked != original.isLocked) updated.isLocked else stored.isLocked,
-                    )
-                    // Refused rather than leaving two stored identities for one chat.
-                    container.recipients.sameChatElsewhere(edited)?.let { return@runCatching it }
-                    // Pending schedules just changed target: re-armed from the stored rows, and a Tap to send
-                    // prompt they had would open the chat as it was.
-                    container.recipients.updateDetails(edited).forEach { changed ->
-                        // The prompt first, and each step on its own: a failure re-arming one mustn't leave its
-                        // prompt pointing at the chat as it was, or skip the others.
-                        runCatching { container.fallbackNotifier.cancel(changed.id) }.onFailure { container.log.error("Clearing a stale prompt failed", it) }
-                        runCatching { container.alarmScheduler.sync(changed) }.onFailure { container.log.error("Re-arming after a details edit failed", it) }
-                    }
-                    null
-                }
+                runCatching { container.saveRecipientDetails(original, updated) }
             }
             saving = false
             outcome

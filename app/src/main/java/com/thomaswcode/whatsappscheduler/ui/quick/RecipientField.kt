@@ -43,6 +43,7 @@ import com.thomaswcode.whatsappscheduler.domain.TargetKind
 /**
  * The To field (quick-schedule.md §3): chosen recipients as chips, a type-ahead over contacts and
  * saved recipients, and the recent recipients to tap. Long-press (or tap a chosen one) for details.
+ * The quick sheet takes several; the full editor ([single]) one.
  */
 @Composable
 fun RecipientField(
@@ -67,6 +68,8 @@ fun RecipientField(
     onAddTyped: (String) -> Unit,
     onAllowContacts: () -> Unit,
     onPickContact: () -> Unit,
+    /** One recipient only (the full editor): what is picked replaces who is chosen. */
+    single: Boolean = false,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), itemVerticalAlignment = Alignment.CenterVertically) {
@@ -86,7 +89,15 @@ fun RecipientField(
         OutlinedTextField(
             value = query,
             onValueChange = onQuery,
-            placeholder = { Text(if (chosen.isEmpty()) "Search contacts or type a group…" else "Add another…") },
+            placeholder = {
+                Text(
+                    when {
+                        chosen.isEmpty() -> "Search contacts or type a group…"
+                        single -> "Send it to someone else…"
+                        else -> "Add another…"
+                    },
+                )
+            },
             enabled = enabled,
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
