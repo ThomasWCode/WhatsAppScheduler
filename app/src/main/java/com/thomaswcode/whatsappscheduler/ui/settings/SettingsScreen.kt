@@ -176,7 +176,7 @@ fun SettingsScreen(
         PinDialog(
             hasPin = hasPin,
             onDismiss = { pinDialog = false },
-            onSave = { value -> vm.savePin(value) { pinDialog = false } },
+            onSave = { value -> vm.savePin(value, DateFormat.is24HourFormat(context)) { pinDialog = false } },
             onRemove = { vm.removePin { pinDialog = false } },
         )
     }

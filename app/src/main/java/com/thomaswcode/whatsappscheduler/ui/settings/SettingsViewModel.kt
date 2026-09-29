@@ -45,7 +45,8 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    fun savePin(value: String, onDone: () -> Unit) {
+    /** [is24Hour]: the phone's time format, for when unlocking is still paused until a set time. */
+    fun savePin(value: String, is24Hour: Boolean, onDone: () -> Unit) {
         viewModelScope.launch {
             // Clears a rejection (B04). Unlocking may still be paused by the daily limit, in which
             // case the paused notice stays, with the new reason.
@@ -55,8 +56,9 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
                 container.fallbackNotifier.cancelPinPaused()
                 "PIN stored"
             } else {
-                container.fallbackNotifier.notifyPinPaused(stillBlocked.describe())
-                "PIN stored. " + stillBlocked.describe()
+                val reason = stillBlocked.describe(is24Hour = is24Hour)
+                container.fallbackNotifier.notifyPinPaused(reason)
+                "PIN stored. $reason"
             }
             onDone()
         }
