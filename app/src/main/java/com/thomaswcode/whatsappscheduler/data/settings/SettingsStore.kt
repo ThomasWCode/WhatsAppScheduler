@@ -33,6 +33,8 @@ data class Settings(
     val eveningMinutes: Int = 20 * 60,
     /** The user's own number in E.164, for the "Me" chip; null hides it. */
     val ownNumberE164: String? = null,
+    /** Sent one-offs are cleared this many days after sending; 0 keeps them (quick-schedule.md §8). */
+    val keepSentDays: Int = 30,
 ) {
     val morning: LocalTime get() = LocalTime.of(morningMinutes / 60, morningMinutes % 60)
     val evening: LocalTime get() = LocalTime.of(eveningMinutes / 60, eveningMinutes % 60)
@@ -54,6 +56,8 @@ class SettingsStore(private val context: Context) {
         val morning = intPreferencesKey("morning_minutes")
         val evening = intPreferencesKey("evening_minutes")
         val ownNumber = stringPreferencesKey("own_number_e164")
+
+        val keepSentDays = intPreferencesKey("keep_sent_days")
 
         /** Set once schedules from before recipients existed have been linked to recipients. */
         val recipientsLinked = booleanPreferencesKey("recipients_linked")
@@ -96,6 +100,7 @@ class SettingsStore(private val context: Context) {
         morningMinutes = p[Keys.morning] ?: 9 * 60,
         eveningMinutes = p[Keys.evening] ?: 20 * 60,
         ownNumberE164 = p[Keys.ownNumber],
+        keepSentDays = p[Keys.keepSentDays] ?: 30,
     )
 
     private fun write(p: MutablePreferences, s: Settings) {
@@ -112,5 +117,6 @@ class SettingsStore(private val context: Context) {
         p[Keys.morning] = s.morningMinutes
         p[Keys.evening] = s.eveningMinutes
         s.ownNumberE164?.let { p[Keys.ownNumber] = it } ?: p.remove(Keys.ownNumber)
+        p[Keys.keepSentDays] = s.keepSentDays
     }
 }

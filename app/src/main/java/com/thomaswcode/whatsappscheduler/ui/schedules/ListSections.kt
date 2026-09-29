@@ -96,7 +96,7 @@ fun statusLine(
             when {
                 !schedule.enabled -> "$label · paused"
                 next == null -> "$label · finished"
-                else -> "$label · next ${day(next)}"
+                else -> "$label · next ${day(next)}" + (schedule.postponedFromMillis?.let { " · moved from ${day(it)}" } ?: "")
             }
         }
         Section.SENT -> {

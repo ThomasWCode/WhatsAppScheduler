@@ -18,6 +18,9 @@ import kotlinx.coroutines.flow.map
 /** What [ScheduleRepository.saveBatch] did: the members as saved (to arm) and the ones deleted (to disarm). */
 data class BatchChange(val saved: List<Schedule>, val deleted: List<Schedule>)
 
+/** A postponed schedule as it was (for Undo) and as it is now (to re-arm). */
+data class Postponed(val before: Schedule, val after: Schedule)
+
 /** What [ScheduleRepository.deleteWithHistory] removed, kept so Undo can put it back. */
 data class DeletedSchedules(val schedules: List<Schedule>, val logs: List<SendLog>)
 
@@ -37,7 +40,10 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
     suspend fun all(): List<Schedule> = schedules.getAll()
     override suspend fun get(id: Long): Schedule? = schedules.getById(id)
 
-    /** Inserts or updates, recomputing the next occurrence from now. */
+    /**
+     * Inserts or updates, recomputing the next occurrence from now. That replaces any postponed
+     * occurrence, so the "moved from" time goes with it.
+     */
     suspend fun save(schedule: Schedule, now: Instant = Instant.now()): Schedule {
         val next = RecurrenceCalculator.nextOccurrence(
             rule = schedule.rule,
@@ -45,7 +51,7 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
             after = now.minusMillis(1),
             zone = ZoneId.of(schedule.zoneId),
         )
-        val withNext = schedule.copy(nextAtMillis = next?.toEpochMilli())
+        val withNext = schedule.copy(nextAtMillis = next?.toEpochMilli(), postponedFromMillis = null)
         return if (withNext.id == 0L) withNext.copy(id = schedules.insert(withNext)) else withNext.also { schedules.update(it) }
     }
 
@@ -76,6 +82,79 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
         logs.insertAll(deleted.logs)
         rows
     }
+
+    /**
+     * Postpone (quick-schedule.md §9): moves one occurrence to [at]. For a one-off that is its time;
+     * for a series only the next occurrence moves and the rule is untouched, so the series resumes
+     * after the moved send. Deliberately not through [save], which would recompute the occurrence
+     * from the rule. The time it was due is kept as "moved from" (the first one, if moved again).
+     * [seen] is the row as the user chose to move it: if it has been sent, retried or edited since,
+     * nothing is moved and null is returned, as it is for a row that is gone.
+     */
+    suspend fun postpone(id: Long, at: Instant, seen: Schedule? = null): Postponed? = db.withTransaction {
+        val current = schedules.getById(id) ?: return@withTransaction null
+        if (seen != null && (current.nextAtMillis != seen.nextAtMillis || current.lastRunAtMillis != seen.lastRunAtMillis)) return@withTransaction null
+        val due = current.nextAtMillis ?: current.firstAtMillis
+        val atMillis = at.toEpochMilli()
+        val moved = if (current.rule == Recurrence.Once) {
+            // A missed or failed one-off is scheduled again, even one switched off before one-offs lost
+            // their switch, and has nothing left to wait on.
+            current.copy(firstAtMillis = atMillis, nextAtMillis = atMillis, enabled = true, attention = null)
+        } else {
+            // A series' attention is about an earlier occurrence, which moving the next one doesn't settle.
+            current.copy(nextAtMillis = atMillis)
+        }.copy(postponedFromMillis = current.postponedFromMillis ?: due)
+        schedules.update(moved)
+        Postponed(current, moved)
+    }
+
+    /**
+     * [postpone] for every row of a batch in one transaction: all of them, as the user saw them, or none,
+     * so a batch can't end up half moved. Null when any was sent, changed or deleted since.
+     */
+    suspend fun postponeAll(seen: List<Schedule>, at: Instant): List<Postponed>? = db.withTransaction {
+        val current = seen.map { schedules.getById(it.id) }
+        val unchanged = seen.zip(current).all { (was, now) -> now != null && now.nextAtMillis == was.nextAtMillis && now.lastRunAtMillis == was.lastRunAtMillis }
+        if (!unchanged) return@withTransaction null
+        seen.map { postpone(it.id, at, seen = it) ?: error("row changed inside the transaction") }
+    }
+
+    /**
+     * [restoreTiming] for a whole move, in one transaction: every row, or none (null) if any has changed
+     * since, or if a moved time is within [UNDO_MARGIN] of [now]. An alarm never fires before its time, so
+     * then the moved send can't be picked up while the old time is being put back, which would lose the
+     * mark that lets that send use its occurrence up, and send it twice.
+     */
+    suspend fun restoreAll(moved: List<Postponed>, now: Instant = Instant.now()): List<Schedule>? = db.withTransaction {
+        val stands = moved.all { m -> schedules.getById(m.after.id)?.let { it.nextAtMillis == m.after.nextAtMillis && it.lastRunAtMillis == m.after.lastRunAtMillis } == true }
+        val farEnough = moved.all { m -> (m.after.nextAtMillis ?: Long.MAX_VALUE) > now.plus(UNDO_MARGIN).toEpochMilli() }
+        if (!stands || !farEnough) return@withTransaction null
+        moved.map { restoreTiming(it) ?: error("row changed inside the transaction") }
+    }
+
+    /**
+     * Undo for [postpone]: the timing, switch and attention as they were; the rest as it is now. Only
+     * while the move still stands: once the moved occurrence has run, or the row was changed, putting
+     * the old time back would send it again, so nothing is restored and null is returned.
+     */
+    suspend fun restoreTiming(moved: Postponed): Schedule? = db.withTransaction {
+        val before = moved.before
+        val current = schedules.getById(before.id) ?: return@withTransaction null
+        if (current.nextAtMillis != moved.after.nextAtMillis || current.lastRunAtMillis != moved.after.lastRunAtMillis) return@withTransaction null
+        val restored = current.copy(
+            firstAtMillis = before.firstAtMillis,
+            nextAtMillis = before.nextAtMillis,
+            enabled = before.enabled,
+            postponedFromMillis = before.postponedFromMillis,
+            // Only a one-off's attention was cleared by the move; a series' is as the user has left it since.
+            attention = if (before.rule == Recurrence.Once) before.attention else current.attention,
+        )
+        schedules.update(restored)
+        restored
+    }
+
+    /** Auto-clear: deletes one-offs sent before [before]; their history stays. Returns how many went. */
+    suspend fun clearSent(before: Instant): Int = schedules.clearSent(before.toEpochMilli())
 
     /**
      * Rows from before schema v2 know their last outcome only as text, so a failure then wouldn't show
@@ -199,15 +278,29 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
         // Logged even when the schedule was deleted during the send: history outlives the schedule.
         logs.insert(SendLog(scheduleId = current?.id, atMillis = ranAt.toEpochMilli(), status = status, targetName = sentTo, detail = detail, occurrenceAtMillis = occurrenceAtMillis))
         if (current == null) return@withTransaction null
-        val usedUp = current.nextAtMillis == occurrenceAtMillis
-        val next = if (usedUp) nextAfterRun(current, occurrenceAtMillis, ranAt) else current.nextAtMillis
+        // A run is only recorded for an occurrence other than the row's next when the row changed during
+        // the send. An edit clears "moved from", so a row that still has it was postponed while that
+        // occurrence was on its way (however many times: A to B to C): it has gone now, so it counts as
+        // used up and the moved copy is dropped, or the message would go twice.
+        val usedUp = current.nextAtMillis == occurrenceAtMillis || current.postponedFromMillis != null
+        val next = when {
+            !usedUp -> current.nextAtMillis
+            // Used up, a one-off is done, even one whose time a Postpone moved on meanwhile.
+            current.rule == Recurrence.Once -> null
+            else -> nextAfterRun(current, occurrenceAtMillis, ranAt, movedFromMillis = current.postponedFromMillis)
+        }
         // A one-off sent early is dated to when it went out. Its old, still-future time would otherwise
         // bring it back whenever the next occurrence is recomputed, e.g. on switching it back on.
         val firstAt = if (usedUp && current.rule == Recurrence.Once) minOf(current.firstAtMillis, ranAt.toEpochMilli()) else current.firstAtMillis
         val result = status.name + (detail?.let { ": $it" } ?: "")
         val attention = attentionAfter(status, current.attention)
-        schedules.updateRun(id, firstAt, next, ranAt.toEpochMilli(), result, status, attention)
-        current.copy(firstAtMillis = firstAt, nextAtMillis = next, lastRunAtMillis = ranAt.toEpochMilli(), lastResult = result, lastStatus = status, attention = attention)
+        // A postponed occurrence that has run is no longer "moved from" anywhere.
+        val postponedFrom = if (usedUp) null else current.postponedFromMillis
+        schedules.updateRun(id, firstAt, next, ranAt.toEpochMilli(), result, status, attention, postponedFrom)
+        current.copy(
+            firstAtMillis = firstAt, nextAtMillis = next, lastRunAtMillis = ranAt.toEpochMilli(),
+            lastResult = result, lastStatus = status, attention = attention, postponedFromMillis = postponedFrom,
+        )
     }
 
     /**
@@ -241,6 +334,9 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
             SendStatus.entries.firstOrNull { text == it.name || text.startsWith(it.name + ":") }
         }
 
+        /** How far off a moved send must still be for Undo to put the old time back ([restoreAll]). */
+        val UNDO_MARGIN: java.time.Duration = java.time.Duration.ofSeconds(30)
+
         /** At most this many recipients per message, so one mistake can't turn into a flood (§10). */
         const val MAX_BATCH = 10
 
@@ -256,12 +352,16 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
             SendStatus.SKIPPED, SendStatus.MISSED -> Attention.MISSED
         }
 
-        /** The occurrence after the one due at [occurrenceAtMillis], or null when the rule has no more. */
-        fun nextAfterRun(schedule: Schedule, occurrenceAtMillis: Long, ranAt: Instant): Long? =
+        /**
+         * The occurrence after the one due at [occurrenceAtMillis], or null when the rule has no more.
+         * For a postponed occurrence, [movedFromMillis] is when it was originally due: moved later, the
+         * occurrences it passed are skipped; moved earlier, the original time mustn't send it again.
+         */
+        fun nextAfterRun(schedule: Schedule, occurrenceAtMillis: Long, ranAt: Instant, movedFromMillis: Long? = null): Long? =
             RecurrenceCalculator.nextOccurrence(
                 rule = schedule.rule,
                 firstAt = Instant.ofEpochMilli(schedule.firstAtMillis),
-                after = maxOf(ranAt, Instant.ofEpochMilli(occurrenceAtMillis)),
+                after = listOfNotNull(ranAt, Instant.ofEpochMilli(occurrenceAtMillis), movedFromMillis?.let(Instant::ofEpochMilli)).max(),
                 zone = ZoneId.of(schedule.zoneId),
             )?.toEpochMilli()
     }

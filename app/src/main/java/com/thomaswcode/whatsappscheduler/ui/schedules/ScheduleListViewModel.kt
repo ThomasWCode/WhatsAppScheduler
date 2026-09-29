@@ -3,6 +3,9 @@ package com.thomaswcode.whatsappscheduler.ui.schedules
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
@@ -18,6 +21,9 @@ import com.thomaswcode.whatsappscheduler.sending.SendRequest
 import com.thomaswcode.whatsappscheduler.sending.SendState
 import com.thomaswcode.whatsappscheduler.sending.accessibility.WaAccessibilityService
 import com.thomaswcode.whatsappscheduler.ui.minuteClock
+import com.thomaswcode.whatsappscheduler.ui.quick.QuickScheduleViewModel
+import java.time.Instant
+import java.time.ZoneId
 import java.time.ZonedDateTime
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
@@ -34,6 +40,9 @@ import kotlinx.coroutines.withContext
 sealed interface ListEvent {
     /** [prompted] had a notification showing, which Undo puts back. */
     data class Deleted(val summary: String, val removed: DeletedSchedules, val prompted: Set<Long>) : ListEvent
+
+    /** Moved to a new time; [moved] are the rows before and after, for Undo, and [prompted] had a prompt showing. */
+    data class Postponed(val summary: String, val moved: List<com.thomaswcode.whatsappscheduler.data.Postponed>, val prompted: Set<Long>) : ListEvent
 
     /** A series stopped asking about an occurrence; [previous] puts the attention back. */
     data class Dismissed(val summary: String, val previous: Map<Long, Attention>, val prompted: Set<Long>) : ListEvent
@@ -163,6 +172,102 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    /**
+     * Postpone… (quick-schedule.md §9): each member's occurrence moves to [at] and is armed for that
+     * time; Undo puts the timing back. [summary] is what the snackbar says.
+     */
+    /**
+     * The rows the Postpone dialog is for, as they were when it opened. Kept here, not looked up again
+     * from the live list: if the message goes out while the dialog is open, the move is then refused,
+     * rather than applied to the row as it is after the send.
+     */
+    var postponing by mutableStateOf<List<Schedule>?>(null)
+        private set
+
+    fun askToPostpone(group: List<Schedule>) {
+        postponing = group
+    }
+
+    fun cancelPostpone() {
+        postponing = null
+    }
+
+    /** Moves the rows [askToPostpone] was given; [summary] is what the snackbar says. */
+    fun postpone(at: Instant, summary: String) {
+        val group = postponing ?: return
+        postponing = null
+        // The dialog judged by the last minute tick; this is the moment it counts.
+        if (!QuickScheduleViewModel.isSendable(at.atZone(ZoneId.systemDefault()), ZonedDateTime.now())) {
+            events.trySend(ListEvent.Failed("Pick a time at least a minute from now."))
+            return
+        }
+        // Something being sent keeps its occurrence until it is recorded (B08).
+        if (group.any { sendState.value.isBusy(it.id) }) {
+            events.trySend(ListEvent.Failed("It's being sent now, so it wasn't moved."))
+            return
+        }
+        val prompted = group.filter { it.rule == Recurrence.Once }.map { it.id }.filter(container.fallbackNotifier::isShowing).toSet()
+        viewModelScope.launch {
+            runCatching {
+                withContext(NonCancellable) {
+                    // Each as the user saw it: one sent or changed since isn't moved.
+                    // All of it as the user saw it, or nothing: a batch can't end up half moved.
+                    val moved = container.repository.postponeAll(group, at).orEmpty()
+                    // Committed: every member is armed on its own, so one failure can't leave the others at
+                    // their old alarms, and the move is reported (with Undo) either way.
+                    val unarmed = moved.count { m ->
+                        // A one-off's prompt was about the time it now leaves. A series' is about an earlier
+                        // occurrence that still needs the user, so it stays.
+                        if (m.after.rule == Recurrence.Once) runCatching { container.fallbackNotifier.cancel(m.after.id) }
+                        runCatching { container.alarmScheduler.sync(m.after) }.onFailure { container.log.error("Arming a moved send failed", it) }.isFailure
+                    }
+                    moved to unarmed
+                }
+            }
+                .onSuccess { (moved, unarmed) ->
+                    when {
+                        moved.isEmpty() -> events.trySend(ListEvent.Failed("It had just been sent or changed, so it wasn't moved."))
+                        unarmed > 0 -> events.trySend(ListEvent.Postponed("$summary, but its alarm couldn't be set: $REARM", moved, prompted))
+                        else -> events.trySend(ListEvent.Postponed(summary, moved, prompted))
+                    }
+                }
+                .onFailure { fail("Couldn't postpone", it) }
+        }
+    }
+
+    /**
+     * Undo for Postpone, refused while the moved occurrence is being sent and skipped for any row whose
+     * move no longer stands; a prompt that was showing before the move comes back.
+     */
+    fun undoPostpone(moved: List<com.thomaswcode.whatsappscheduler.data.Postponed>, prompted: Set<Long>) {
+        if (moved.any { sendState.value.isBusy(it.after.id) }) {
+            events.trySend(ListEvent.Failed("It's being sent now, so it can't be moved back."))
+            return
+        }
+        viewModelScope.launch {
+            runCatching {
+                withContext(NonCancellable) {
+                    val restored = container.repository.restoreAll(moved).orEmpty()
+                    // Committed: each is armed on its own, and one that couldn't be is reported.
+                    val unarmed = restored.count { r ->
+                        if (r.id in prompted && r.attention != null) {
+                            runCatching { container.fallbackNotifier.notifyAttention(r, dueAt.value[r.id]) }
+                        }
+                        runCatching { container.alarmScheduler.sync(r) }.onFailure { container.log.error("Re-arming after Undo failed", it) }.isFailure
+                    }
+                    restored to unarmed
+                }
+            }
+                .onSuccess { (restored, unarmed) ->
+                    when {
+                        restored.isEmpty() -> events.trySend(ListEvent.Failed("It has been sent, changed or is about to be sent, so it wasn't moved back."))
+                        unarmed > 0 -> events.trySend(ListEvent.Failed("Moved back, but its alarm couldn't be set: $REARM."))
+                    }
+                }
+                .onFailure { fail("Couldn't undo", it) }
+        }
+    }
+
     /** "Mark as sent" on a message that may have gone out (B02): the user checked the chat. */
     fun markSent(group: List<Schedule>) {
         viewModelScope.launch {
@@ -183,6 +288,9 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     companion object {
+        /** What to do about an alarm that couldn't be set: the app re-arms every alarm only on a fresh start. */
+        private const val REARM = "use Re-arm all alarms in Settings"
+
         fun factory(container: AppContainer) = viewModelFactory { initializer { ScheduleListViewModel(container) } }
     }
 }

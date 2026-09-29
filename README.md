@@ -52,6 +52,8 @@ CI (`.github/workflows/ci.yml`) runs the unit tests, lint and a debug build on e
 - **Repeat…** hands the draft to the full editor for daily, weekly, monthly or custom repeats.
 - **Share** text from any app and choose **Schedule on WhatsApp**: the sheet opens over that app and you are back where you were after scheduling.
 - The list puts what needs you first (**Needs attention**: missed, failed, or may have been sent, with Send now, Discard or Mark as sent), then **Upcoming**, **Repeating** (with a Pause switch) and a collapsed **Sent**. Swipe a row away to delete it; **Undo** brings it back with its history. The strip at the top says whether auto-send is ready, and what to fix if not.
+- **Postpone…** (in a row's ⋯ menu, and on missed or failed messages) moves a message to a new time; for a repeating one it moves only the next send, and says which later ones that skips.
+- Sent messages are cleared from the list after 30 days (Settings → Sending → Keep sent messages for); Logs keep their history for 90 days.
 - Contacts permission is optional. It lets the type-ahead search your contacts on the phone and mark the ones that are on WhatsApp; without it you can pick one contact at a time or type a number.
 
 ## First-time setup on the phone
