@@ -147,11 +147,12 @@ class Notifications(private val context: Context) {
     fun cancel(id: Int) = manager.cancel(id)
 
     /**
-     * Whether a notification on [channel] would be seen: not when the app's notifications are off (on
-     * Android 13 and later, also when they were never allowed), nor when that channel is.
+     * Whether a notification on [channel] would pop up over what is on screen: not when the app's
+     * notifications are off (on Android 13 and later, also when they were never allowed), nor when that
+     * channel is, or has been turned down to stay in the shade.
      */
-    fun canShow(channel: String): Boolean =
-        manager.areNotificationsEnabled() && manager.getNotificationChannel(channel)?.importance != NotificationManager.IMPORTANCE_NONE
+    fun popsUp(channel: String): Boolean =
+        manager.areNotificationsEnabled() && (manager.getNotificationChannel(channel)?.importance ?: NotificationManager.IMPORTANCE_HIGH) >= NotificationManager.IMPORTANCE_HIGH
 
     fun isShowing(id: Int): Boolean = runCatching { manager.activeNotifications.any { it.id == id } }.getOrDefault(false)
 

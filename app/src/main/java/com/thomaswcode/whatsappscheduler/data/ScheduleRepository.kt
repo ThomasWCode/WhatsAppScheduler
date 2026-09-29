@@ -338,15 +338,15 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
         moved
     }
 
-    override suspend fun hold(id: Long, occurrenceAtMillis: Long, ranAt: Instant): HeldRun? = db.withTransaction {
+    override suspend fun hold(id: Long, occurrenceAtMillis: Long, ranAt: Instant, detail: String): HeldRun? = db.withTransaction {
         val current = schedules.getById(id)?.takeIf { it.nextAtMillis == occurrenceAtMillis } ?: return@withTransaction null
         if (current.rule != Recurrence.Once) {
-            return@withTransaction holdAsCopy(current, occurrenceAtMillis, ranAt, Attention.HELD, SendStatus.SKIPPED, HELD_FOR_A_TIME, ran = false)
+            return@withTransaction holdAsCopy(current, occurrenceAtMillis, ranAt, Attention.HELD, SendStatus.SKIPPED, detail, ran = false)
         }
         // Waits itself, with no alarm: nothing is sent until the user picks a time.
         val held = current.copy(nextAtMillis = null, attention = Attention.HELD)
         schedules.update(held)
-        logs.insert(SendLog(scheduleId = id, atMillis = ranAt.toEpochMilli(), status = SendStatus.SKIPPED, targetName = current.targetName, detail = HELD_FOR_A_TIME, occurrenceAtMillis = occurrenceAtMillis))
+        logs.insert(SendLog(scheduleId = id, atMillis = ranAt.toEpochMilli(), status = SendStatus.SKIPPED, targetName = current.targetName, detail = detail, occurrenceAtMillis = occurrenceAtMillis))
         HeldRun(held, held)
     }
 
@@ -355,6 +355,9 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
      * whatever it already waits on (an earlier failure, say) stay as they were. That occurrence's
      * message waits on the user as a one-off copy of its own ([attention]), with its own history, so
      * Send now, Postpone and Discard are the one-off ones. [ran] when [status] is that copy's run.
+     *
+     * The copies of one batch's occurrence are a batch of their own, named after the batch and the
+     * occurrence, so they stay one row, and share one countdown again once they are given a time.
      */
     private suspend fun holdAsCopy(
         current: Schedule,
@@ -377,6 +380,7 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
             recurrence = RecurrenceCodec.encode(Recurrence.Once), nextAtMillis = null, createdAtMillis = ranAt.toEpochMilli(),
             lastRunAtMillis = ranAt.toEpochMilli().takeIf { ran }, lastResult = "${status.name}: $detail".takeIf { ran },
             lastStatus = status.takeIf { ran }, recipientId = current.recipientId, attention = attention, sourceScheduleId = current.id,
+            batchId = current.batchId?.let { "$it@$occurrenceAtMillis" },
         ).let { it.copy(id = schedules.insert(it)) }
         logs.insert(SendLog(scheduleId = held.id, atMillis = ranAt.toEpochMilli(), status = status, targetName = current.targetName, detail = detail, occurrenceAtMillis = occurrenceAtMillis))
         return HeldRun(series, held)
@@ -410,7 +414,6 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
     companion object {
         /** In the history for a countdown's Snooze and Postpone… (features F1). */
         private const val SNOOZED = "snoozed 5 min on the countdown"
-        private const val HELD_FOR_A_TIME = "held for a new time: Postpone… on the countdown"
 
         /** The status a result text starts with ("FAILED: search: …"), after "manual " for a run by hand. */
         fun statusFromResult(result: String?): SendStatus? = result?.removePrefix("manual ")?.let { text ->

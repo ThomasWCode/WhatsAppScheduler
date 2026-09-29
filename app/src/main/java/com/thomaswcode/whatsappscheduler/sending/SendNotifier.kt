@@ -31,7 +31,7 @@ interface SendNotifier {
      * opens for all of [schedules] (a batch shares its countdown), and each keeps "Not sent: choose a
      * new time" if the picker is dismissed.
      */
-    fun held(schedules: List<Schedule>)
+    fun held(schedules: List<Schedule>, pick: Boolean)
 }
 
 /** Runs around each job. The service holds a partial wake lock sized to the job's worst case (B12). */
