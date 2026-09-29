@@ -7,36 +7,21 @@ import android.content.Intent
 import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 
 /**
- * The single accessibility service. It stays passive: events are ignored unless a send job has
- * marked it active, so it costs nothing while idle. All UI work goes through [UiDriver].
+ * The single accessibility service. It is passive: [UiDriver] polls the windows when a send or a
+ * check needs them, so the service asks for no key events and only window-state changes (B18), and
+ * costs nothing while idle.
  */
 class WaAccessibilityService : AccessibilityService() {
-
-    val active = AtomicBoolean(false)
-
-    @Volatile
-    var lastEventPackage: String? = null
-        private set
-
-    @Volatile
-    var lastEventAtMillis: Long = 0L
-        private set
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance.value = this
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (!active.get() || event == null) return
-        lastEventPackage = event.packageName?.toString()
-        lastEventAtMillis = System.currentTimeMillis()
-    }
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
 
     override fun onInterrupt() = Unit
 
@@ -60,8 +45,6 @@ class WaAccessibilityService : AccessibilityService() {
 
     companion object {
         val instance = MutableStateFlow<WaAccessibilityService?>(null)
-
-        val connected: StateFlow<WaAccessibilityService?> get() = instance
 
         /** True when the user has enabled this service in system accessibility settings. */
         fun isEnabled(context: Context): Boolean {

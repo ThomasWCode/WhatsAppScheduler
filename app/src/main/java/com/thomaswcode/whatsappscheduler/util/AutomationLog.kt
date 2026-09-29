@@ -51,9 +51,11 @@ class AutomationLog(context: Context) : TraceLog {
 
     fun lastDump(): String = runCatching { dumpFile.readText() }.getOrDefault("")
 
+    /** Clears the trace and the saved window dump, which holds chat names and message previews (B27). */
     fun clear() {
         synchronized(lock) {
             runCatching { file.delete() }
+            runCatching { dumpFile.delete() }
             _lines.value = emptyList()
         }
     }
