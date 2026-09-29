@@ -153,10 +153,16 @@ class AccessibilitySender(
                     return@withTimeout ChatCheck.NotFound(e.message ?: "not found")
                 }
                 // Opening it is WhatsApp's side again: a click lost or a chat slow to open isn't a wrong name.
-                try {
+                val title = try {
                     search.open(row, name, t)
                 } catch (e: StepFailure) {
                     return@withTimeout checkFailed("found '$name' but couldn't open it", e)
+                }
+                // The tick says this chat was seen to open; without its title, which chat opened isn't known.
+                if (title == null) {
+                    log.warn("check: opened a chat for '$name' but couldn't read its title")
+                    runCatching { driver.dump() }.getOrNull()?.let { log.saveDump("check: no chat title", it) }
+                    return@withTimeout ChatCheck.Failed("couldn't read the chat's title")
                 }
                 log.info("check: found '$name'")
                 ChatCheck.Found
