@@ -54,7 +54,7 @@ class AppContainer(context: Context) {
     }
     val log: AutomationLog by lazy { AutomationLog(appContext) }
     val alarmScheduler: AlarmScheduler by lazy {
-        AlarmScheduler(appContext, repository, sendState, log) { id, unlessFor -> fallbackNotifier.cancelWillFail(id, unlessFor) }
+        AlarmScheduler(appContext, repository, sendState, log) { id, unlessAbout -> fallbackNotifier.cancelWillFail(id, unlessAbout) }
     }
     /** Held by whatever drives WhatsApp, a send or a chat check, so the two never overlap. */
     val automationLock = Mutex()
