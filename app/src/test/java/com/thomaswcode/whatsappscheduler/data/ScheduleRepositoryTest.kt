@@ -103,8 +103,11 @@ class ScheduleRepositoryTest {
         assertEquals(SendStatus.FAILED, failed.lastStatus)
         assertEquals(Attention.FAILED, failed.attention)
         assertEquals(nine.toEpochMilli(), repository.observeLogs().first().single().occurrenceAtMillis)
-        // A test run changes nothing it waits on; a copy sent by hand resolves it.
-        assertEquals(Attention.FAILED, repository.recordManual(saved.id, SendStatus.DRY_RUN, null, "Mum", ranAt)!!.attention)
+        // A test run changes nothing it waits on, nor the last run; a copy sent by hand resolves it.
+        val tested = repository.recordManual(saved.id, SendStatus.DRY_RUN, null, "Mum", ranAt)!!
+        assertEquals(Attention.FAILED, tested.attention)
+        assertEquals(SendStatus.FAILED, tested.lastStatus)
+        assertEquals(SendStatus.FAILED, repository.get(saved.id)!!.lastStatus)
         val resolved = repository.recordManual(saved.id, SendStatus.SENT, null, "Mum", ranAt)!!
         assertNull(resolved.attention)
         assertEquals(resolved, repository.get(saved.id))
