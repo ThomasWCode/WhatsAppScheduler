@@ -38,7 +38,9 @@ class PostponeActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val container = SchedulerApp.container(this)
-        val ids = intent.getLongArrayExtra(EXTRA_SCHEDULE_IDS)?.toList().orEmpty()
+        // A notification posted before the picker took several schedules carries one, under the old key.
+        val ids = intent.getLongArrayExtra(EXTRA_SCHEDULE_IDS)?.toList()
+            ?: intent.getLongExtra(EXTRA_SCHEDULE_ID, -1L).takeIf { it > 0 }?.let { listOf(it) }.orEmpty()
         setContent {
             AppTheme {
                 // The rows as they were when the picker first opened: the move is refused if one is sent or
@@ -91,6 +93,7 @@ class PostponeActivity : ComponentActivity() {
 
     companion object {
         private const val EXTRA_SCHEDULE_IDS = "scheduleIds"
+        private const val EXTRA_SCHEDULE_ID = "scheduleId"
 
         fun intent(context: Context, scheduleId: Long): Intent = intent(context, listOf(scheduleId))
 

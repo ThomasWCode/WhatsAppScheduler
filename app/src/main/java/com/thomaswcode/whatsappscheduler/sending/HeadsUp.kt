@@ -29,7 +29,7 @@ interface HeadsUp {
     /** A phone or VoIP call is going on, which a send mustn't interrupt. */
     fun inCall(): Boolean
 
-    /** The countdown would be seen: notifications are on, for the app and for its Before sending channel. */
+    /** The countdown would be seen: notifications are on, and Before sending's pop up. */
     fun canShow(): Boolean
 
     /**
