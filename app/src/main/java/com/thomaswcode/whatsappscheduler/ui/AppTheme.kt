@@ -5,20 +5,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
-private val green = Color(0xFF128C7E)
-
+/**
+ * The phone's own colours, light and dark alike (improvements I3). Every supported Android version
+ * (minSdk 31) has dynamic colour, so there is no fixed palette to fall back to.
+ */
 @Composable
 fun AppTheme(content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
     val context = LocalContext.current
-    val scheme = when {
-        dark -> dynamicDarkColorScheme(context)
-        else -> dynamicLightColorScheme(context)
-    }.let { dynamic ->
-        if (dark) dynamic else dynamic.copy(primary = green)
-    }
+    val scheme = if (isSystemInDarkTheme()) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
     MaterialTheme(colorScheme = scheme, content = content)
 }

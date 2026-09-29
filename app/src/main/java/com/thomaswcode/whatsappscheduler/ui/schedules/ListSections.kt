@@ -10,6 +10,7 @@ import com.thomaswcode.whatsappscheduler.domain.PlainResult
 import com.thomaswcode.whatsappscheduler.domain.Recurrence
 import java.time.Instant
 import java.time.LocalTime
+import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
@@ -73,6 +74,18 @@ fun statusLine(
 ): String {
     val schedule = group.first()
     fun day(millis: Long) = FriendlyTime.dayAndTime(Instant.ofEpochMilli(millis).atZone(now.zone), now, time)
+
+    /**
+     * Rules keep the zone they were made in (improvements I1): when that zone's clock differs from the
+     * phone's at [millis], its own time too, e.g. " (09:00 London time)".
+     */
+    fun zoneNote(millis: Long): String {
+        val own = runCatching { ZoneId.of(schedule.zoneId) }.getOrNull() ?: return ""
+        val at = Instant.ofEpochMilli(millis)
+        if (own.rules.getOffset(at) == now.zone.rules.getOffset(at)) return ""
+        val place = own.id.substringAfterLast('/').replace('_', ' ')
+        return " (${time(at.atZone(own).toLocalTime())} $place time)"
+    }
     return when (section) {
         Section.ATTENTION -> {
             // The run that left it waiting: its occurrence is when it was due, and it says when it was tried and why.
@@ -98,7 +111,7 @@ fun statusLine(
             val at = Instant.ofEpochMilli(next).atZone(now.zone)
             val relative = if (at.toLocalDate() == now.toLocalDate()) " · " + FriendlyTime.relative(at.toInstant(), now.toInstant()) else ""
             val moved = schedule.postponedFromMillis?.let { " · moved from ${day(it)}" } ?: ""
-            (if (schedule.enabled) "" else "Paused · ") + day(next) + relative + moved
+            (if (schedule.enabled) "" else "Paused · ") + day(next) + zoneNote(next) + relative + moved
         }
         Section.REPEATING -> {
             val label = schedule.rule.label()
@@ -106,7 +119,7 @@ fun statusLine(
             when {
                 !schedule.enabled -> "$label · paused"
                 next == null -> "$label · finished"
-                else -> "$label · next ${day(next)}" + (schedule.postponedFromMillis?.let { " · moved from ${day(it)}" } ?: "")
+                else -> "$label · next ${day(next)}${zoneNote(next)}" + (schedule.postponedFromMillis?.let { " · moved from ${day(it)}" } ?: "")
             }
         }
         Section.SENT -> {

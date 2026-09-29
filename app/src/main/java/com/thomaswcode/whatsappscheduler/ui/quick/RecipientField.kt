@@ -3,8 +3,10 @@ package com.thomaswcode.whatsappscheduler.ui.quick
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -175,19 +177,20 @@ fun RecipientChip(
             .heightIn(min = 48.dp)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick, onLongClickLabel = "Details", role = Role.Button),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+        // With a remove button the chip is that button's height, 48 dp, rather than padded past it.
+        val padding = if (onRemove != null) PaddingValues(start = 10.dp) else PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(padding)) {
             if (locked) Icon(Icons.Default.Lock, contentDescription = "Chat Lock", modifier = Modifier.size(16.dp).padding(end = 2.dp))
             else if (kind == TargetKind.GROUP) Icon(Icons.Default.Group, contentDescription = "Group", modifier = Modifier.size(16.dp).padding(end = 2.dp))
             Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (onRemove != null) {
-                Icon(
-                    Icons.Default.Close,
-                    contentDescription = "Remove $label",
-                    modifier = Modifier
-                        .padding(start = 6.dp)
-                        .size(20.dp)
-                        .combinedClickable(onClick = onRemove, role = Role.Button),
-                )
+                // The whole 48 dp square is the button, not only the 20 dp cross (improvements I11).
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.size(48.dp).combinedClickable(onClick = onRemove, role = Role.Button),
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Remove $label", modifier = Modifier.size(20.dp))
+                }
             }
         }
     }
