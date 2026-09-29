@@ -26,4 +26,14 @@ object Preflight {
      * anything else, e.g. after the schedule was moved to another chat at the same time, is stale.
      */
     fun warningKey(occurrenceAtMillis: Long, chat: String): String = "$occurrenceAtMillis|$chat"
+
+    /**
+     * How far after its own send a check also looks. In Doze an app's allow-while-idle alarms are
+     * spaced minutes apart, so the checks for sends close together could otherwise come too late.
+     */
+    val COVERS: Duration = Duration.ofMinutes(10)
+
+    /** Whether the check for the send due at [occurrenceAtMillis] also covers one due at [otherAtMillis]. */
+    fun covers(occurrenceAtMillis: Long, otherAtMillis: Long): Boolean =
+        otherAtMillis in occurrenceAtMillis..occurrenceAtMillis + COVERS.toMillis()
 }
