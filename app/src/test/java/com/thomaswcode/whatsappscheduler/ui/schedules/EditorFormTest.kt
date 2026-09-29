@@ -76,6 +76,22 @@ class EditorFormTest {
     }
 
     @Test
+    fun aNameTypedForOneContactGoesWhenAnotherIsPicked() {
+        val typed = EditorForm.blank(ZonedDateTime.of(2026, 9, 28, 12, 0, 0, 0, london))
+            .copy(phone = "+447400123456", name = "Mummy", pickedName = "Mum", nameTyped = true)
+        // Someone else: the name typed for Mum isn't theirs.
+        val dad = typed.picked("+447400123457", "Dad", "GB")
+        assertEquals("Dad", dad.name)
+        assertFalse(dad.nameTyped)
+        // Mum again: what was typed for her stands.
+        val again = typed.picked("+447400123456", "Mum", "GB")
+        assertEquals("Mummy", again.name)
+        assertTrue(again.nameTyped)
+        // Nothing typed: the picker's name, whoever it is.
+        assertEquals("Mum", typed.copy(nameTyped = false).picked("+447400123456", "Mum", "GB").name)
+    }
+
+    @Test
     fun storedScheduleFillsTheForm() {
         val schedule = Schedule(
             message = "Bins!", targetKind = TargetKind.CONTACT, targetName = "Dad", phoneE164 = "+447400123456", isLocked = false,
