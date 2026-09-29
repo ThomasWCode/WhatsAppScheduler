@@ -32,6 +32,9 @@ interface SendNotifier {
      * new time" if the picker is dismissed.
      */
     fun held(schedules: List<Schedule>, pick: Boolean)
+
+    /** [schedule]'s alarm couldn't be set, so its next message won't go by itself unless it is set again. */
+    fun unarmed(schedule: Schedule)
 }
 
 /** Runs around each job. The service holds a partial wake lock sized to the job's worst case (B12). */
