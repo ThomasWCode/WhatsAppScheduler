@@ -237,6 +237,11 @@ class AccessibilitySender(
      * Brings back [pkg], the app the user was in before the send, with its task as it was (features
      * F1). False when that was the launcher, this app, the system UI or unknown, or it can't be
      * opened: then Home is the place to go.
+     *
+     * WhatsApp itself can't be put back as it was: the send used its screens, and getting back the
+     * chat the user had open would mean finding it again by name, with Chat Lock and chats sharing a
+     * name in the way. It comes back at its chat list, which tidyUp has backed out to; the countdown
+     * said beforehand that a send was coming.
      */
     private fun reopen(pkg: String?): Boolean {
         if (pkg == null || pkg == context.packageName || pkg == SYSTEM_UI) return false

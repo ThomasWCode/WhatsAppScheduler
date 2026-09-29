@@ -29,6 +29,9 @@ interface HeadsUp {
     /** A phone or VoIP call is going on, which a send mustn't interrupt. */
     fun inCall(): Boolean
 
+    /** The countdown would be seen: notifications are on, for the app and for its Before sending channel. */
+    fun canShow(): Boolean
+
     /**
      * Counts down to [endsAtMillis] for [schedules] (a batch's members due together get one countdown)
      * and returns what the user chose, or null when the countdown ran out.
@@ -39,6 +42,7 @@ interface HeadsUp {
     object None : HeadsUp {
         override fun inUse() = false
         override fun inCall() = false
+        override fun canShow() = true
         override suspend fun ask(schedules: List<Schedule>, endsAtMillis: Long): HeadsUpChoice? = null
     }
 }
