@@ -82,7 +82,8 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
     val timeFormat = rememberTimeFormat()
     val searchFocus = remember { FocusRequester() }
     val messageFocus = remember { FocusRequester() }
-    var details by remember { mutableStateOf<RecipientDraft?>(null) }
+    // Saved, so a rotation keeps the details dialog, with what was typed into it, open.
+    var details by rememberSaveable(stateSaver = RecipientSaver) { mutableStateOf<RecipientDraft?>(null) }
     var askedForContacts by rememberSaveable { mutableStateOf(false) }
 
     val requestContacts = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { vm.contactsPermissionChanged() }

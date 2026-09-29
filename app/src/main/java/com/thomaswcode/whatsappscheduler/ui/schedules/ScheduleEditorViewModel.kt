@@ -22,6 +22,7 @@ import com.thomaswcode.whatsappscheduler.domain.Recurrence
 import com.thomaswcode.whatsappscheduler.domain.RecurrenceCodec
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
 import com.thomaswcode.whatsappscheduler.ui.minuteClock
+import com.thomaswcode.whatsappscheduler.ui.quick.DetailsSaved
 import com.thomaswcode.whatsappscheduler.ui.quick.RecipientInput
 import com.thomaswcode.whatsappscheduler.ui.quick.RecipientSearch
 import com.thomaswcode.whatsappscheduler.ui.quick.RecipientsSaver
@@ -183,8 +184,16 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
         private set
     var countryIso by mutableStateOf("GB")
         private set
+    /** The schedule itself is being saved or deleted. */
     var saving by mutableStateOf(false)
         private set
+
+    /** A recipient's details are being saved, or it is being removed from recents; edits wait for it. */
+    var savingDetails by mutableStateOf(false)
+        private set
+
+    /** Either: the form doesn't change meanwhile. */
+    val busy: Boolean get() = saving || savingDetails
     var error by mutableStateOf<String?>(null)
         private set
 
@@ -246,18 +255,18 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
     }
 
     fun update(transform: EditorForm.() -> EditorForm) {
-        if (saving) return
+        if (busy) return
         form = form.transform()
     }
 
     fun updateQuery(text: String) {
-        if (saving) return
+        if (busy) return
         search.update(text)
     }
 
     /** One recipient: choosing another replaces it; the search is cleared. */
     fun choose(recipient: RecipientDraft) {
-        if (saving) return
+        if (busy) return
         form = form.copy(recipient = recipient)
         query = ""
         error = null
@@ -290,7 +299,7 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
         val phone = draft.phoneE164 ?: return
         viewModelScope.launch {
             val stored = container.recipients.byPhone(phone) ?: return@launch
-            if (!saving && form.recipient == draft) form = form.copy(recipient = stored.toDraft())
+            if (!busy && form.recipient == draft) form = form.copy(recipient = stored.toDraft())
         }
     }
 
@@ -299,20 +308,24 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
      * other pending schedules, and to the form.
      */
     fun saveDetails(original: RecipientDraft, updated: RecipientDraft) {
-        if (saving) return
-        saving = true
+        if (busy) return
+        savingDetails = true
         viewModelScope.launch {
             val outcome = withContext(NonCancellable) { runCatching { container.saveRecipientDetails(original, updated) } }
-            saving = false
+            savingDetails = false
             outcome
-                .onSuccess { conflict ->
-                    if (conflict == null) {
-                        if (form.recipient == original) form = form.copy(recipient = updated)
-                        // Saved already, with the recipient: nothing about it is left to lose on leaving.
-                        if (initial.recipient == original) initial = initial.copy(recipient = updated)
-                    } else {
-                        val what = if (updated.phoneE164 != null) "that number" else "that name"
-                        error = "${conflict.displayName} already has $what. Choose ${conflict.displayName} instead."
+                .onSuccess { saved ->
+                    when (saved) {
+                        is DetailsSaved.Refused -> {
+                            val what = if (updated.phoneE164 != null) "that number" else "that name"
+                            error = "${saved.existing.displayName} already has $what. Choose ${saved.existing.displayName} instead."
+                        }
+                        else -> {
+                            if (form.recipient == original) form = form.copy(recipient = updated)
+                            // Stored with the recipient already: nothing about them is left to lose on leaving.
+                            // Not stored yet, they go with this message, and leaving unsaved still asks.
+                            if (saved == DetailsSaved.Stored && initial.recipient == original) initial = initial.copy(recipient = updated)
+                        }
                     }
                 }
                 .onFailure {
@@ -325,8 +338,8 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
     /** "Remove from recents": forgets the stored recipient; this message still goes to the chat. */
     fun forget(recipient: RecipientDraft) {
         val id = recipient.recipientId ?: return
-        if (saving) return
-        saving = true
+        if (busy) return
+        savingDetails = true
         viewModelScope.launch {
             runCatching {
                 withContext(NonCancellable) {
@@ -334,14 +347,14 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
                     container.recipients.get(id)?.let { container.recipients.remove(it) }
                 }
             }.onFailure { container.log.error("Removing a recipient failed", it) }
-            saving = false
+            savingDetails = false
             if (form.recipient?.recipientId == id) form = form.copy(recipient = form.recipient?.copy(recipientId = null))
             if (initial.recipient?.recipientId == id) initial = initial.copy(recipient = initial.recipient?.copy(recipientId = null))
         }
     }
 
     fun save() {
-        if (saving) return
+        if (busy) return
         triedSaving = true
         val f = form
         val recipientDraft = f.recipient
@@ -403,7 +416,7 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
     /** Delete, after the screen asked: the row and its history, as on the list, then its prompt and alarm. */
     fun delete() {
         val schedule = existing ?: return
-        if (saving) return
+        if (busy) return
         if (container.sendState.state.value.isBusy(schedule.id)) {
             error = "It's being sent right now. It can be deleted once that's done."
             return

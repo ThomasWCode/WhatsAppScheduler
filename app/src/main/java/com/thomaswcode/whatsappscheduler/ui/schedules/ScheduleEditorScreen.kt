@@ -61,6 +61,7 @@ import com.thomaswcode.whatsappscheduler.domain.RuleSentence
 import com.thomaswcode.whatsappscheduler.ui.BackBar
 import com.thomaswcode.whatsappscheduler.ui.quick.RecipientDetailsDialog
 import com.thomaswcode.whatsappscheduler.ui.quick.RecipientField
+import com.thomaswcode.whatsappscheduler.ui.quick.RecipientSaver
 import com.thomaswcode.whatsappscheduler.ui.quick.rememberTimeFormat
 import com.thomaswcode.whatsappscheduler.ui.quick.toDraft
 import java.time.DayOfWeek
@@ -95,7 +96,8 @@ fun ScheduleEditorScreen(
     var showTime by rememberSaveable { mutableStateOf(false) }
     var confirmDiscard by rememberSaveable { mutableStateOf(false) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
-    var details by remember { mutableStateOf<RecipientDraft?>(null) }
+    // Saved, so a rotation keeps the details dialog, with what was typed into it, open.
+    var details by rememberSaveable(stateSaver = RecipientSaver) { mutableStateOf<RecipientDraft?>(null) }
     val searchFocus = remember { FocusRequester() }
 
     val requestContacts = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { vm.search.permissionChanged() }
@@ -115,6 +117,7 @@ fun ScheduleEditorScreen(
 
     // Anything not saved is asked about before it goes: Back and the arrow alike.
     fun leave() {
+        // Only saving the message itself lets it go without asking; saving a recipient's details doesn't.
         if (vm.unsaved && !vm.saving) confirmDiscard = true else onDone()
     }
     BackHandler { leave() }
@@ -129,7 +132,7 @@ fun ScheduleEditorScreen(
     Scaffold(
         topBar = {
             BackBar(if (vm.scheduleId == 0L) "Repeating message" else "Edit repeating message", onBack = ::leave) {
-                if (vm.scheduleId != 0L) TextButton(onClick = { confirmDelete = true }, enabled = !vm.saving && !sending) { Text("Delete") }
+                if (vm.scheduleId != 0L) TextButton(onClick = { confirmDelete = true }, enabled = !vm.busy && !sending) { Text("Delete") }
             }
         },
     ) { padding ->
@@ -148,7 +151,7 @@ fun ScheduleEditorScreen(
                 contactHits = vm.search.contactHits,
                 savedHits = vm.search.savedHits,
                 contactsAllowed = vm.search.contactsAllowed,
-                enabled = !vm.saving,
+                enabled = !vm.busy,
                 searchFocus = searchFocus,
                 onQuery = vm::updateQuery,
                 onSearchFocused = {},
@@ -204,11 +207,11 @@ fun ScheduleEditorScreen(
             Spacer(Modifier.height(12.dp))
             Text(if (form.ruleKind == RuleKind.HOURS) "From" else "Starts", style = MaterialTheme.typography.titleSmall)
             Row {
-                OutlinedButton(onClick = { showDate = true }, enabled = !vm.saving) {
+                OutlinedButton(onClick = { showDate = true }, enabled = !vm.busy) {
                     Text(form.date.format(DateTimeFormatter.ofPattern("EEE d MMM yyyy", locale)))
                 }
                 Spacer(Modifier.width(8.dp))
-                OutlinedButton(onClick = { showTime = true }, enabled = !vm.saving) { Text(timeFormat(form.time)) }
+                OutlinedButton(onClick = { showTime = true }, enabled = !vm.busy) { Text(timeFormat(form.time)) }
             }
             // The rule said back, so a slip (Thu for Tue, say) shows before it is saved; once it is a rule.
             val sentence = if (problems[EditorForm.Field.RULE] != null) null
@@ -222,7 +225,7 @@ fun ScheduleEditorScreen(
                 Text(it, color = MaterialTheme.colorScheme.error)
             }
             Spacer(Modifier.height(16.dp))
-            Button(modifier = Modifier.fillMaxWidth(), enabled = !vm.saving, onClick = vm::save) {
+            Button(modifier = Modifier.fillMaxWidth(), enabled = !vm.busy, onClick = vm::save) {
                 Text(if (vm.saving) "Saving…" else "Save")
             }
             Spacer(Modifier.height(32.dp))
