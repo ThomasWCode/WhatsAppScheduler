@@ -154,6 +154,33 @@ class PostponeAndHousekeepingTest {
     }
 
     @Test
+    fun aSendOnItsWayIsSettledEvenAfterASecondMove() = runTest {
+        // Moved from 09:00 to 12:00; the 12:00 send had started when it was moved again, to the evening.
+        val oneOff = schedules.save(message(), now)
+        val noon = tomorrowNine.plus(Duration.ofHours(3))
+        schedules.postpone(oneOff.id, noon)
+        schedules.postpone(oneOff.id, tomorrowNine.plus(Duration.ofHours(9)))
+        val sent = schedules.recordRun(oneOff.id, noon.toEpochMilli(), SendStatus.SENT, null, "Mum", noon.plusSeconds(20))!!
+        assertNull("the evening copy doesn't go too", sent.nextAtMillis)
+    }
+
+    @Test
+    fun aBatchMovesWhollyOrNotAtAll() = runTest {
+        val mum = schedules.save(message(), now)
+        val dad = schedules.save(message().copy(targetName = "Dad"), now)
+        // Dad's was sent in between: nothing moves.
+        schedules.recordRun(dad.id, dad.nextAtMillis!!, SendStatus.SENT, null, "Dad", tomorrowNine.plusSeconds(5))
+        assertNull(schedules.postponeAll(listOf(mum, dad), tomorrowNine.plus(Duration.ofHours(2))))
+        assertEquals(tomorrowNine.toEpochMilli(), schedules.get(mum.id)!!.nextAtMillis)
+        // As seen: both move, and Undo takes both back.
+        val fresh = listOf(mum, schedules.save(message().copy(targetName = "Sam"), now))
+        val moved = schedules.postponeAll(fresh, tomorrowNine.plus(Duration.ofHours(2)))!!
+        assertEquals(2, moved.size)
+        assertEquals(2, schedules.restoreAll(moved)!!.size)
+        assertEquals(tomorrowNine.toEpochMilli(), schedules.get(fresh[1].id)!!.nextAtMillis)
+    }
+
+    @Test
     fun undoingASeriesMoveKeepsWhatTheUserDidSince() = runTest {
         val daily = schedules.save(message(recurrence = "DAILY"), now)
         val uncertain = schedules.recordRun(daily.id, daily.nextAtMillis!!, SendStatus.UNCERTAIN, "verify: Timed out", "Mum", tomorrowNine.plusSeconds(20))!!
