@@ -23,6 +23,7 @@ import com.thomaswcode.whatsappscheduler.sending.accessibility.WaAccessibilitySe
 import com.thomaswcode.whatsappscheduler.ui.minuteClock
 import java.time.Instant
 import java.time.ZonedDateTime
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -77,6 +78,8 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
      */
     val snackbar = SnackbarHostState()
 
+    private var announcing: Job? = null
+
     /** A second snackbar, shown after the first unless its action was taken, e.g. a one-time offer. */
     data class FollowUp(val message: String, val action: String, val run: () -> Unit)
 
@@ -85,7 +88,9 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
      * tapped, otherwise [followUp] next.
      */
     fun announce(message: String, action: String? = null, followUp: FollowUp? = null, onAction: () -> Unit = {}) {
-        viewModelScope.launch {
+        // A newer message replaces the one showing, and with it any follow-up still to come from it.
+        announcing?.cancel()
+        announcing = viewModelScope.launch {
             snackbar.currentSnackbarData?.dismiss()
             val result = snackbar.showSnackbar(
                 message,
