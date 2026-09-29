@@ -155,7 +155,7 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
             onAddDraft = vm::add,
             onAddContact = vm::add,
             onAddSaved = vm::add,
-            onAddChatName = vm::addChatName,
+            onAddTyped = vm::addTyped,
             onAllowContacts = { requestContacts.launch(Manifest.permission.READ_CONTACTS) },
             onPickContact = { pickContact.launch(Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI)) },
         )
