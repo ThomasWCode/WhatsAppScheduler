@@ -242,7 +242,7 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
                 .onSuccess { (moved, unarmed) ->
                     when {
                         moved.isEmpty() -> events.trySend(ListEvent.Failed("It had just been sent or changed, so it wasn't moved."))
-                        unarmed > 0 -> events.trySend(ListEvent.Postponed("$summary, but its alarm couldn't be set: open the app again to retry", moved, prompted))
+                        unarmed > 0 -> events.trySend(ListEvent.Postponed("$summary, but its alarm couldn't be set: $REARM", moved, prompted))
                         else -> events.trySend(ListEvent.Postponed(summary, moved, prompted))
                     }
                 }
@@ -262,16 +262,22 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch {
             runCatching {
                 withContext(NonCancellable) {
-                    container.repository.restoreAll(moved).orEmpty().onEach { restored ->
-                        runCatching { container.alarmScheduler.sync(restored) }.onFailure { container.log.error("Re-arming after Undo failed", it) }
-                        if (restored.id in prompted && restored.attention != null) {
-                            runCatching { container.fallbackNotifier.notifyAttention(restored, dueAt.value[restored.id]) }
+                    val restored = container.repository.restoreAll(moved).orEmpty()
+                    // Committed: each is armed on its own, and one that couldn't be is reported.
+                    val unarmed = restored.count { r ->
+                        if (r.id in prompted && r.attention != null) {
+                            runCatching { container.fallbackNotifier.notifyAttention(r, dueAt.value[r.id]) }
                         }
+                        runCatching { container.alarmScheduler.sync(r) }.onFailure { container.log.error("Re-arming after Undo failed", it) }.isFailure
                     }
+                    restored to unarmed
                 }
             }
-                .onSuccess { restored ->
-                    if (restored.isEmpty()) events.trySend(ListEvent.Failed("It has been sent, changed or is about to be sent, so it wasn't moved back."))
+                .onSuccess { (restored, unarmed) ->
+                    when {
+                        restored.isEmpty() -> events.trySend(ListEvent.Failed("It has been sent, changed or is about to be sent, so it wasn't moved back."))
+                        unarmed > 0 -> events.trySend(ListEvent.Failed("Moved back, but its alarm couldn't be set: $REARM."))
+                    }
                 }
                 .onFailure { fail("Couldn't undo", it) }
         }
@@ -302,6 +308,9 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     companion object {
+        /** What to do about an alarm that couldn't be set: the app re-arms every alarm only on a fresh start. */
+        private const val REARM = "use Re-arm all alarms in Settings"
+
         fun factory(container: AppContainer) = viewModelFactory { initializer { ScheduleListViewModel(container) } }
     }
 }

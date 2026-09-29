@@ -7,7 +7,8 @@ import java.time.Instant
 /**
  * Keeps the list and the history from growing forever (quick-schedule.md §8, B28): sent one-offs go
  * after the days set in Settings, with their history kept, and history goes after [HISTORY_DAYS].
- * Runs on app start and whenever the send queue has emptied; no WorkManager needed.
+ * Runs whenever the app comes to the front, when that setting changes and whenever the send queue
+ * has emptied; no WorkManager needed.
  */
 class Housekeeping(
     private val repository: ScheduleRepository,

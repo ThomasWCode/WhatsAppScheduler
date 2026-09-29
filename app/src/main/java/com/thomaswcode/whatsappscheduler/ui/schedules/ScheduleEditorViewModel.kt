@@ -55,6 +55,27 @@ data class EditorForm(
     /** The user typed the name here, rather than it coming from the schedule or the contact picker. */
     val nameTyped: Boolean = false,
 ) {
+    /**
+     * With a contact from the system picker, [number] as it will be saved. A name typed here for the
+     * contact already chosen stands; any other name goes with the contact it came with, so it can't be
+     * remembered as the new one's WhatsApp name.
+     */
+    fun picked(number: String, displayName: String, countryIso: String): EditorForm {
+        val sameContact = hasContact(number, countryIso)
+        val keepName = nameTyped && sameContact && name.isNotBlank() && name != pickedName
+        // Chat Lock belongs to the chat too: it stays for the same contact, or when switched here before
+        // anyone was chosen; otherwise it is off until the new contact's own is looked up.
+        val keepLock = sameContact || (lockedTouched && phone.isBlank())
+        return copy(
+            phone = number, name = if (keepName) name else displayName, pickedName = displayName, nameTyped = keepName,
+            locked = keepLock && locked, lockedTouched = keepLock && lockedTouched,
+        )
+    }
+
+    /** Whether [number] (E.164) is the contact the form already has. */
+    fun hasContact(number: String, countryIso: String): Boolean =
+        phone.isNotBlank() && (PhoneNormaliser.toE164(phone, countryIso) ?: phone) == number
+
     fun rule(): Recurrence = when (ruleKind) {
         RuleKind.ONCE -> Recurrence.Once
         RuleKind.DAILY -> Recurrence.Daily
@@ -185,16 +206,19 @@ class ScheduleEditorViewModel(private val container: AppContainer, handle: Saved
     }
 
     /** Fills in a contact picked from the system picker. */
-    fun contactPicked(rawNumber: String, displayName: String) = update {
-        copy(
-            // Kept as picked when it doesn't parse, so the field shows why it can't be saved.
-            phone = PhoneNormaliser.toE164(rawNumber, countryIso) ?: rawNumber,
-            // Replaced unless the user typed a name themselves: one loaded with the schedule belongs to
-            // the contact being replaced.
-            name = if (!nameTyped || name.isBlank() || name == pickedName) displayName else name,
-            pickedName = displayName,
-            nameTyped = nameTyped && name.isNotBlank() && name != pickedName,
-        )
+    fun contactPicked(rawNumber: String, displayName: String) {
+        // Kept as picked when it doesn't parse, so the field shows why it can't be saved.
+        val number = PhoneNormaliser.toE164(rawNumber, countryIso) ?: rawNumber
+        val someoneElse = !form.hasContact(number, countryIso)
+        update { picked(number, displayName, countryIso) }
+        if (!someoneElse || form.lockedTouched) return
+        // The switch then shows the new chat's own Chat Lock: as this schedule has it for its own chat,
+        // as remembered for a chat already known, and off for a new one.
+        val own = existing?.takeIf { it.phoneE164 == number }
+        viewModelScope.launch {
+            val lock = own?.isLocked ?: runCatching { container.recipients.byPhone(number) }.getOrNull()?.isLocked ?: false
+            if (form.phone == number && !form.lockedTouched) update { copy(locked = lock) }
+        }
     }
 
     fun save() {
