@@ -21,6 +21,14 @@ class Notifications(private val context: Context) {
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_FALLBACK, context.getString(R.string.notification_channel_fallback), NotificationManager.IMPORTANCE_HIGH)
         )
+        // Pops up, so the countdown is seen, but with no sound: a short buzz at most (features F1).
+        manager.createNotificationChannel(
+            NotificationChannel(CHANNEL_HEADS_UP, context.getString(R.string.notification_channel_heads_up), NotificationManager.IMPORTANCE_HIGH).apply {
+                setSound(null, null)
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 120)
+            }
+        )
         // Quiet: in the shade, no sound, no pop-up (features F2).
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_SENT, context.getString(R.string.notification_channel_sent), NotificationManager.IMPORTANCE_LOW)
@@ -52,6 +60,31 @@ class Notifications(private val context: Context) {
             .setCategory(Notification.CATEGORY_ALARM)
             .setFullScreenIntent(fullScreen, true)
             .setOngoing(true)
+            .build()
+
+    /** The countdown before a scheduled send (features F1), counting down to [endsAtMillis]. */
+    fun headsUp(
+        title: String,
+        text: String,
+        endsAtMillis: Long,
+        sendNow: PendingIntent,
+        snooze: PendingIntent,
+        postpone: PendingIntent,
+    ): Notification =
+        Notification.Builder(context, CHANNEL_HEADS_UP)
+            .setSmallIcon(R.drawable.ic_stat_send)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setCategory(Notification.CATEGORY_REMINDER)
+            .setWhen(endsAtMillis)
+            .setShowWhen(true)
+            .setUsesChronometer(true)
+            .setChronometerCountDown(true)
+            .setOnlyAlertOnce(true)
+            .setTimeoutAfter((endsAtMillis - System.currentTimeMillis()).coerceAtLeast(1_000L))
+            .addAction(Notification.Action.Builder(null, "Send now", sendNow).build())
+            .addAction(Notification.Action.Builder(null, "Snooze 5 min", snooze).build())
+            .addAction(Notification.Action.Builder(null, "Postpone…", postpone).build())
             .build()
 
     /** On the "Needs your attention" channel (features F3), with the situation's buttons as [actions]. */
@@ -126,6 +159,8 @@ class Notifications(private val context: Context) {
         const val CHANNEL_FALLBACK = "fallback"
         const val CHANNEL_UNLOCK = "unlock"
         const val CHANNEL_SENT = "sent"
+        const val CHANNEL_HEADS_UP = "before_sending"
+        const val ID_HEADS_UP = 6
         const val GROUP_SENT = "sent"
         const val ID_SENT_SUMMARY = 4
         /** Test runs are grouped apart, so a collapsed group can't read "Sent" over messages that weren't (B11). */

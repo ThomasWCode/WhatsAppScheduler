@@ -30,6 +30,8 @@ data class Settings(
     val jobTimeoutMs: Long = 90_000,
     /** How late a send may still go by itself (B09); later than that it is held and the user asked. */
     val missedGraceMinutes: Int = DEFAULT_GRACE_MINUTES,
+    /** How long the countdown before a scheduled send lasts while the phone is in use (features F1): 5–30 s. */
+    val headsUpSeconds: Int = 10,
     val deepLinkForLockedChats: Boolean = false,
     val defaultCountryIso: String = "GB",
     val onboardingDone: Boolean = false,
@@ -86,6 +88,7 @@ class SettingsStore(private val context: Context) {
         /** From when the grace window's default was 2 hours; see [graceMinutes]. */
         val legacyGrace = intPreferencesKey("missed_grace_minutes")
         val grace = intPreferencesKey("missed_grace_minutes_v2")
+        val headsUpSeconds = intPreferencesKey("heads_up_seconds")
         val deepLinkLocked = booleanPreferencesKey("deep_link_locked")
         val countryIso = stringPreferencesKey("default_country_iso")
         val onboardingDone = booleanPreferencesKey("onboarding_done")
@@ -131,6 +134,7 @@ class SettingsStore(private val context: Context) {
         stepTimeoutMs = p[Keys.stepTimeout] ?: 8_000,
         jobTimeoutMs = p[Keys.jobTimeout] ?: 90_000,
         missedGraceMinutes = graceMinutes(p[Keys.grace], p[Keys.legacyGrace]),
+        headsUpSeconds = p[Keys.headsUpSeconds] ?: 10,
         deepLinkForLockedChats = p[Keys.deepLinkLocked] ?: false,
         defaultCountryIso = p[Keys.countryIso] ?: "GB",
         onboardingDone = p[Keys.onboardingDone] ?: false,
@@ -150,6 +154,7 @@ class SettingsStore(private val context: Context) {
         p[Keys.stepTimeout] = s.stepTimeoutMs
         p[Keys.jobTimeout] = s.jobTimeoutMs
         p[Keys.grace] = s.missedGraceMinutes
+        p[Keys.headsUpSeconds] = s.headsUpSeconds
         p.remove(Keys.legacyGrace)
         p[Keys.deepLinkLocked] = s.deepLinkForLockedChats
         p[Keys.countryIso] = s.defaultCountryIso

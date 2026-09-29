@@ -1,8 +1,9 @@
 package com.thomaswcode.whatsappscheduler.sending
 
 import com.thomaswcode.whatsappscheduler.data.ScheduleRepository
-import com.thomaswcode.whatsappscheduler.data.MissedRun
+import com.thomaswcode.whatsappscheduler.data.HeldRun
 import com.thomaswcode.whatsappscheduler.data.SendStore
+import com.thomaswcode.whatsappscheduler.data.db.Attention
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
 import com.thomaswcode.whatsappscheduler.data.db.SendStatus
 import com.thomaswcode.whatsappscheduler.data.settings.Settings
@@ -36,8 +37,8 @@ class SendQueueProcessorTest {
     private val state = SendStateHolder()
     private val log = FakeLog()
 
-    private fun processor(sender: MessageSender, settings: Settings = Settings(retryCount = 2, retryDelaySeconds = 30)) =
-        SendQueueProcessor(store, sender, alarms, notifier, PinGuard(pinStore, clock), state, log, { settings }, clock)
+    private fun processor(sender: MessageSender, settings: Settings = Settings(retryCount = 2, retryDelaySeconds = 30), headsUp: HeadsUp = HeadsUp.None) =
+        SendQueueProcessor(store, sender, alarms, notifier, PinGuard(pinStore, clock), state, log, { settings }, clock, headsUp = headsUp)
 
     private fun oneOff(id: Long = 1, at: Instant = due) = schedule(id, at, "ONCE")
 
@@ -221,6 +222,88 @@ class SendQueueProcessorTest {
         val sender = FakeSender()
         processor(sender, Settings(missedGraceMinutes = 120)).run { enqueue(SendRequest(1, SendKind.SEND_NOW, due.toEpochMilli())); drain() }
         assertEquals(1, sender.jobs.size)
+    }
+
+    // F1: the countdown before a scheduled send while the phone is in use
+
+    @Test
+    fun aScheduledSendCountsDownFirstAndGoesWhenItRunsOut() = runTest {
+        store.put(oneOff())
+        val sender = FakeSender()
+        val countdown = FakeHeadsUp()
+        processor(sender, headsUp = countdown).run { enqueue(scheduled()); drain() }
+        assertEquals(listOf(listOf(1L)), countdown.asked)
+        assertEquals(1, sender.jobs.size)
+    }
+
+    @Test
+    fun noCountdownWhenThePhoneIsntInUseOrTheSendIsByHand() = runTest {
+        store.put(oneOff())
+        val sender = FakeSender()
+        val countdown = FakeHeadsUp(inUse = false)
+        processor(sender, headsUp = countdown).run { enqueue(scheduled()); drain() }
+        store.put(oneOff(2))
+        countdown.inUse = true
+        processor(sender, headsUp = countdown).run { enqueue(SendRequest(2, SendKind.SEND_NOW, due.toEpochMilli())); drain() }
+        assertTrue(countdown.asked.isEmpty())
+        assertEquals(2, sender.jobs.size)
+    }
+
+    @Test
+    fun snoozeMovesTheOccurrenceFiveMinutesOnWithoutAFailure() = runTest {
+        store.put(oneOff())
+        val sender = FakeSender()
+        processor(sender, headsUp = FakeHeadsUp(choice = HeadsUpChoice.SNOOZE)).run { enqueue(scheduled()); drain() }
+        assertTrue(sender.jobs.isEmpty())
+        assertEquals(clock.instant().plus(Duration.ofMinutes(5)).toEpochMilli(), store.row(1).nextAtMillis)
+        assertEquals(store.row(1), alarms.synced.last())
+        assertTrue(notifier.events.isEmpty())
+        assertTrue(store.logged.isEmpty())
+    }
+
+    @Test
+    fun postponeHoldsItAndAsksForATime() = runTest {
+        store.put(oneOff())
+        val sender = FakeSender()
+        processor(sender, headsUp = FakeHeadsUp(choice = HeadsUpChoice.POSTPONE)).run { enqueue(scheduled()); drain() }
+        assertTrue(sender.jobs.isEmpty())
+        assertEquals(Attention.HELD, store.row(1).attention)
+        assertNull(store.row(1).nextAtMillis)
+        assertEquals(listOf("held Mum"), notifier.events)
+    }
+
+    @Test
+    fun duringACallTheSendWaitsForItToEnd() = runTest {
+        store.put(oneOff())
+        val sender = FakeSender()
+        val countdown = FakeHeadsUp(calls = 3)
+        processor(sender, headsUp = countdown).run { enqueue(scheduled()); drain() }
+        // Three looks, 15 s apart, before the countdown.
+        assertEquals(45_000L, testScheduler.currentTime)
+        assertEquals(1, countdown.asked.size)
+        assertEquals(1, sender.jobs.size)
+    }
+
+    @Test
+    fun aBatchDueTogetherGetsOneCountdown() = runTest {
+        store.put(oneOff(1).copy(batchId = "b"))
+        store.put(oneOff(2).copy(batchId = "b", targetName = "Dad"))
+        val sender = FakeSender()
+        val countdown = FakeHeadsUp()
+        processor(sender, headsUp = countdown).run { enqueue(scheduled(1)); enqueue(scheduled(2)); drain() }
+        assertEquals(listOf(listOf(1L, 2L)), countdown.asked)
+        assertEquals(2, sender.jobs.size)
+    }
+
+    @Test
+    fun snoozingABatchMovesEveryMember() = runTest {
+        store.put(oneOff(1).copy(batchId = "b"))
+        store.put(oneOff(2).copy(batchId = "b", targetName = "Dad"))
+        val sender = FakeSender()
+        processor(sender, headsUp = FakeHeadsUp(choice = HeadsUpChoice.SNOOZE)).run { enqueue(scheduled(1)); enqueue(scheduled(2)); drain() }
+        assertTrue(sender.jobs.isEmpty())
+        val snoozedTo = clock.instant().plus(Duration.ofMinutes(5)).toEpochMilli()
+        assertEquals(listOf(snoozedTo, snoozedTo), listOf(store.row(1).nextAtMillis, store.row(2).nextAtMillis))
     }
 
     // B02 and retries
@@ -415,12 +498,27 @@ class SendQueueProcessorTest {
 
         val held = mutableListOf<Schedule>()
 
-        override suspend fun recordMissed(id: Long, occurrenceAtMillis: Long, detail: String, sentTo: String, ranAt: Instant): MissedRun? {
+        override suspend fun duePeers(schedule: Schedule, occurrenceAtMillis: Long): List<Schedule> =
+            schedule.batchId?.let { batch -> rows.values.filter { it.batchId == batch && it.nextAtMillis == occurrenceAtMillis }.sortedBy { it.id } }
+                ?: listOf(schedule)
+
+        override suspend fun snooze(id: Long, occurrenceAtMillis: Long, to: Instant, ranAt: Instant): Schedule? {
+            val current = rows[id]?.takeIf { it.nextAtMillis == occurrenceAtMillis } ?: return null
+            return current.copy(nextAtMillis = to.toEpochMilli(), postponedFromMillis = occurrenceAtMillis).also(::put)
+        }
+
+        override suspend fun hold(id: Long, occurrenceAtMillis: Long, ranAt: Instant): HeldRun? {
+            val current = rows[id]?.takeIf { it.nextAtMillis == occurrenceAtMillis } ?: return null
+            val waiting = current.copy(nextAtMillis = null, attention = Attention.HELD).also(::put)
+            return HeldRun(waiting, waiting)
+        }
+
+        override suspend fun recordMissed(id: Long, occurrenceAtMillis: Long, detail: String, sentTo: String, ranAt: Instant): HeldRun? {
             val stored = recordRun(id, occurrenceAtMillis, SendStatus.MISSED, detail, sentTo, ranAt) ?: return null
-            if (stored.recurrence == "ONCE") return MissedRun(stored, stored)
+            if (stored.recurrence == "ONCE") return HeldRun(stored, stored)
             val copy = stored.copy(id = 1_000 + id, recurrence = "ONCE", nextAtMillis = null, firstAtMillis = occurrenceAtMillis, sourceScheduleId = id)
             held += copy
-            return MissedRun(stored, copy)
+            return HeldRun(stored, copy)
         }
     }
 
@@ -446,10 +544,25 @@ class SendQueueProcessorTest {
         override fun pinPaused(reason: String) {
             events += "pinPaused"
         }
+        override fun held(schedule: Schedule) {
+            events += "held ${schedule.targetName}"
+        }
+
         val missedIds = mutableListOf<Long>()
         override fun missed(schedule: Schedule, occurrenceAtMillis: Long) {
             events += "missed ${schedule.targetName}"
             missedIds += schedule.id
+        }
+    }
+
+    /** In use unless told otherwise; in a call for the first [calls] looks; answers [choice] (null: runs out). */
+    private class FakeHeadsUp(var inUse: Boolean = true, private var calls: Int = 0, private val choice: HeadsUpChoice? = null) : HeadsUp {
+        val asked = mutableListOf<List<Long>>()
+        override fun inUse() = inUse
+        override fun inCall() = calls-- > 0
+        override suspend fun ask(schedules: List<Schedule>, endsAtMillis: Long): HeadsUpChoice? {
+            asked += schedules.map { it.id }
+            return choice
         }
     }
 
