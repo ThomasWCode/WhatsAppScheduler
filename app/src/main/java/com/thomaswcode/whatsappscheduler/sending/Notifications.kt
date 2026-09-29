@@ -76,6 +76,8 @@ class Notifications(private val context: Context) {
             .setSmallIcon(R.drawable.ic_stat_send)
             .setContentTitle(title)
             .setContentText(text)
+            // What a screen reader says as it pops up: the clock alone reads as numbers.
+            .setTicker("$title in ${((endsAtMillis - System.currentTimeMillis() + 500) / 1_000).coerceAtLeast(1)} seconds")
             .setCategory(Notification.CATEGORY_REMINDER)
             .setWhen(endsAtMillis)
             .setShowWhen(true)

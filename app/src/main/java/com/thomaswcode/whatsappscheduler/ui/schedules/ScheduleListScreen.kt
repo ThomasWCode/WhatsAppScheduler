@@ -64,6 +64,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -84,13 +86,13 @@ import com.thomaswcode.whatsappscheduler.sending.SendKind
 import com.thomaswcode.whatsappscheduler.sending.SendPhase
 import com.thomaswcode.whatsappscheduler.sending.SendRequest
 import com.thomaswcode.whatsappscheduler.sending.SendState
-import com.thomaswcode.whatsappscheduler.ui.formatStamp
 import com.thomaswcode.whatsappscheduler.ui.health.HealthStrip
 import com.thomaswcode.whatsappscheduler.ui.health.rememberHealth
 import com.thomaswcode.whatsappscheduler.ui.quick.QuickEvent
 import com.thomaswcode.whatsappscheduler.ui.quick.QuickScheduleSheet
 import com.thomaswcode.whatsappscheduler.ui.quick.QuickScheduleViewModel
 import com.thomaswcode.whatsappscheduler.ui.quick.rememberTimeFormat
+import com.thomaswcode.whatsappscheduler.ui.rememberStampFormat
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -456,10 +458,14 @@ private fun ScheduleRow(
                         Text(first.message, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                     if (switchedOn != null) {
-                        Switch(checked = switchedOn, onCheckedChange = if (busy) null else onSwitch, modifier = Modifier.padding(start = 4.dp))
+                        Switch(
+                            checked = switchedOn,
+                            onCheckedChange = if (busy) null else onSwitch,
+                            modifier = Modifier.padding(start = 4.dp).semantics { contentDescription = "Repeat to ${groupTitle(group)}" },
+                        )
                     }
                     Box {
-                        IconButton(onClick = { menuOpen = true }, enabled = !busy) { Icon(Icons.Default.MoreVert, contentDescription = "More") }
+                        IconButton(onClick = { menuOpen = true }, enabled = !busy) { Icon(Icons.Default.MoreVert, contentDescription = "More for ${groupTitle(group)}") }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                             menu.forEach { (label, action) ->
                                 DropdownMenuItem(text = { Text(label) }, onClick = { menuOpen = false; action() }, enabled = !busy)
@@ -503,7 +509,8 @@ private fun Avatar(name: String) {
         MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer,
     )
     val (background, content) = palette[(name.hashCode() and Int.MAX_VALUE) % palette.size]
-    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(40.dp).clip(CircleShape).background(background)) {
+    // Decoration: the name is read out beside it, and its initials read on their own are noise.
+    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(40.dp).clip(CircleShape).background(background).clearAndSetSemantics {}) {
         Text(initials(name), color = content, style = MaterialTheme.typography.titleSmall)
     }
 }
@@ -536,6 +543,7 @@ private fun SendNowDialog(group: List<Schedule>, copyOnly: Boolean, onDismiss: (
     val early = plan.early.takeIf { it.isNotEmpty() && !copyOnly }
     val next = early?.minOf { it.occurrenceAtMillis ?: Long.MAX_VALUE }
     val sentBefore = schedule.attention == Attention.UNCERTAIN || (schedule.attention == null && schedule.shownStatus == SendStatus.SENT)
+    val stampOf = rememberStampFormat()
     val explanation = when {
         copyOnly && recurring -> "This sends that message now. The series carries on as scheduled."
         next == null && recurring -> "This sends an extra copy. The schedule itself is not changed."
@@ -544,9 +552,9 @@ private fun SendNowDialog(group: List<Schedule>, copyOnly: Boolean, onDismiss: (
         next == null && schedule.attention == Attention.UNCERTAIN -> "It may already have gone out, so check the chat first. This sends it again."
         next == null && sentBefore -> "It has already been sent, so this sends it again."
         next == null -> "It wasn't sent at its time. This sends it now."
-        recurring -> "Send the ${formatStamp(next)} message early, or send an extra copy and keep that one as it is."
-        (early?.size ?: 0) < group.size -> "It will be sent now instead of at ${formatStamp(next)}, to the recipients it hasn't gone to yet."
-        else -> "It will be sent now instead of at ${formatStamp(next)}."
+        recurring -> "Send the ${stampOf(next)} message early, or send an extra copy and keep that one as it is."
+        (early?.size ?: 0) < group.size -> "It will be sent now instead of at ${stampOf(next)}, to the recipients it hasn't gone to yet."
+        else -> "It will be sent now instead of at ${stampOf(next)}."
     }
     AlertDialog(
         onDismissRequest = onDismiss,

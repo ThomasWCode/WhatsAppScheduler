@@ -4,6 +4,7 @@ import android.app.Activity
 import android.hardware.biometrics.BiometricManager
 import android.hardware.biometrics.BiometricPrompt
 import android.os.CancellationSignal
+import android.text.format.DateFormat
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -13,6 +14,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -32,6 +35,7 @@ fun BackBar(title: String, onBack: () -> Unit, actions: @Composable RowScope.() 
 }
 
 private val stampFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE d MMM yyyy, HH:mm")
+private val stampFormatter12: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE d MMM yyyy, h:mm a")
 
 /**
  * The time now, then again at the start of every minute, so relative times ("in 18 h 52 min") and
@@ -45,9 +49,19 @@ fun minuteClock(): Flow<ZonedDateTime> = flow {
     }
 }
 
-/** Formats epoch millis in the device zone for display. */
-fun formatStamp(millis: Long?, zone: ZoneId = ZoneId.systemDefault()): String =
-    millis?.let { Instant.ofEpochMilli(it).atZone(zone).format(stampFormatter) } ?: "—"
+/** Formats epoch millis in the device zone for display, in 24-hour or ([is24Hour] false) 12-hour time. */
+fun formatStamp(millis: Long?, zone: ZoneId = ZoneId.systemDefault(), is24Hour: Boolean = true): String =
+    millis?.let { Instant.ofEpochMilli(it).atZone(zone).format(if (is24Hour) stampFormatter else stampFormatter12) } ?: "—"
+
+/** [formatStamp] with the phone's own 12/24-hour choice (improvements I1). */
+@Composable
+fun rememberStampFormat(): (Long?) -> String {
+    val is24 = DateFormat.is24HourFormat(LocalContext.current)
+    return remember(is24) {
+        val f: (Long?) -> String = { formatStamp(it, is24Hour = is24) }
+        f
+    }
+}
 
 /**
  * Gates an action behind the device's biometric or credential prompt. Calls [onSuccess] directly
