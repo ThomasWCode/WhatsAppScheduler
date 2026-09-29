@@ -52,15 +52,26 @@ class ChatCheckerTest {
     fun aChatThatIsFoundIsMarkedChecked() = runTest {
         val crew = recipients.resolve(RecipientDraft(TargetKind.GROUP, "Work crew"))
         val checker = ChatChecker({ ChatCheck.Found }, Mutex(), recipients, clock)
-        assertEquals(ChatCheck.Found, checker.check("Work crew", crew.id))
+        assertEquals(CheckOutcome(ChatCheck.Found, crew.id), checker.check(RecipientDraft(TargetKind.GROUP, "Work crew", recipientId = crew.id)))
         assertEquals(at.toEpochMilli(), recipients.get(crew.id)!!.verifiedAtMillis)
+    }
+
+    @Test
+    fun aNewNameThatIsFoundIsStoredSoTheCheckIsRemembered() = runTest {
+        val checker = ChatChecker({ ChatCheck.Found }, Mutex(), recipients, clock)
+        val outcome = checker.check(RecipientDraft(TargetKind.GROUP, "Book club"))
+        val stored = recipients.get(outcome.recipientId!!)!!
+        assertEquals("Book club", stored.chatName)
+        assertEquals(at.toEpochMilli(), stored.verifiedAtMillis)
     }
 
     @Test
     fun aChatThatIsNotFoundIsNotMarked() = runTest {
         val crew = recipients.resolve(RecipientDraft(TargetKind.GROUP, "Work crew"))
         val checker = ChatChecker({ ChatCheck.NotFound("No chat named 'Work crew'") }, Mutex(), recipients, clock)
-        assertTrue(checker.check("Work crew", crew.id) is ChatCheck.NotFound)
+        assertTrue(checker.check(RecipientDraft(TargetKind.GROUP, "Work crew", recipientId = crew.id)).result is ChatCheck.NotFound)
+        // A name that isn't found isn't stored either.
+        assertNull(ChatChecker({ ChatCheck.NotFound("no") }, Mutex(), recipients, clock).check(RecipientDraft(TargetKind.GROUP, "Nowhere")).recipientId)
         assertNull(recipients.get(crew.id)!!.verifiedAtMillis)
     }
 
@@ -69,7 +80,7 @@ class ChatCheckerTest {
         val lock = Mutex().apply { lock() }
         var ran = false
         val checker = ChatChecker({ ran = true; ChatCheck.Found }, lock, recipients, clock)
-        assertTrue(checker.check("Work crew", null) is ChatCheck.NotChecked)
+        assertTrue(checker.check(RecipientDraft(TargetKind.GROUP, "Work crew")).result is ChatCheck.NotChecked)
         assertFalse("WhatsApp isn't touched during a send", ran)
     }
 

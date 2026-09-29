@@ -205,11 +205,14 @@ private fun QuickScheduleContent(vm: QuickScheduleViewModel) {
         }
     }
 
+    // Looked up for the recipient the details are for, not just the recent chips.
+    var checkedAt by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(details) { checkedAt = details?.let { vm.checkedAt(it) } }
     details?.let { recipient ->
         RecipientDetailsDialog(
             recipient = recipient,
             countryIso = settings.defaultCountryIso,
-            checkedAtMillis = recents.firstOrNull { it.id == recipient.recipientId }?.verifiedAtMillis,
+            checkedAtMillis = checkedAt,
             onDismiss = { details = null },
             onSave = { updated -> vm.saveDetails(recipient, updated); details = null },
             onForget = { vm.forget(recipient); details = null },
@@ -275,7 +278,10 @@ private fun RecipientDetailsDialog(
                 }
                 onCheck?.let { check ->
                     checkedAtMillis?.let { Text("✓ Found in WhatsApp's search ${formatStamp(it)}", style = MaterialTheme.typography.bodySmall) }
-                    TextButton(onClick = check) { Text("Check this chat now") }
+                    // It checks the details as saved: after an edit, those aren't what the fields show yet.
+                    val edited = whatsappName != (recipient.whatsappName ?: "") || number != (recipient.phoneE164 ?: "") || locked != recipient.isLocked
+                    if (edited) Text("Save to check the new details.", style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = check, enabled = !edited) { Text("Check this chat now") }
                 }
                 if (recipient.recipientId != null) {
                     TextButton(onClick = onForget) { Text("Remove from recents") }
