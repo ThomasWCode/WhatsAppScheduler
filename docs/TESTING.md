@@ -48,6 +48,9 @@ Unit tests (`./gradlew test`) cover the quick sheet's time chips and friendly ti
 | 42 | Settings → Diagnostics → Logs; try each filter chip, then tap a failed entry | Entries read "Couldn't send to …" or "Test run for …: not sent", with why in words and the technical detail beneath, and "by hand" for manual runs. Each filter shows its own entries, or a line saying there are none. Tapping an entry opens the list at that schedule's row, outlined, with Sent opened if it's there. |
 | 43 | Logs → Automation trace | Share and Clear appear only on this tab, with a note that the trace names chats. Warnings are amber and errors red. Share opens the share sheet; Clear empties the trace and the saved window dump. |
 | 44 | A failed send, as in #34 | The row under *Needs attention* says why ("Couldn't find the chat · Today 09:00"). So does its notification ("Couldn't find the chat, so the message for … hasn't gone"). |
+| 48 | Settings → Diagnostics → Setup checklist | Grouped as Required, Recommended and By hand, with a line saying whether everything required is done. The PIN item mentions One UI's Auto factory reset. |
+| 49 | Switch the accessibility service off, clear the app's data or install it fresh, and open it | The checklist opens by itself, and does so at each launch until everything required is done; after that, never by itself. An app opened from a notification goes where the notification said instead. |
+| 50 | With the service switched on, force-stop the app (One UI can leave the service switched on but not running) and open the checklist | "Accessibility service running" is red until it connects, or until it's turned off and on again. |
 
 Useful commands:
 
