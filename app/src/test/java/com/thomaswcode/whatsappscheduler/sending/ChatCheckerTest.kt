@@ -112,6 +112,19 @@ class ChatCheckerTest {
     }
 
     @Test
+    fun aChatPutBehindChatLockSinceTheOfferIsntChecked() = runTest {
+        val crew = recipients.resolve(RecipientDraft(TargetKind.GROUP, "Work crew"))
+        recipients.markVerified(crew.id, at.toEpochMilli())
+        recipients.updateDetails(recipients.get(crew.id)!!.copy(isLocked = true))
+        var ran = false
+        val outcome = ChatChecker({ ran = true; ChatCheck.NotFound("no") }, Mutex(), recipients, clock)
+            .check(RecipientDraft(TargetKind.GROUP, "Work crew", recipientId = crew.id))
+        assertFalse("the chat list search can't open a locked chat", ran)
+        assertFalse((outcome.result as ChatCheck.NotChecked).stopsOthers)
+        assertEquals(at.toEpochMilli(), recipients.get(crew.id)!!.verifiedAtMillis)
+    }
+
+    @Test
     fun noCheckWhileASendHoldsTheLock() = runTest {
         val lock = Mutex().apply { lock() }
         var ran = false

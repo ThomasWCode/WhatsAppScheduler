@@ -43,6 +43,12 @@ class ChatChecker(
         val chat = offered.recipientId?.let { recipients.get(it) }
             ?.let { RecipientDraft(it.kind, it.displayName, it.whatsappName, it.phoneE164, it.isLocked, it.id) }
             ?: offered
+        // A check searches the chat list, so it is only for a chat found by name and outside Chat Lock, as
+        // the details offer it; one changed since it was offered is left alone, tick and all.
+        when {
+            chat.isLocked -> return CheckOutcome(ChatCheck.NotChecked("it's behind Chat Lock now", stopsOthers = false), chat.recipientId, chat.chatName)
+            chat.phoneE164 != null -> return CheckOutcome(ChatCheck.NotChecked("it's reached by its number now", stopsOthers = false), chat.recipientId, chat.chatName)
+        }
         if (!lock.tryLock()) return CheckOutcome(ChatCheck.NotChecked("a message is being sent"), chat.recipientId, chat.chatName)
         val result = try {
             runner.checkChat(chat.chatName)
