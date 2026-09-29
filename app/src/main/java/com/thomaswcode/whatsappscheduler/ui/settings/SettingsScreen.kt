@@ -477,8 +477,13 @@ private fun SettingField(
 @Composable
 private fun CollapsibleSection(title: String, summary: String, content: @Composable () -> Unit) {
     var open by rememberSaveable(title) { mutableStateOf(false) }
+    val focus = LocalFocusManager.current
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClickLabel = if (open) "Close $title" else "Open $title") { open = !open }.padding(vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth().clickable(onClickLabel = if (open) "Close $title" else "Open $title") {
+            // A field being edited saves as it loses focus: before it goes with the section, not lost with it.
+            focus.clearFocus()
+            open = !open
+        }.padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
