@@ -191,8 +191,11 @@ class AccessibilitySender(
      */
     private suspend fun leaveWhatsApp(driver: UiDriver, whatsapp: String) {
         repeat(MAX_BACKS) {
-            driver.waitUntil(1_000) { driver.foregroundPackage() != null }
-            if (driver.foregroundPackage() != whatsapp) return
+            // A window changing over has no root for a while: that isn't knowing what is in front, not
+            // having left, so it looks again (within the same bounded number of tries).
+            var front: String? = null
+            if (!driver.waitUntil(2_000) { driver.foregroundPackage().also { front = it } != null }) return@repeat
+            if (front != whatsapp) return
             driver.back()
         }
     }
