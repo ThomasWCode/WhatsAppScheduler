@@ -30,7 +30,7 @@ import kotlinx.coroutines.flow.first
 object Routes {
     const val LIST = "list"
     /** The full editor; for a new schedule the optional arguments pre-fill it (from the quick sheet's Repeat…). */
-    const val EDIT = "edit/{id}?kind={kind}&name={name}&phone={phone}&locked={locked}&message={message}&at={at}"
+    const val EDIT = "edit/{id}?kind={kind}&name={name}&wa={wa}&rid={rid}&phone={phone}&locked={locked}&message={message}&at={at}"
     const val SETTINGS = "settings"
     const val SETUP = "setup"
     const val LOGS = "logs"
@@ -42,7 +42,10 @@ object Routes {
         val r = prefill.recipient
         val args = listOfNotNull(
             r?.let { "kind=${it.kind.name}" },
-            r?.let { "name=${Uri.encode(it.chatName)}" },
+            // Both names, so a WhatsApp name set for a chat not stored yet isn't taken for its own.
+            r?.let { "name=${Uri.encode(it.displayName)}" },
+            r?.whatsappName?.let { "wa=${Uri.encode(it)}" },
+            r?.recipientId?.let { "rid=$it" },
             r?.phoneE164?.let { "phone=${Uri.encode(it)}" },
             r?.let { "locked=${it.isLocked}" },
             prefill.message.takeIf { it.isNotBlank() }?.let { "message=${Uri.encode(it)}" },
@@ -119,6 +122,8 @@ fun AppNav(container: AppContainer, destination: MutableStateFlow<String?>) {
                 navArgument("locked") { type = NavType.BoolType; defaultValue = false },
                 navArgument("message") { type = NavType.StringType; nullable = true; defaultValue = null },
                 navArgument("at") { type = NavType.LongType; defaultValue = -1L },
+                navArgument("wa") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("rid") { type = NavType.LongType; defaultValue = -1L },
             ),
         ) {
             ScheduleEditorScreen(
