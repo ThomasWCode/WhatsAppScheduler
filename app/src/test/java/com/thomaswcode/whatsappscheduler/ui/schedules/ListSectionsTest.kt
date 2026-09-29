@@ -127,6 +127,9 @@ class ListSectionsTest {
         // Failed or uncertain: when it was tried, which after Send now is earlier than it was due.
         val failed = schedule(6, next = null).copy(lastRunAtMillis = ms("2026-09-28T08:40"), attention = Attention.FAILED)
         assertEquals("Couldn't send · Today 08:40", line(Section.ATTENTION, failed))
+        // Why, in words, when the step that failed is known.
+        val notFound = failed.copy(lastResult = "FAILED: search: Timed out after 8000ms waiting for wa.searchInput")
+        assertEquals("Couldn't find the chat · Today 08:40", line(Section.ATTENTION, notFound))
         assertEquals("May have been sent · Today 08:40: check the chat", line(Section.ATTENTION, failed.copy(attention = Attention.UNCERTAIN)))
 
         val sent = schedule(5, next = null).copy(lastRunAtMillis = ms("2026-09-27T09:00"), lastStatus = SendStatus.SENT)
