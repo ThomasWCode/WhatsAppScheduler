@@ -5,7 +5,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -14,12 +18,14 @@ import androidx.navigation.navArgument
 import com.thomaswcode.whatsappscheduler.AppContainer
 import com.thomaswcode.whatsappscheduler.ui.inspector.InspectorScreen
 import com.thomaswcode.whatsappscheduler.ui.logs.LogsScreen
+import com.thomaswcode.whatsappscheduler.ui.onboarding.PermissionChecks
 import com.thomaswcode.whatsappscheduler.ui.onboarding.SetupScreen
 import com.thomaswcode.whatsappscheduler.ui.quick.QuickEvent
 import com.thomaswcode.whatsappscheduler.ui.schedules.ScheduleEditorScreen
 import com.thomaswcode.whatsappscheduler.ui.schedules.ScheduleListScreen
 import com.thomaswcode.whatsappscheduler.ui.settings.SettingsScreen
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 
 object Routes {
     const val LIST = "list"
@@ -50,7 +56,29 @@ object Routes {
 @Composable
 fun AppNav(container: AppContainer, destination: MutableStateFlow<String?>) {
     val nav = rememberNavController()
+    val context = LocalContext.current
+    // What the app was opened for, if anything (a notification's row, Settings): then the checklist waits.
+    val openedFor = remember { destination.value }
     val requested by destination.collectAsState()
+    // The setup checklist opens by itself until everything required is done (improvements I9); looked
+    // at once per launch, not again after a rotation.
+    var setupLookedAt by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (setupLookedAt) return@LaunchedEffect
+        // Recorded first, also when skipped: after a rotation the destination is gone, and the checklist
+        // mustn't then open over the screen the notification asked for.
+        setupLookedAt = true
+        if (openedFor != null) return@LaunchedEffect
+        if (container.settings.current().onboardingDone) return@LaunchedEffect
+        val hasPin = container.secrets.hasPin().first()
+        // The service may not have connected yet this soon after the app started: only whether it is on counts here.
+        val items = PermissionChecks.evaluate(context, hasPin, serviceRunning = true)
+        if (PermissionChecks.allRequiredOk(items)) {
+            container.settings.update { it.copy(onboardingDone = true) }
+        } else {
+            nav.navigate(Routes.SETUP) { launchSingleTop = true }
+        }
+    }
     // A row a notification asked to show (features F2); the list scrolls to it and clears this.
     val focusRow = remember { MutableStateFlow<Long?>(null) }
     LaunchedEffect(requested) {
