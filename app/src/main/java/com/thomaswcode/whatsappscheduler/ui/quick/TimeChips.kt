@@ -21,7 +21,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.domain.FriendlyTime
 import com.thomaswcode.whatsappscheduler.domain.TimeChip
 import java.time.Instant
@@ -63,7 +65,7 @@ fun TimeChips(chips: List<TimeChip>, chosen: TimeChoice?, now: ZonedDateTime, on
             val at = Instant.ofEpochMilli(exact.atMillis).atZone(now.zone)
             FilterChip(selected = true, onClick = { pickingDate = true }, label = { Text(FriendlyTime.dayAndTime(at, now, timeFormat)) }, enabled = enabled)
         }
-        FilterChip(selected = false, onClick = { pickingDate = true }, label = { Text("Pick date & time…") }, enabled = enabled)
+        FilterChip(selected = false, onClick = { pickingDate = true }, label = { Text(stringResource(R.string.quick_pick_date_time)) }, enabled = enabled)
     }
 
     // Opens at the chosen time, or an hour from now when nothing is chosen yet.
@@ -90,9 +92,9 @@ fun TimeChips(chips: List<TimeChip>, chosen: TimeChoice?, now: ZonedDateTime, on
                 TextButton(onClick = {
                     pickedDate = state.selectedDateMillis
                     pickingDate = false
-                }) { Text("Next") }
+                }) { Text(stringResource(R.string.action_next)) }
             },
-            dismissButton = { TextButton(onClick = { pickingDate = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { pickingDate = false }) { Text(stringResource(R.string.action_cancel)) } },
         ) { DatePicker(state = state) }
     }
     pickedDate?.let { dateMillis ->
@@ -105,9 +107,9 @@ fun TimeChips(chips: List<TimeChip>, chosen: TimeChoice?, now: ZonedDateTime, on
                     val at = date.atTime(state.hour, state.minute).atZone(now.zone)
                     onChoose(TimeChoice.Exact(at.toInstant().toEpochMilli()))
                     pickedDate = null
-                }) { Text("OK") }
+                }) { Text(stringResource(R.string.action_ok)) }
             },
-            dismissButton = { TextButton(onClick = { pickedDate = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { pickedDate = null }) { Text(stringResource(R.string.action_cancel)) } },
             text = { TimePicker(state = state) },
         )
     }

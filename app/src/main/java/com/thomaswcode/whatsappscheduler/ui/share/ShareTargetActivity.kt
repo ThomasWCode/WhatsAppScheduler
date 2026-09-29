@@ -14,8 +14,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.stringResource
 import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.SchedulerApp
 import com.thomaswcode.whatsappscheduler.ui.AppTheme
 import com.thomaswcode.whatsappscheduler.ui.MainActivity
@@ -85,10 +87,10 @@ class ShareTargetActivity : ComponentActivity() {
                 if (offers.isNotEmpty() && !vm.visible) {
                     AlertDialog(
                         onDismissRequest = { vm.answerCheckOffer(check = false) },
-                        title = { Text("Check in WhatsApp?") },
-                        text = { Text("Check ${QuickScheduleViewModel.quoted(offers)} in WhatsApp now? WhatsApp's search is run for the name while you watch; nothing is typed.") },
-                        confirmButton = { TextButton(onClick = { vm.answerCheckOffer(check = true) }) { Text("Check") } },
-                        dismissButton = { TextButton(onClick = { vm.answerCheckOffer(check = false) }) { Text("Not now") } },
+                        title = { Text(stringResource(R.string.share_check_title)) },
+                        text = { Text(stringResource(R.string.share_check_text, QuickScheduleViewModel.quoted(offers))) },
+                        confirmButton = { TextButton(onClick = { vm.answerCheckOffer(check = true) }) { Text(stringResource(R.string.action_check)) } },
+                        dismissButton = { TextButton(onClick = { vm.answerCheckOffer(check = false) }) { Text(stringResource(R.string.action_not_now)) } },
                     )
                 }
             }

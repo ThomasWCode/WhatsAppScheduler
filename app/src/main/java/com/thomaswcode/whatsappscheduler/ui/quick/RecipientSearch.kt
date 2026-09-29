@@ -1,10 +1,12 @@
 package com.thomaswcode.whatsappscheduler.ui.quick
 
+import androidx.annotation.StringRes
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import com.thomaswcode.whatsappscheduler.AppContainer
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.data.RecipientDraft
 import com.thomaswcode.whatsappscheduler.data.contacts.ContactHit
 import com.thomaswcode.whatsappscheduler.data.db.Recipient
@@ -85,13 +87,14 @@ class RecipientSearch(
 sealed interface RecipientInput {
     data class Chosen(val recipient: RecipientDraft) : RecipientInput
 
-    data class Refused(val reason: String) : RecipientInput
+    /** [reason] is a string resource that takes the [number] refused. */
+    data class Refused(@StringRes val reason: Int, val number: String) : RecipientInput
 
     companion object {
         /** A contact result; a number that doesn't parse is refused on the spot (B06). */
         fun fromContact(hit: ContactHit, countryIso: String): RecipientInput {
             val e164 = PhoneNormaliser.toE164(hit.number, countryIso)
-                ?: return Refused("${hit.number} isn't a number WhatsApp can open. Edit the contact, or type the number with its country code.")
+                ?: return Refused(R.string.recipient_contact_number_invalid, hit.number)
             return Chosen(RecipientDraft(TargetKind.CONTACT, hit.name, phoneE164 = e164))
         }
 
@@ -104,7 +107,7 @@ sealed interface RecipientInput {
             val typed = text.trim()
             if (typed.isEmpty()) return null
             if (!QuickScheduleViewModel.looksLikeNumber(typed)) return Chosen(RecipientDraft(TargetKind.GROUP, typed))
-            val e164 = PhoneNormaliser.toE164(typed, countryIso) ?: return Refused("$typed isn't a number WhatsApp can open. Type it with its country code.")
+            val e164 = PhoneNormaliser.toE164(typed, countryIso) ?: return Refused(R.string.recipient_typed_number_invalid, typed)
             return Chosen(RecipientDraft(TargetKind.CONTACT, PhoneNormaliser.display(e164, countryIso), phoneE164 = e164))
         }
     }
