@@ -113,7 +113,7 @@ fun SettingsScreen(
                 update { it.copy(eveningMinutes = t.hour * 60 + t.minute) }
             }
             OwnNumberRow(settings.ownNumberE164, settings.defaultCountryIso) { e164 -> update { it.copy(ownNumberE164 = e164) } }
-            KeepSentRow(settings.keepSentDays) { days -> update { it.copy(keepSentDays = days) } }
+            KeepSentRow(settings.keepSentDays, vm::setKeepSentDays)
             ToggleRow("Use phone-number link for locked contacts", "Faster path for locked contact chats; enable only if a dry run shows it works.", settings.deepLinkForLockedChats) { v -> update { it.copy(deepLinkForLockedChats = v) } }
             NumberRow("Retries per message", settings.retryCount) { v -> update { it.copy(retryCount = v.coerceIn(0, 5)) } }
             NumberRow("Seconds between retries", settings.retryDelaySeconds) { v -> update { it.copy(retryDelaySeconds = v.coerceIn(5, 600)) } }
