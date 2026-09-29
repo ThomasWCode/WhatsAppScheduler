@@ -18,7 +18,8 @@ class PreflightTest {
         assertEquals(quarterTo, Preflight.checkAt(nine, nowMillis = nine - Duration.ofHours(1).toMillis()))
         // Set less than 15 minutes ahead: the user has only just looked at it.
         assertNull(Preflight.checkAt(nine, nowMillis = nine - Duration.ofMinutes(10).toMillis()))
-        assertNull(Preflight.checkAt(nine, nowMillis = quarterTo))
+        // Set exactly 15 minutes ahead: it looks at once.
+        assertEquals(quarterTo, Preflight.checkAt(nine, nowMillis = quarterTo))
     }
 
     @Test
