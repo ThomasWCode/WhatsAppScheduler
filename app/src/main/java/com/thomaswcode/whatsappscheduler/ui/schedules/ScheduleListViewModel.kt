@@ -21,7 +21,9 @@ import com.thomaswcode.whatsappscheduler.sending.SendRequest
 import com.thomaswcode.whatsappscheduler.sending.SendState
 import com.thomaswcode.whatsappscheduler.sending.accessibility.WaAccessibilityService
 import com.thomaswcode.whatsappscheduler.ui.minuteClock
+import com.thomaswcode.whatsappscheduler.ui.quick.QuickScheduleViewModel
 import java.time.Instant
+import java.time.ZoneId
 import java.time.ZonedDateTime
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
@@ -194,6 +196,11 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
     fun postpone(at: Instant, summary: String) {
         val group = postponing ?: return
         postponing = null
+        // The dialog judged by the last minute tick; this is the moment it counts.
+        if (!QuickScheduleViewModel.isSendable(at.atZone(ZoneId.systemDefault()), ZonedDateTime.now())) {
+            events.trySend(ListEvent.Failed("Pick a time at least a minute from now."))
+            return
+        }
         // Something being sent keeps its occurrence until it is recorded (B08).
         if (group.any { sendState.value.isBusy(it.id) }) {
             events.trySend(ListEvent.Failed("It's being sent now, so it wasn't moved."))
@@ -205,17 +212,22 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
                 withContext(NonCancellable) {
                     // Each as the user saw it: one sent or changed since isn't moved.
                     // All of it as the user saw it, or nothing: a batch can't end up half moved.
-                    container.repository.postponeAll(group, at).orEmpty().onEach { moved ->
-                        container.alarmScheduler.sync(moved.after)
+                    val moved = container.repository.postponeAll(group, at).orEmpty()
+                    // Committed: every member is armed on its own, so one failure can't leave the others at
+                    // their old alarms, and the move is reported (with Undo) either way.
+                    val unarmed = moved.count { m ->
                         // A one-off's prompt was about the time it now leaves. A series' is about an earlier
                         // occurrence that still needs the user, so it stays.
-                        if (moved.after.rule == Recurrence.Once) container.fallbackNotifier.cancel(moved.after.id)
+                        if (m.after.rule == Recurrence.Once) runCatching { container.fallbackNotifier.cancel(m.after.id) }
+                        runCatching { container.alarmScheduler.sync(m.after) }.onFailure { container.log.error("Arming a moved send failed", it) }.isFailure
                     }
+                    moved to unarmed
                 }
             }
-                .onSuccess { moved ->
+                .onSuccess { (moved, unarmed) ->
                     when {
                         moved.isEmpty() -> events.trySend(ListEvent.Failed("It had just been sent or changed, so it wasn't moved."))
+                        unarmed > 0 -> events.trySend(ListEvent.Postponed("$summary, but its alarm couldn't be set: open the app again to retry", moved, prompted))
                         else -> events.trySend(ListEvent.Postponed(summary, moved, prompted))
                     }
                 }
@@ -236,13 +248,15 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
             runCatching {
                 withContext(NonCancellable) {
                     container.repository.restoreAll(moved).orEmpty().onEach { restored ->
-                        container.alarmScheduler.sync(restored)
-                        if (restored.id in prompted && restored.attention != null) container.fallbackNotifier.notifyAttention(restored, dueAt.value[restored.id])
+                        runCatching { container.alarmScheduler.sync(restored) }.onFailure { container.log.error("Re-arming after Undo failed", it) }
+                        if (restored.id in prompted && restored.attention != null) {
+                            runCatching { container.fallbackNotifier.notifyAttention(restored, dueAt.value[restored.id]) }
+                        }
                     }
                 }
             }
                 .onSuccess { restored ->
-                    if (restored.isEmpty()) events.trySend(ListEvent.Failed("It had been sent or changed since, so it wasn't moved back."))
+                    if (restored.isEmpty()) events.trySend(ListEvent.Failed("It has been sent, changed or is about to be sent, so it wasn't moved back."))
                 }
                 .onFailure { fail("Couldn't undo", it) }
         }
