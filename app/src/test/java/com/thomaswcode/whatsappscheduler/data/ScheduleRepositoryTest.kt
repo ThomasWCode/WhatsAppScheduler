@@ -16,6 +16,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -73,6 +74,17 @@ class ScheduleRepositoryTest {
         assertEquals(oneOff.schedule, oneOff.held)
         assertEquals(Attention.MISSED, oneOff.held.attention)
         assertNull(oneOff.held.nextAtMillis)
+    }
+
+    @Test
+    fun anOccurrenceEditedAwayIsntMissed() = runTest {
+        val daily = saveDaily()
+        // Edited to another time between the queue looking at it and holding it.
+        repository.save(daily.copy(firstAtMillis = nine.plus(Duration.ofHours(8)).toEpochMilli()), ranAt)
+        assertNull(repository.recordMissed(daily.id, nine.toEpochMilli(), "missed by 180 min (phone off?)", "Mum", ranAt))
+        assertNull(repository.get(daily.id)!!.attention)
+        assertEquals(nine.plus(Duration.ofHours(8)).toEpochMilli(), repository.get(daily.id)!!.nextAtMillis)
+        assertTrue(repository.observeLogs().first().isEmpty())
     }
 
     @Test

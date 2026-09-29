@@ -22,7 +22,8 @@ interface SendStore {
     /**
      * Logs the occurrence due at [occurrenceAtMillis] as missed and holds it for the user (B09): a
      * one-off waits itself, with no next time; a series goes on to its next occurrence as usual, and
-     * the missed one is held as a one-off copy of its own. Null when the schedule has been deleted.
+     * the missed one is held as a one-off copy of its own. Null, and nothing recorded, when the schedule
+     * no longer has that occurrence pending (deleted, edited or moved since the queue looked).
      */
     suspend fun recordMissed(id: Long, occurrenceAtMillis: Long, detail: String, sentTo: String, ranAt: Instant): MissedRun?
 }
