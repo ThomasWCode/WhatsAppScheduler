@@ -44,6 +44,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
@@ -128,19 +129,22 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
 
     init {
         viewModelScope.launch {
-            // collectLatest: a newer query cancels a search still running for an older one.
-            snapshotFlow { query }.debounce(150).collectLatest { q -> search(q) }
+            // collectLatest: a newer query cancels a search still running for an older one. Numbers are
+            // read with the default country, so changing it in Settings searches again.
+            combine(snapshotFlow { query }, settings.map { it.defaultCountryIso }.distinctUntilChanged()) { q, iso -> q to iso }
+                .debounce(150)
+                .collectLatest { (q, iso) -> search(q, iso) }
         }
     }
 
-    private suspend fun search(q: String) {
+    private suspend fun search(q: String, countryIso: String) {
         contactsAllowed = container.contactSearch.hasPermission()
         if (q.isBlank()) {
             contactHits = emptyList()
             savedHits = emptyList()
             return
         }
-        val contacts = container.contactSearch.search(q, settings.value.defaultCountryIso)
+        val contacts = container.contactSearch.search(q, countryIso)
         val saved = container.recipients.search(q)
         // Only if the field still shows that query: a result for another one could add the wrong chat.
         if (q != query) return
@@ -238,7 +242,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
 
     fun contactsPermissionChanged() {
         contactsAllowed = container.contactSearch.hasPermission()
-        viewModelScope.launch { search(query) }
+        viewModelScope.launch { search(query, settings.value.defaultCountryIso) }
     }
 
     /** Adds [recipient] to the To field, unless it is already there; clears the search. */
@@ -259,7 +263,9 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
      * saved as a recipient is added as that recipient, so what was learned (Chat Lock) shows at once.
      */
     fun add(hit: ContactHit) {
-        val e164 = hit.e164
+        // Read with the country set now, not the one the results were found with: it may have changed
+        // in Settings since, and the search again may not be back yet.
+        val e164 = PhoneNormaliser.toE164(hit.number, settings.value.defaultCountryIso)
         if (e164 == null) {
             error = "${hit.number} isn't a number WhatsApp can open. Edit the contact, or type the number with its country code."
             return
