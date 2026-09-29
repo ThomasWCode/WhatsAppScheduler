@@ -287,14 +287,21 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
 
     fun contactsPermissionChanged() = search.permissionChanged()
 
-    /** Adds [recipient] to the To field, unless it is already there; clears the search. */
+    /**
+     * Adds [recipient] to the To field, unless it is already there; clears the search. A chat added
+     * clears the last problem, such as a refused number or "Choose who it's for.", as choosing a time
+     * does here and choosing a recipient does in the full editor.
+     */
     fun add(recipient: RecipientDraft) {
         if (saving) return
         when {
             draft.recipients.any { it.sameChatAs(recipient) } -> Unit
             draft.recipients.size >= ScheduleRepository.MAX_BATCH ->
                 error = container.plural(R.plurals.quick_max_recipients, ScheduleRepository.MAX_BATCH, ScheduleRepository.MAX_BATCH)
-            else -> draft = draft.copy(recipients = draft.recipients + recipient)
+            else -> {
+                draft = draft.copy(recipients = draft.recipients + recipient)
+                error = null
+            }
         }
         query = ""
     }
@@ -344,9 +351,13 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         }
     }
 
+    /** Takes [recipient] out of the To field; like [add], a change there clears the last problem ("at most 10 chats"). */
     fun remove(recipient: RecipientDraft) {
         if (saving) return
-        draft = draft.copy(recipients = draft.recipients.filterNot { it == recipient })
+        val left = draft.recipients.filterNot { it == recipient }
+        if (left.size == draft.recipients.size) return
+        draft = draft.copy(recipients = left)
+        error = null
     }
 
     /**
