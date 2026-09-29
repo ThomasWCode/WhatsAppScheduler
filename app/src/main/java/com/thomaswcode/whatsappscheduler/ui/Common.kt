@@ -16,7 +16,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import com.thomaswcode.whatsappscheduler.R
+import com.thomaswcode.whatsappscheduler.util.Texts
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -30,7 +33,7 @@ import kotlinx.coroutines.flow.flow
 fun BackBar(title: String, onBack: () -> Unit, actions: @Composable RowScope.() -> Unit = {}) {
     TopAppBar(
         title = { Text(title) },
-        navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") } },
+        navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back)) } },
         actions = actions,
     )
 }
@@ -88,4 +91,11 @@ fun Activity.authenticateThen(title: String, onFailure: (String) -> Unit = {}, o
                 onFailure(errString?.toString() ?: getString(R.string.auth_error_code, errorCode))
         },
     )
+}
+
+/** strings.xml as [Texts], for helpers that code outside composition shares; follows configuration changes. */
+@Composable
+fun rememberTexts(): Texts {
+    val resources = LocalResources.current
+    return remember(resources) { Texts.of(resources) }
 }

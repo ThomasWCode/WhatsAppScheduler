@@ -1,18 +1,27 @@
 package com.thomaswcode.whatsappscheduler.ui.quick
 
+import android.content.Context
 import androidx.compose.runtime.saveable.SaverScope
+import androidx.test.core.app.ApplicationProvider
 import com.thomaswcode.whatsappscheduler.data.RecipientDraft
 import com.thomaswcode.whatsappscheduler.data.db.Recipient
 import com.thomaswcode.whatsappscheduler.domain.TargetKind
 import com.thomaswcode.whatsappscheduler.domain.TimeChip
+import com.thomaswcode.whatsappscheduler.util.Texts
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+@RunWith(RobolectricTestRunner::class)
 class QuickDraftTest {
+
+    // The app's own resources, so what is said is checked word for word.
+    private val texts = Texts.of(ApplicationProvider.getApplicationContext<Context>().resources)
 
     private val dad = Recipient(id = 1, kind = TargetKind.CONTACT, displayName = "Dad", phoneE164 = "+447400123456")
     private val crew = Recipient(id = 2, kind = TargetKind.GROUP, displayName = "Work crew")
@@ -73,9 +82,9 @@ class QuickDraftTest {
         val work = RecipientDraft(TargetKind.GROUP, "Work crew")
         val quiz = RecipientDraft(TargetKind.GROUP, "Quiz night")
         val chess = RecipientDraft(TargetKind.GROUP, "Chess")
-        assertEquals("“Book club”", QuickScheduleViewModel.quoted(listOf(club)))
-        assertEquals("“Book club” and “Work crew”", QuickScheduleViewModel.quoted(listOf(club, work)))
-        assertEquals("“Book club”, “Work crew” and 2 more", QuickScheduleViewModel.quoted(listOf(club, work, quiz, chess)))
+        assertEquals("“Book club”", QuickScheduleViewModel.quoted(listOf(club), texts))
+        assertEquals("“Book club” and “Work crew”", QuickScheduleViewModel.quoted(listOf(club, work), texts))
+        assertEquals("“Book club”, “Work crew” and 2 more", QuickScheduleViewModel.quoted(listOf(club, work, quiz, chess), texts))
     }
 
     @Test

@@ -130,8 +130,8 @@ class AccessibilitySender(
      * The user has just tapped the button, so the phone is unlocked and nothing needs waking.
      */
     override suspend fun checkChat(name: String): ChatCheck {
-        val service = WaAccessibilityService.instance.value ?: return ChatCheck.NotChecked("auto-send isn't running")
-        val whatsapp = installedWhatsApp() ?: return ChatCheck.NotChecked("WhatsApp isn't installed")
+        val service = WaAccessibilityService.instance.value ?: return ChatCheck.NotChecked(ChatCheck.NotChecked.Why.SERVICE_OFF)
+        val whatsapp = installedWhatsApp() ?: return ChatCheck.NotChecked(ChatCheck.NotChecked.Why.NO_WHATSAPP)
         val settings = settingsStore.current()
         val t = settings.stepTimeoutMs
         val driver = UiDriver(service, log, t)

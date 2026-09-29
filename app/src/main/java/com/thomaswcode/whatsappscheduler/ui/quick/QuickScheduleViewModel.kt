@@ -30,6 +30,7 @@ import com.thomaswcode.whatsappscheduler.domain.TargetKind
 import com.thomaswcode.whatsappscheduler.domain.TimeChip
 import com.thomaswcode.whatsappscheduler.sending.accessibility.WaAccessibilityService
 import com.thomaswcode.whatsappscheduler.ui.minuteClock
+import com.thomaswcode.whatsappscheduler.util.Texts
 import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
@@ -453,7 +454,16 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
             // The step's own reason is in the automation log; here, what to do about it.
             is ChatCheck.NotFound -> container.text(R.string.quick_check_not_found, name)
             is ChatCheck.Failed -> container.text(R.string.quick_check_failed, name)
-            is ChatCheck.NotChecked -> container.text(R.string.quick_check_not_checked, name, result.reason)
+            is ChatCheck.NotChecked -> container.text(
+                when (result.why) {
+                    ChatCheck.NotChecked.Why.LOCKED -> R.string.quick_check_skipped_locked
+                    ChatCheck.NotChecked.Why.BY_NUMBER -> R.string.quick_check_skipped_by_number
+                    ChatCheck.NotChecked.Why.SENDING -> R.string.quick_check_skipped_sending
+                    ChatCheck.NotChecked.Why.SERVICE_OFF -> R.string.quick_check_skipped_service
+                    ChatCheck.NotChecked.Why.NO_WHATSAPP -> R.string.quick_check_skipped_whatsapp
+                },
+                name,
+            )
         }
         events.trySend(QuickEvent.Checked(message))
         return outcome.result
@@ -530,7 +540,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
                 .onSuccess { change ->
                     val summary = container.text(
                         if (d.isEditing) R.string.quick_saved else R.string.quick_scheduled,
-                        names(d.recipients),
+                        names(d.recipients, container.texts),
                         FriendlyTime.dayAndTime(at, now, time),
                     )
                     pendingCheckOffers = checkOffers
@@ -572,7 +582,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
             saving = false
             outcome
                 .onSuccess {
-                    events.trySend(QuickEvent.Deleted(container.text(R.string.list_deleted, names(d.recipients))))
+                    events.trySend(QuickEvent.Deleted(container.text(R.string.list_deleted, names(d.recipients, container.texts))))
                     draft = QuickDraft()
                     visible = false
                 }
@@ -623,23 +633,23 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         fun looksLikeNumber(text: String): Boolean =
             text.count(Char::isDigit) >= 5 && text.all { it.isDigit() || it in "+ -()." }
 
-        /** "Mum", "Mum and Dad", "Mum, Dad +1". */
         /** “Book club”; “Book club” and “Work crew”; or “Book club”, “Work crew” and 2 more. */
-        fun quoted(chats: List<RecipientDraft>): String {
-            val q = chats.map { "“${it.chatName}”" }
+        fun quoted(chats: List<RecipientDraft>, texts: Texts): String {
+            val q = chats.map { texts.get(R.string.quoted_name, it.chatName) }
             return when (q.size) {
                 0 -> ""
                 1 -> q[0]
-                2 -> "${q[0]} and ${q[1]}"
-                else -> "${q[0]}, ${q[1]} and ${q.size - 2} more"
+                2 -> texts.get(R.string.names_two, q[0], q[1])
+                else -> texts.plural(R.plurals.names_more, q.size - 2, q[0], q[1], q.size - 2)
             }
         }
 
-        fun names(recipients: List<RecipientDraft>): String = when (recipients.size) {
+        /** "Mum", "Mum and Dad", "Mum, Dad +1". */
+        fun names(recipients: List<RecipientDraft>, texts: Texts): String = when (recipients.size) {
             0 -> ""
             1 -> recipients[0].displayName
-            2 -> "${recipients[0].displayName} and ${recipients[1].displayName}"
-            else -> "${recipients[0].displayName}, ${recipients[1].displayName} +${recipients.size - 2}"
+            2 -> texts.get(R.string.names_two, recipients[0].displayName, recipients[1].displayName)
+            else -> texts.get(R.string.names_plus, recipients[0].displayName, recipients[1].displayName, recipients.size - 2)
         }
     }
 }

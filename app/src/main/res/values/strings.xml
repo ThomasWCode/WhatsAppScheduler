@@ -104,7 +104,6 @@
     <string name="quick_check_found">Found “%1$s” in WhatsApp.</string>
     <string name="quick_check_not_found">Couldn\'t find “%1$s” in WhatsApp\'s search. Check the name is exactly as WhatsApp shows it.</string>
     <string name="quick_check_failed">Couldn\'t check “%1$s”: WhatsApp didn\'t respond as expected. Logs under Settings → Diagnostics say where.</string>
-    <string name="quick_check_not_checked">Didn\'t check “%1$s”: %2$s.</string>
     <string name="problem_choose_recipient">Choose who it\'s for.</string>
     <string name="problem_enter_message">Enter a message.</string>
     <string name="problem_choose_time">Choose when to send it.</string>
@@ -405,4 +404,40 @@
     <string name="fallback_copied_open">Message copied. Open \'%1$s\' and paste if it is not pre-filled.</string>
     <string name="fallback_clip_label">message</string>
     <string name="unlock_sending">Sending scheduled WhatsApp message…</string>
+
+    <!-- Joined names and the list's status lines -->
+    <string name="action_back">Back</string>
+    <string name="names_two">%1$s and %2$s</string>
+    <string name="names_plus">%1$s, %2$s +%3$d</string>
+    <plurals name="names_more">
+        <item quantity="one">%1$s, %2$s and %3$d more</item>
+        <item quantity="other">%1$s, %2$s and %3$d more</item>
+    </plurals>
+    <plurals name="names_at_least_more">
+        <item quantity="one">%1$s, %2$s and at least %3$d more</item>
+        <item quantity="other">%1$s, %2$s and at least %3$d more</item>
+    </plurals>
+    <string name="quoted_name">“%1$s”</string>
+    <string name="status_missed">Missed · %1$s</string>
+    <string name="status_failed">%1$s · %2$s</string>
+    <string name="status_couldnt_send">Couldn\'t send</string>
+    <string name="status_uncertain">May have been sent · %1$s: check the chat</string>
+    <string name="status_held">Not sent: choose a new time</string>
+    <string name="status_finished">Finished</string>
+    <string name="status_paused">Paused · %1$s</string>
+    <string name="status_with_relative">%1$s · %2$s</string>
+    <string name="status_moved_from">%1$s · moved from %2$s</string>
+    <string name="status_zone">%1$s (%2$s %3$s time)</string>
+    <string name="status_series_paused">%1$s · paused</string>
+    <string name="status_series_finished">%1$s · finished</string>
+    <string name="status_series_next">%1$s · next %2$s</string>
+    <string name="status_not_sent_due">Not sent · was due %1$s</string>
+    <string name="status_sent_dry_run">Sent %1$s (dry run)</string>
+    <string name="status_sent">Sent %1$s</string>
+    <string name="status_finished_at">Finished %1$s</string>
+    <string name="quick_check_skipped_locked">Didn\'t check “%1$s”: it\'s behind Chat Lock now.</string>
+    <string name="quick_check_skipped_by_number">Didn\'t check “%1$s”: it\'s reached by its number now.</string>
+    <string name="quick_check_skipped_sending">Didn\'t check “%1$s”: a message is being sent.</string>
+    <string name="quick_check_skipped_service">Didn\'t check “%1$s”: auto-send isn\'t running.</string>
+    <string name="quick_check_skipped_whatsapp">Didn\'t check “%1$s”: WhatsApp isn\'t installed.</string>
 </resources>

@@ -39,7 +39,7 @@ import org.robolectric.annotation.Config
 class AttentionActionsTest {
 
     // What the actions say, read from the app's resources: the test checks the wording.
-    private val texts = Texts { id, args -> ApplicationProvider.getApplicationContext<Context>().getString(id, *args) }
+    private val texts = Texts.of(ApplicationProvider.getApplicationContext<Context>().resources)
 
     private lateinit var db: AppDatabase
     private lateinit var schedules: ScheduleRepository
