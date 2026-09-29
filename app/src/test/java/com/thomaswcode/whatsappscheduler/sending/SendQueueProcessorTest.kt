@@ -324,6 +324,15 @@ class SendQueueProcessorTest {
         assertEquals(listOf(snoozedTo, snoozedTo), listOf(store.row(1).nextAtMillis, store.row(2).nextAtMillis))
     }
 
+    @Test
+    fun anAlarmThatFailsDoesntStopAPostponedBatch() = runTest {
+        store.put(oneOff(1).copy(batchId = "b"))
+        store.put(oneOff(2).copy(batchId = "b", targetName = "Dad"))
+        alarms.failing = true
+        processor(FakeSender(), headsUp = FakeHeadsUp(choice = HeadsUpChoice.POSTPONE)).run { enqueue(scheduled(1)); enqueue(scheduled(2)); drain() }
+        assertEquals(listOf(listOf(1L, 2L)), notifier.heldGroups)
+    }
+
     // B02 and retries
 
     @Test
@@ -542,7 +551,9 @@ class SendQueueProcessorTest {
 
     private class FakeAlarms : ScheduleAlarms {
         val synced = mutableListOf<Schedule>()
+        var failing = false
         override fun sync(schedule: Schedule) {
+            check(!failing) { "alarm rejected" }
             synced += schedule
         }
     }
