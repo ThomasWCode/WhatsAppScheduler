@@ -33,19 +33,17 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        // Only on a fresh start: a recreate (rotation, dark mode switching at sunset) doesn't need it
-        // again. It runs in the app's scope, not this activity's, so a recreate while it is still
-        // working doesn't cancel the one recovery pass the fresh start was owed.
-        if (savedInstanceState == null) {
-            container.appScope.launch {
-                runCatching { container.alarmScheduler.rescheduleAll() }.onFailure { container.log.error("rescheduleAll failed", it) }
-                // Once: schedules from before recipients existed become recents, keeping their Chat Lock
-                // flag. Usually done already when the app started; this waits for it if not.
-                runCatching { container.linkRecipientsOnce() }.onFailure { container.log.error("Linking recipients failed", it) }
-                // Failures from before schema v2 show under Needs attention too.
-                runCatching { container.repository.typeLegacyOutcomes() }.onFailure { container.log.error("Typing old outcomes failed", it) }
-                runCatching { container.housekeeping.run() }.onFailure { container.log.error("Housekeeping failed", it) }
-            }
+        // Only on a fresh start: a recreate (rotation, dark mode switching at sunset) doesn't need it again.
+        if (savedInstanceState == null) container.recoverOnOpen()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Each time the app comes back, not only on a fresh start: with no sends in between (the other
+        // time it runs), sent messages past the period set in Settings would otherwise stay.
+        val container = SchedulerApp.container(this)
+        container.appScope.launch {
+            runCatching { container.housekeeping.run() }.onFailure { container.log.error("Housekeeping failed", it) }
         }
     }
 

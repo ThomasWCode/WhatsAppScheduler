@@ -32,8 +32,10 @@ class QuickDraftTest {
             message = "Stand-up moved to 10",
             time = TimeChoice.Chip(TimeChip.Kind.entries.first()),
             editingIds = listOf(7L, 8L),
+            editingRuns = listOf(-1L, 1_790_000_000_000L),
         )
         assertEquals(draft, roundTrip(draft))
+        assertEquals(mapOf(7L to null, 8L to 1_790_000_000_000L), draft.lastRunsSeen())
         val exact = QuickDraft(message = "Hi", time = TimeChoice.Exact(1_790_000_000_000L))
         assertEquals(exact, roundTrip(exact))
         assertEquals(QuickDraft(), roundTrip(QuickDraft()))
@@ -54,11 +56,23 @@ class QuickDraftTest {
         // A contact picked from search is the saved recipient with that number.
         assertTrue(RecipientDraft(TargetKind.CONTACT, "Dad (mobile)", phoneE164 = "+447400123456").sameChatAs(dad.toDraft()))
         assertTrue(RecipientDraft(TargetKind.GROUP, "Work crew").sameChatAs(crew.toDraft()))
-        assertFalse(RecipientDraft(TargetKind.CONTACT, "Work crew").sameChatAs(crew.toDraft()))
+        // A contact without a number is found by name too: the same name is the same chat.
+        assertTrue(RecipientDraft(TargetKind.CONTACT, "Work crew").sameChatAs(crew.toDraft()))
         // Typed in another case: WhatsApp's search would still open the same group.
         assertTrue(RecipientDraft(TargetKind.GROUP, " work Crew").sameChatAs(crew.toDraft()))
         // By number and by name are different ways to reach a chat, so they are not assumed equal.
         assertFalse(RecipientDraft(TargetKind.CONTACT, "Dad").sameChatAs(dad.toDraft()))
+    }
+
+    @Test
+    fun chatsOfferedACheckAreNamed() {
+        val club = RecipientDraft(TargetKind.GROUP, "Book club")
+        val work = RecipientDraft(TargetKind.GROUP, "Work crew")
+        val quiz = RecipientDraft(TargetKind.GROUP, "Quiz night")
+        val chess = RecipientDraft(TargetKind.GROUP, "Chess")
+        assertEquals("“Book club”", QuickScheduleViewModel.quoted(listOf(club)))
+        assertEquals("“Book club” and “Work crew”", QuickScheduleViewModel.quoted(listOf(club, work)))
+        assertEquals("“Book club”, “Work crew” and 2 more", QuickScheduleViewModel.quoted(listOf(club, work, quiz, chess)))
     }
 
     @Test

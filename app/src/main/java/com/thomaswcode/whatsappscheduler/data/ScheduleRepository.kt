@@ -24,6 +24,9 @@ data class Postponed(val before: Schedule, val after: Schedule)
 /** What [ScheduleRepository.deleteWithHistory] removed, kept so Undo can put it back. */
 data class DeletedSchedules(val schedules: List<Schedule>, val logs: List<SendLog>)
 
+/** [members] went out, or may have, while their edit was open, so the edit wasn't saved (see saveBatch). */
+class SentWhileEditing(val members: List<Schedule>) : IllegalStateException("sent while it was being edited")
+
 class ScheduleRepository(private val db: AppDatabase) : SendStore {
 
     private val schedules = db.scheduleDao()
@@ -195,14 +198,26 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
      * so retries, failures and history stay per recipient. Members share a batchId so the list shows
      * them as one row and edits apply to all. [members] are the batch as it was (empty when new):
      * [template]'s message and time go to every member, a member whose recipient was removed is
-     * deleted, and an added recipient gets a new member.
+     * deleted, and an added recipient gets a new member. [lastRunsSeen] is each member's last run when
+     * the edit began: one that has since gone out, or may have, would be armed again by saving it and
+     * send twice, so nothing is saved and [SentWhileEditing] says which.
      */
-    suspend fun saveBatch(template: Schedule, recipients: List<Recipient>, members: List<Schedule> = emptyList(), now: Instant = Instant.now()): BatchChange =
+    suspend fun saveBatch(
+        template: Schedule,
+        recipients: List<Recipient>,
+        members: List<Schedule> = emptyList(),
+        now: Instant = Instant.now(),
+        lastRunsSeen: Map<Long, Long?> = emptyMap(),
+    ): BatchChange =
         db.withTransaction {
             require(recipients.isNotEmpty() && recipients.size <= MAX_BATCH) { "A message goes to 1–$MAX_BATCH recipients" }
             // The rows as they are now: a member may have finished sending since the caller read it, and
             // saving that stale copy would overwrite the run it just recorded (B08).
             val current = members.mapNotNull { schedules.getById(it.id) }
+            val sentSince = current.filter { m ->
+                m.id in lastRunsSeen && m.lastRunAtMillis != lastRunsSeen[m.id] && (m.lastStatus == SendStatus.SENT || m.lastStatus == SendStatus.UNCERTAIN)
+            }
+            if (sentSince.isNotEmpty()) throw SentWhileEditing(sentSince)
             // Part of a batch edited on its own (the list shows a batch split by outcome) gets a batch of
             // its own; keeping the old id would show it again with members it no longer matches.
             val original = current.firstNotNullOfOrNull { it.batchId }

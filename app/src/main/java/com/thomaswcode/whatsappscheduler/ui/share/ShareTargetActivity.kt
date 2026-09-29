@@ -6,6 +6,9 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,6 +33,8 @@ class ShareTargetActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val container = SchedulerApp.container(this)
+        // The app may be opened only this way after being force-stopped, so this recovers alarms too.
+        if (savedInstanceState == null) container.recoverOnOpen()
         val shared = sharedText(intent)
         setContent {
             AppTheme {
@@ -45,22 +50,43 @@ class ShareTargetActivity : ComponentActivity() {
                 LaunchedEffect(vm) {
                     vm.eventFlow.collect { event ->
                         when (event) {
-                            is QuickEvent.Scheduled -> Toast.makeText(this@ShareTargetActivity, event.summary, Toast.LENGTH_LONG).show()
+                            is QuickEvent.Scheduled -> {
+                                Toast.makeText(this@ShareTargetActivity, event.summary, Toast.LENGTH_LONG).show()
+                                // A new chat found by name is offered its check here, as there is no list to offer it under.
+                                if (vm.pendingCheckOffers.isNotEmpty()) return@collect
+                            }
                             is QuickEvent.Deleted -> Unit
                             // Shown over whatever is in front; the sheet stays open.
                             is QuickEvent.Checked -> {
                                 Toast.makeText(this@ShareTargetActivity, event.message, Toast.LENGTH_LONG).show()
                                 return@collect
                             }
+                            // Only the offered checks close this, after their results: one started from the open
+                            // sheet leaves it open.
+                            QuickEvent.ChecksDone -> if (vm.visible) return@collect
                             // Repeating schedules are made in the app's full editor.
                             is QuickEvent.OpenFullEditor -> startActivity(MainActivity.intent(this@ShareTargetActivity, Routes.repeat(event)))
                         }
                         finish()
                     }
                 }
-                // Swiped away: there is nothing else here, so go back to the app that shared.
-                LaunchedEffect(opened, vm.visible) { if (opened && !vm.visible) finish() }
+                // Swiped away, or scheduled with nothing to offer or check: there is nothing else here, so go
+                // back to the app that shared. Whether checks run is the view model's, so it can't outlive
+                // them, as a saved flag would after the process was killed mid-check.
+                LaunchedEffect(opened, vm.visible, vm.pendingCheckOffers, vm.checksRunning) {
+                    if (opened && !vm.visible && vm.pendingCheckOffers.isEmpty() && !vm.checksRunning) finish()
+                }
                 QuickScheduleSheet(vm)
+                val offers = vm.pendingCheckOffers
+                if (offers.isNotEmpty() && !vm.visible) {
+                    AlertDialog(
+                        onDismissRequest = { vm.answerCheckOffer(check = false) },
+                        title = { Text("Check in WhatsApp?") },
+                        text = { Text("Check ${QuickScheduleViewModel.quoted(offers)} in WhatsApp now? WhatsApp's search is run for the name while you watch; nothing is typed.") },
+                        confirmButton = { TextButton(onClick = { vm.answerCheckOffer(check = true) }) { Text("Check") } },
+                        dismissButton = { TextButton(onClick = { vm.answerCheckOffer(check = false) }) { Text("Not now") } },
+                    )
+                }
             }
         }
     }

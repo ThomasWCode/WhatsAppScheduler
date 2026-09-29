@@ -52,7 +52,7 @@ class ChatCheckerTest {
     fun aChatThatIsFoundIsMarkedChecked() = runTest {
         val crew = recipients.resolve(RecipientDraft(TargetKind.GROUP, "Work crew"))
         val checker = ChatChecker({ ChatCheck.Found }, Mutex(), recipients, clock)
-        assertEquals(CheckOutcome(ChatCheck.Found, crew.id), checker.check(RecipientDraft(TargetKind.GROUP, "Work crew", recipientId = crew.id)))
+        assertEquals(CheckOutcome(ChatCheck.Found, crew.id, "Work crew"), checker.check(RecipientDraft(TargetKind.GROUP, "Work crew", recipientId = crew.id)))
         assertEquals(at.toEpochMilli(), recipients.get(crew.id)!!.verifiedAtMillis)
     }
 
@@ -72,6 +72,42 @@ class ChatCheckerTest {
         assertTrue(checker.check(RecipientDraft(TargetKind.GROUP, "Work crew", recipientId = crew.id)).result is ChatCheck.NotFound)
         // A name that isn't found isn't stored either.
         assertNull(ChatChecker({ ChatCheck.NotFound("no") }, Mutex(), recipients, clock).check(RecipientDraft(TargetKind.GROUP, "Nowhere")).recipientId)
+        assertNull(recipients.get(crew.id)!!.verifiedAtMillis)
+    }
+
+    @Test
+    fun aDefiniteMissTakesAnEarlierTickAway() = runTest {
+        val crew = recipients.resolve(RecipientDraft(TargetKind.GROUP, "Work crew"))
+        recipients.markVerified(crew.id, at.toEpochMilli())
+        val draft = RecipientDraft(TargetKind.GROUP, "Work crew", recipientId = crew.id)
+        // WhatsApp failed: that says nothing about the chat, so the tick stays.
+        ChatChecker({ ChatCheck.Failed("timed out") }, Mutex(), recipients, clock).check(draft)
+        assertEquals(at.toEpochMilli(), recipients.get(crew.id)!!.verifiedAtMillis)
+        // Searched for and not there: it goes.
+        ChatChecker({ ChatCheck.NotFound("No chat named 'Work crew'") }, Mutex(), recipients, clock).check(draft)
+        assertNull(recipients.get(crew.id)!!.verifiedAtMillis)
+    }
+
+    @Test
+    fun anOfferMadeBeforeARenameChecksTheNameAsItIsNow() = runTest {
+        val crew = recipients.resolve(RecipientDraft(TargetKind.GROUP, "Work crew"))
+        val offer = RecipientDraft(TargetKind.GROUP, "Work crew", recipientId = crew.id)
+        recipients.updateDetails(recipients.get(crew.id)!!.copy(whatsappName = "Work crew 2026"))
+        var searched: String? = null
+        val outcome = ChatChecker({ name -> searched = name; ChatCheck.Found }, Mutex(), recipients, clock).check(offer)
+        assertEquals("Work crew 2026", searched)
+        assertEquals("Work crew 2026", outcome.name)
+        assertEquals(at.toEpochMilli(), recipients.get(crew.id)!!.verifiedAtMillis)
+    }
+
+    @Test
+    fun aRenameDuringTheCheckGetsNoTick() = runTest {
+        val crew = recipients.resolve(RecipientDraft(TargetKind.GROUP, "Work crew"))
+        val checker = ChatChecker({
+            recipients.updateDetails(recipients.get(crew.id)!!.copy(whatsappName = "Book club"))
+            ChatCheck.Found
+        }, Mutex(), recipients, clock)
+        checker.check(RecipientDraft(TargetKind.GROUP, "Work crew", recipientId = crew.id))
         assertNull(recipients.get(crew.id)!!.verifiedAtMillis)
     }
 

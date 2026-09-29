@@ -15,6 +15,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.thomaswcode.whatsappscheduler.AppContainer
 import com.thomaswcode.whatsappscheduler.data.RecipientDraft
 import com.thomaswcode.whatsappscheduler.data.ScheduleRepository
+import com.thomaswcode.whatsappscheduler.data.SentWhileEditing
 import com.thomaswcode.whatsappscheduler.data.contacts.ContactHit
 import com.thomaswcode.whatsappscheduler.data.db.Recipient
 import com.thomaswcode.whatsappscheduler.data.db.Schedule
@@ -36,6 +37,9 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
+import com.thomaswcode.whatsappscheduler.sending.CheckOutcome
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -44,6 +48,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -54,13 +59,16 @@ import kotlinx.coroutines.withContext
 /** Something the screen hosting the sheet should show or do once. */
 sealed interface QuickEvent {
     /**
-     * [createdIds] is set for a new message, which can be undone by deleting them. [checkOffer] is a
-     * chat found by name that was new just now, offered "Check this chat now" once (features F4).
+     * [createdIds] is set for a new message, which can be undone by deleting them. [checkOffers] are the
+     * chats found by name that were new just now, offered "Check this chat now" once (features F4).
      */
-    data class Scheduled(val summary: String, val createdIds: List<Long>?, val checkOffer: RecipientDraft? = null) : QuickEvent
+    data class Scheduled(val summary: String, val createdIds: List<Long>?, val checkOffers: List<RecipientDraft> = emptyList()) : QuickEvent
 
     /** What "Check this chat now" found. */
     data class Checked(val message: String) : QuickEvent
+
+    /** The checks started together have all finished, after their [Checked] results. */
+    data object ChecksDone : QuickEvent
     data class Deleted(val summary: String) : QuickEvent
 
     /** "Repeat…": continue in the full editor with this recipient, message and time. */
@@ -127,19 +135,22 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
 
     init {
         viewModelScope.launch {
-            // collectLatest: a newer query cancels a search still running for an older one.
-            snapshotFlow { query }.debounce(150).collectLatest { q -> search(q) }
+            // collectLatest: a newer query cancels a search still running for an older one. Numbers are
+            // read with the default country, so changing it in Settings searches again.
+            combine(snapshotFlow { query }, settings.map { it.defaultCountryIso }.distinctUntilChanged()) { q, iso -> q to iso }
+                .debounce(150)
+                .collectLatest { (q, iso) -> search(q, iso) }
         }
     }
 
-    private suspend fun search(q: String) {
+    private suspend fun search(q: String, countryIso: String) {
         contactsAllowed = container.contactSearch.hasPermission()
         if (q.isBlank()) {
             contactHits = emptyList()
             savedHits = emptyList()
             return
         }
-        val contacts = container.contactSearch.search(q, settings.value.defaultCountryIso)
+        val contacts = container.contactSearch.search(q, countryIso)
         val saved = container.recipients.search(q)
         // Only if the field still shows that query: a result for another one could add the wrong chat.
         if (q != query) return
@@ -157,9 +168,32 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         null -> null
     }
 
+    /**
+     * The check offer (features F4) from the last message scheduled, until it is answered. A host that
+     * closes with the sheet, the Share target, asks it itself: it is set as the sheet closes, so it is
+     * there before that host could finish. The app's list offers it under the Scheduled snackbar instead.
+     */
+    var pendingCheckOffers by mutableStateOf<List<RecipientDraft>>(emptyList())
+        private set
+
+    /** How many check runs started here are still going: they outlive the sheet, but not the process. */
+    private val runningChecks = AtomicInteger()
+
+    /** Checks started here are running (features F4), so a host that closes with the sheet can wait for them. */
+    var checksRunning by mutableStateOf(false)
+        private set
+
+    /** Checks the offered chats, or not; either way the offer is answered. */
+    fun answerCheckOffer(check: Boolean) {
+        val chats = pendingCheckOffers
+        pendingCheckOffers = emptyList()
+        if (check && chats.isNotEmpty()) checkChats(chats)
+    }
+
     /** Shows the sheet for a new message, bringing back a draft left by swiping it away. */
     fun openNew() {
         if (draft.isEditing) draft = QuickDraft()
+        pendingCheckOffers = emptyList()
         error = null
         visible = true
     }
@@ -167,6 +201,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
     /** Text shared from another app; the sheet opens on the recipient. */
     fun openShared(text: String) {
         draft = QuickDraft(message = text)
+        pendingCheckOffers = emptyList()
         query = ""
         error = null
         visible = true
@@ -186,6 +221,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
                     message = schedule.message,
                     time = schedule.nextAtMillis?.let(TimeChoice::Exact),
                     editingIds = members.map { it.id },
+                    editingRuns = members.map { it.lastRunAtMillis ?: -1L },
                 ),
             )
         }
@@ -203,6 +239,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
 
     private fun show(newDraft: QuickDraft) {
         draft = newDraft
+        pendingCheckOffers = emptyList()
         query = ""
         error = null
         visible = true
@@ -212,6 +249,24 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
     private suspend fun recipientOf(schedule: Schedule): RecipientDraft =
         schedule.recipientId?.let { container.recipients.get(it) }?.toDraft()
             ?: RecipientDraft(schedule.targetKind, schedule.targetName, phoneE164 = schedule.phoneE164, isLocked = schedule.isLocked)
+
+    /**
+     * Members that went out (or may have) while the sheet was open: nothing was saved, and they leave
+     * the edit, chips and all, so saving again changes only what is still to go. Sending it to them
+     * again is then a choice the user makes by adding them back.
+     */
+    private fun sentWhileEditing(sent: List<Schedule>) {
+        val ids = sent.map { it.id }.toSet()
+        val chats = sent.map { RecipientDraft(it.targetKind, it.targetName, phoneE164 = it.phoneE164, recipientId = it.recipientId) }
+        val kept = draft.editingIds.indices.filter { draft.editingIds[it] !in ids }
+        draft = draft.copy(
+            recipients = draft.recipients.filterNot { chip -> chats.any { chip.sameChatAs(it) } },
+            editingIds = kept.map { draft.editingIds[it] },
+            editingRuns = if (draft.editingRuns.size == draft.editingIds.size) kept.map { draft.editingRuns[it] } else emptyList(),
+        )
+        error = "It went to ${sent.joinToString { it.targetName }} while you were editing, so nothing was saved." +
+            if (draft.isEditing) " Save again to change the rest." else ""
+    }
 
     /** Swiping the sheet away keeps the draft for the next time it opens. */
     fun hide() {
@@ -253,7 +308,7 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
 
     fun contactsPermissionChanged() {
         contactsAllowed = container.contactSearch.hasPermission()
-        viewModelScope.launch { search(query) }
+        viewModelScope.launch { search(query, settings.value.defaultCountryIso) }
     }
 
     /** Adds [recipient] to the To field, unless it is already there; clears the search. */
@@ -274,7 +329,9 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
      * saved as a recipient is added as that recipient, so what was learned (Chat Lock) shows at once.
      */
     fun add(hit: ContactHit) {
-        val e164 = hit.e164
+        // Read with the country set now, not the one the results were found with: it may have changed
+        // in Settings since, and the search again may not be back yet.
+        val e164 = PhoneNormaliser.toE164(hit.number, settings.value.defaultCountryIso)
         if (e164 == null) {
             error = "${hit.number} isn't a number WhatsApp can open. Edit the contact, or type the number with its country code."
             return
@@ -396,23 +453,55 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
      * "Check this chat now" (features F4) for a chat found by name: WhatsApp's search is run for it
      * while the user watches, nothing typed. It outlives this screen, which WhatsApp covers meanwhile.
      */
-    fun checkChat(recipient: RecipientDraft) {
-        val name = recipient.chatName
+    fun checkChat(recipient: RecipientDraft) = checkChats(listOf(recipient))
+
+    /**
+     * [checkChat] for each of [chats] in turn. A name that isn't found says nothing about the next one,
+     * but a check that couldn't run, or that WhatsApp failed, would most likely go the same way again,
+     * so the rest are left. [QuickEvent.ChecksDone] follows the results.
+     */
+    fun checkChats(chats: List<RecipientDraft>) {
+        checksRunning = runningChecks.incrementAndGet() > 0
         container.appScope.launch {
-            val outcome = container.chatChecker.check(recipient)
-            // A chip for a name typed but not saved is linked to the recipient the check stored.
-            if (recipient.recipientId == null && outcome.recipientId != null && !saving) {
-                draft = draft.copy(recipients = draft.recipients.map { if (it == recipient) it.copy(recipientId = outcome.recipientId) else it })
+            try {
+                for (recipient in chats) {
+                    val result = checkOne(recipient)
+                    if (result is ChatCheck.NotChecked || result is ChatCheck.Failed) break
+                }
+            } finally {
+                events.trySend(QuickEvent.ChecksDone)
+                checksRunning = runningChecks.decrementAndGet() > 0
             }
-            val message = when (val result = outcome.result) {
-                ChatCheck.Found -> "Found “$name” in WhatsApp."
-                // The step's own reason is in the automation log; here, what to do about it.
-                is ChatCheck.NotFound -> "Couldn't find “$name” in WhatsApp's search. Check the name is exactly as WhatsApp shows it."
-                is ChatCheck.Failed -> "Couldn't check “$name”: WhatsApp didn't respond as expected. Logs under Settings → Diagnostics say where."
-                is ChatCheck.NotChecked -> "Didn't check “$name”: ${result.reason}."
-            }
-            events.trySend(QuickEvent.Checked(message))
         }
+    }
+
+    /** Checks [recipient] and reports what it found. */
+    private suspend fun checkOne(recipient: RecipientDraft): ChatCheck {
+        val outcome = try {
+            container.chatChecker.check(recipient)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Anything the steps don't turn into a result, such as a node gone while WhatsApp changed
+            // windows, or the database: a check that failed, rather than the app crashing.
+            container.log.error("Checking a chat failed", e)
+            CheckOutcome(ChatCheck.Failed(e.message ?: e.javaClass.simpleName), recipient.recipientId, recipient.chatName)
+        }
+        // The name as searched: the chat's own, which may have been edited since this was offered.
+        val name = outcome.name
+        // A chip for a name typed but not saved is linked to the recipient the check stored.
+        if (recipient.recipientId == null && outcome.recipientId != null && !saving) {
+            draft = draft.copy(recipients = draft.recipients.map { if (it == recipient) it.copy(recipientId = outcome.recipientId) else it })
+        }
+        val message = when (val result = outcome.result) {
+            ChatCheck.Found -> "Found “$name” in WhatsApp."
+            // The step's own reason is in the automation log; here, what to do about it.
+            is ChatCheck.NotFound -> "Couldn't find “$name” in WhatsApp's search. Check the name is exactly as WhatsApp shows it."
+            is ChatCheck.Failed -> "Couldn't check “$name”: WhatsApp didn't respond as expected. Logs under Settings → Diagnostics say where."
+            is ChatCheck.NotChecked -> "Didn't check “$name”: ${result.reason}."
+        }
+        events.trySend(QuickEvent.Checked(message))
+        return outcome.result
     }
 
     /** When the chat was last found by a check (features F4), whether or not it is a recent. */
@@ -441,25 +530,26 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
         saving = true
         viewModelScope.launch {
             var committed = false
-            var checkOffer: RecipientDraft? = null
+            var checkOffers: List<RecipientDraft> = emptyList()
             // Not cancelled if the sheet or screen goes away mid-save, which would strand rows without alarms.
             val outcome = withContext(NonCancellable) {
                 runCatching {
                     // Once per chat, however the recipients were stored, so one chat can't get the message twice.
-                    val resolved = d.recipients.map { container.recipients.resolve(it) }.distinctBy { it.phoneE164 ?: "${it.kind}:${it.chatName.trim().lowercase()}" }
+                    val resolved = d.recipients.map { container.recipients.resolve(it) }.distinctBy { it.phoneE164 ?: "name:${it.chatName.trim().lowercase()}" }
                     val members = d.editingIds.mapNotNull { container.repository.get(it) }
                     val template = Schedule(
                         message = d.message.trim(), targetKind = TargetKind.CONTACT, targetName = "", phoneE164 = null, isLocked = false,
                         firstAtMillis = at.toInstant().toEpochMilli(), zoneId = ZoneId.systemDefault().id,
                         recurrence = RecurrenceCodec.encode(Recurrence.Once), nextAtMillis = null,
                     )
-                    // Before markUsed below: a named chat never used before is one to offer checking.
-                    checkOffer = resolved.firstOrNull { it.phoneE164 == null && !it.isLocked && it.lastUsedAtMillis == 0L && it.verifiedAtMillis == null }?.toDraft()
-                    val change = container.repository.saveBatch(template, resolved, members)
+                    // Before markUsed below, which would make them look used: named chats never used before
+                    // are the ones to offer checking, every one of them.
+                    checkOffers = resolved.filter { it.phoneE164 == null && !it.isLocked && it.lastUsedAtMillis == 0L && it.verifiedAtMillis == null }.map { it.toDraft() }
+                    val change = container.repository.saveBatch(template, resolved, members, lastRunsSeen = d.lastRunsSeen())
                     // The rows exist from here on: if arming them fails, Save again must update these rows
                     // rather than add a second batch, which would send the message twice.
                     committed = true
-                    draft = draft.copy(editingIds = change.saved.map { it.id })
+                    draft = draft.copy(editingIds = change.saved.map { it.id }, editingRuns = change.saved.map { it.lastRunAtMillis ?: -1L })
                     // Removed members first, each on its own: their rows are gone, so a retry couldn't find
                     // them again, and a Tap to send left behind would offer the old message to them.
                     change.deleted.forEach { removed ->
@@ -483,12 +573,17 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
             outcome
                 .onSuccess { change ->
                     val summary = (if (d.isEditing) "Saved: " else "Scheduled: ") + names(d.recipients) + " · " + FriendlyTime.dayAndTime(at, now)
-                    events.trySend(QuickEvent.Scheduled(summary, change.saved.map { it.id }.takeUnless { d.isEditing }, checkOffer))
+                    pendingCheckOffers = checkOffers
+                    events.trySend(QuickEvent.Scheduled(summary, change.saved.map { it.id }.takeUnless { d.isEditing }, checkOffers))
                     draft = QuickDraft()
                     query = ""
                     visible = false
                 }
                 .onFailure {
+                    if (it is SentWhileEditing) {
+                        sentWhileEditing(it.members)
+                        return@onFailure
+                    }
                     container.log.error("Quick schedule failed", it)
                     val reason = it.message ?: it.javaClass.simpleName
                     error = if (committed) "Saved, but its alarm couldn't be set ($reason). Tap Save to try again." else "Couldn't save ($reason). Try again."
@@ -569,6 +664,17 @@ class QuickScheduleViewModel(private val container: AppContainer, handle: SavedS
             text.count(Char::isDigit) >= 5 && text.all { it.isDigit() || it in "+ -()." }
 
         /** "Mum", "Mum and Dad", "Mum, Dad +1". */
+        /** “Book club”; “Book club” and “Work crew”; or “Book club”, “Work crew” and 2 more. */
+        fun quoted(chats: List<RecipientDraft>): String {
+            val q = chats.map { "“${it.chatName}”" }
+            return when (q.size) {
+                0 -> ""
+                1 -> q[0]
+                2 -> "${q[0]} and ${q[1]}"
+                else -> "${q[0]}, ${q[1]} and ${q.size - 2} more"
+            }
+        }
+
         fun names(recipients: List<RecipientDraft>): String = when (recipients.size) {
             0 -> ""
             1 -> recipients[0].displayName
