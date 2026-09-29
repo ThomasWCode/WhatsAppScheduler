@@ -67,13 +67,17 @@ class AttentionActions(
      * Postpone… from its picker: the one-off as it was when the picker opened moves to [at] and is armed
      * then. Refused if it has been sent or changed since, or for a time less than a minute ahead.
      */
-    suspend fun postpone(seen: Schedule, at: Instant): String? {
+    suspend fun postpone(seen: Schedule, at: Instant): String? = postpone(listOf(seen), at)
+
+    /** [postpone] for several held together, e.g. a batch its countdown held: all of them, or none. */
+    suspend fun postpone(seen: List<Schedule>, at: Instant): String? {
+        if (seen.isEmpty()) return "It has been deleted."
         if (!at.isAfter(clock.instant().plusSeconds(59))) return "Pick a time at least a minute from now."
         // Checked and moved while no send can be taking the row, as for Discard: a send queued just before
         // is refused here, and one after reads the moved row, no longer the occurrence it was for.
         val moved = admission.withLock {
-            if (sendState().isBusy(seen.id)) return "It's being sent now, so it wasn't moved."
-            repository.postponeAll(listOf(seen), at).orEmpty()
+            if (seen.any { sendState().isBusy(it.id) }) return "It's being sent now, so it wasn't moved."
+            repository.postponeAll(seen, at).orEmpty()
         }
         if (moved.isEmpty()) return "It had just been sent or changed, so it wasn't moved."
         var armed = true

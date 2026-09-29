@@ -27,10 +27,11 @@ interface SendNotifier {
     fun missed(schedule: Schedule, occurrenceAtMillis: Long)
 
     /**
-     * Held until the user picks a time (Postpone… on the countdown, features F1): the Postpone picker
-     * opens for it, and "Not sent: choose a new time" stays if the picker is dismissed.
+     * Held until the user picks a time (Postpone… on the countdown, features F1): one Postpone picker
+     * opens for all of [schedules] (a batch shares its countdown), and each keeps "Not sent: choose a
+     * new time" if the picker is dismissed.
      */
-    fun held(schedule: Schedule)
+    fun held(schedules: List<Schedule>)
 }
 
 /** Runs around each job. The service holds a partial wake lock sized to the job's worst case (B12). */
