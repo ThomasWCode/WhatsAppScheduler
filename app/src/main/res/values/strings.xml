@@ -299,4 +299,59 @@
     <string name="inspector_warning">A capture contains chat names and message previews: think before sharing it.</string>
     <string name="inspector_no_service">Accessibility service is not enabled.</string>
     <string name="inspector_no_capture">No capture yet.</string>
+
+    <!-- Setup checklist -->
+    <string name="setup_group_required">Required</string>
+    <string name="setup_group_required_blurb">Automatic sending doesn\'t work without these.</string>
+    <string name="setup_group_recommended">Recommended</string>
+    <string name="setup_group_recommended_blurb">Sending works without these, but can be late, or go wrong unnoticed.</string>
+    <string name="setup_group_manual">By hand</string>
+    <string name="setup_group_manual_blurb">The app can\'t check these: do them once.</string>
+    <string name="setup_open_settings">Open settings</string>
+    <string name="setup_open_app_info">Open app info</string>
+    <string name="setup_whatsapp_title">WhatsApp installed</string>
+    <string name="setup_whatsapp_why">The official app is what gets automated.</string>
+    <string name="setup_overlay_title">Display over other apps</string>
+    <string name="setup_overlay_why">Required to bring WhatsApp to the front from the background.</string>
+    <string name="setup_notifications_title">Notifications allowed</string>
+    <string name="setup_notifications_why">For the countdown before a send, and for telling you when one couldn\'t go.</string>
+    <string name="setup_fullscreen_title">Full-screen notifications allowed</string>
+    <string name="setup_fullscreen_why">The other way the app wakes a locked phone\'s screen, if the first doesn\'t work.</string>
+    <string name="setup_battery_title">Battery: unrestricted</string>
+    <string name="setup_battery_why">Stops Android and One UI from deferring the alarm or killing the service.</string>
+    <string name="setup_samsung_title">Samsung: add to \"Never sleeping apps\"</string>
+    <string name="setup_samsung_why">Settings → Battery → Background usage limits → Never sleeping apps → add WhatsApp Scheduler. Also keep WhatsApp out of \"Deep sleeping apps\".</string>
+    <string name="setup_pin_title">Lock-screen PIN stored</string>
+    <string name="setup_pin_why">Your lock must be a PIN or password (pattern is not supported). Store it under Settings. If One UI\'s Auto factory reset is on, keep the stored PIN up to date: the app stops after one rejected unlock, but a wrong PIN still costs attempts.</string>
+    <string name="setup_pin_why_no_lock">No secure lock detected: nothing to store.</string>
+    <string name="setup_walock_title">WhatsApp app lock off</string>
+    <string name="setup_walock_why">WhatsApp → Settings → Privacy → App lock must be off. Chat Lock on individual chats is fine.</string>
+    <string name="setup_accessibility_enabled_title">Accessibility service enabled</string>
+    <string name="setup_accessibility_why">Lets the app tap Send, type the PIN on the lock screen and navigate WhatsApp. Idle otherwise.</string>
+    <string name="setup_accessibility_running_title">Accessibility service running</string>
+    <string name="setup_accessibility_running_why">It\'s switched on but not running, which One UI can leave it as after an update or a crash. Turn it off and on again.</string>
+    <string name="setup_all_done">Everything required is done: messages can go by themselves.</string>
+    <plurals name="setup_missing">
+        <item quantity="one">%1$d required item is still to do before messages can go by themselves.</item>
+        <item quantity="other">%1$d required items are still to do before messages can go by themselves.</item>
+    </plurals>
+    <string name="setup_state_done">Done</string>
+    <string name="setup_state_to_do">To do</string>
+    <string name="setup_state_manual">Check by hand</string>
+
+    <!-- Health strip -->
+    <string name="action_fix">Fix</string>
+    <string name="action_install">Install</string>
+    <string name="action_turn_off">Turn off</string>
+    <string name="health_ready">Auto-send ready</string>
+    <string name="health_service_not_running">Auto-send is switched on but not running. Turn it off and on again.</string>
+    <string name="health_service_off">Auto-send is off: the accessibility service isn\'t enabled.</string>
+    <string name="health_whatsapp_missing">WhatsApp isn\'t installed.</string>
+    <string name="health_overlay">\"Display over other apps\" is off, so WhatsApp can\'t be brought to the front.</string>
+    <string name="health_no_pin">No lock-screen PIN is stored, so a locked phone can\'t be unlocked to send.</string>
+    <string name="health_test_mode_until_off">Test mode is on until you turn it off: messages are typed but not sent.</string>
+    <string name="health_test_mode_until">Test mode is on until %1$s: messages are typed but not sent.</string>
+    <string name="health_full_screen">Full-screen notifications are off, so a locked phone may not wake up to send.</string>
+    <string name="health_notifications">Notifications are blocked, so a failed send can\'t ask you to finish it.</string>
+    <string name="health_battery">Battery use is restricted, so the phone may delay or stop sends.</string>
 </resources>

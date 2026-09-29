@@ -9,6 +9,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.text.format.DateFormat
 import androidx.core.app.NotificationManagerCompat
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.data.settings.Settings as AppSettings
 import com.thomaswcode.whatsappscheduler.domain.PinBlock
 import com.thomaswcode.whatsappscheduler.sending.accessibility.Selectors
@@ -58,10 +59,12 @@ object HealthCheck {
         when {
             enabled && !serviceConnected -> items += HealthItem(
                 HealthProblem.SERVICE_NOT_RUNNING,
-                "Auto-send is switched on but not running. Turn it off and on again.",
-                "Fix", accessibility,
+                context.getString(R.string.health_service_not_running),
+                context.getString(R.string.action_fix), accessibility,
             )
-            !enabled -> items += HealthItem(HealthProblem.SERVICE_OFF, "Auto-send is off: the accessibility service isn't enabled.", "Fix", accessibility)
+            !enabled -> items += HealthItem(
+                HealthProblem.SERVICE_OFF, context.getString(R.string.health_service_off), context.getString(R.string.action_fix), accessibility,
+            )
         }
         @Suppress("DEPRECATION")
         val whatsappInstalled = listOf(Selectors.WHATSAPP, Selectors.WHATSAPP_BUSINESS).any {
@@ -69,51 +72,53 @@ object HealthCheck {
         }
         if (!whatsappInstalled) {
             items += HealthItem(
-                HealthProblem.WHATSAPP_MISSING, "WhatsApp isn't installed.",
-                "Install", Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=${Selectors.WHATSAPP}")),
+                HealthProblem.WHATSAPP_MISSING, context.getString(R.string.health_whatsapp_missing),
+                context.getString(R.string.action_install), Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=${Selectors.WHATSAPP}")),
             )
         }
         if (!Settings.canDrawOverlays(context)) {
             items += HealthItem(
                 HealthProblem.OVERLAY_DENIED,
-                "\"Display over other apps\" is off, so WhatsApp can't be brought to the front.",
-                "Fix", Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, pkgUri),
+                context.getString(R.string.health_overlay),
+                context.getString(R.string.action_fix), Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, pkgUri),
             )
         }
         if (pinBlock != null) {
-            items += HealthItem(HealthProblem.PIN_PAUSED, pinBlock.describe(is24Hour = DateFormat.is24HourFormat(context)), "Settings", null)
+            items += HealthItem(
+                HealthProblem.PIN_PAUSED, pinBlock.describe(is24Hour = DateFormat.is24HourFormat(context)), context.getString(R.string.settings_title), null,
+            )
         } else if (!hasPin && context.getSystemService(KeyguardManager::class.java).isDeviceSecure) {
-            items += HealthItem(HealthProblem.NO_PIN, "No lock-screen PIN is stored, so a locked phone can't be unlocked to send.", "Settings", null)
+            items += HealthItem(HealthProblem.NO_PIN, context.getString(R.string.health_no_pin), context.getString(R.string.settings_title), null)
         }
         if (dryRunUntilMillis != null) {
-            val until = if (dryRunUntilMillis == AppSettings.UNTIL_TURNED_OFF) {
-                "until you turn it off"
+            val message = if (dryRunUntilMillis == AppSettings.UNTIL_TURNED_OFF) {
+                context.getString(R.string.health_test_mode_until_off)
             } else {
-                "until " + android.text.format.DateFormat.getTimeFormat(context).format(java.util.Date(dryRunUntilMillis))
+                context.getString(R.string.health_test_mode_until, android.text.format.DateFormat.getTimeFormat(context).format(java.util.Date(dryRunUntilMillis)))
             }
-            items += HealthItem(HealthProblem.DRY_RUN, "Test mode is on $until: messages are typed but not sent.", "Turn off", null)
+            items += HealthItem(HealthProblem.DRY_RUN, message, context.getString(R.string.action_turn_off), null)
         }
         if (!context.getSystemService(NotificationManager::class.java).canUseFullScreenIntent()) {
             items += HealthItem(
                 HealthProblem.FULL_SCREEN_DENIED,
-                "Full-screen notifications are off, so a locked phone may not wake up to send.",
-                "Fix", Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, pkgUri),
+                context.getString(R.string.health_full_screen),
+                context.getString(R.string.action_fix), Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, pkgUri),
             )
         }
         // The app-level switch, which also reflects the notification permission.
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
             items += HealthItem(
                 HealthProblem.NOTIFICATIONS_BLOCKED,
-                "Notifications are blocked, so a failed send can't ask you to finish it.",
-                "Allow",
+                context.getString(R.string.health_notifications),
+                context.getString(R.string.action_allow),
                 Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
             )
         }
         if (!context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)) {
             items += HealthItem(
                 HealthProblem.BATTERY_RESTRICTED,
-                "Battery use is restricted, so the phone may delay or stop sends.",
-                "Fix",
+                context.getString(R.string.health_battery),
+                context.getString(R.string.action_fix),
                 Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, pkgUri),
             )
         }

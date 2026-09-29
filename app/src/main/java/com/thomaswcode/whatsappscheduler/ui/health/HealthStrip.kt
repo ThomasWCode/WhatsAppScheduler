@@ -25,9 +25,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import com.thomaswcode.whatsappscheduler.R
 import com.thomaswcode.whatsappscheduler.domain.PinBlock
 
 /**
@@ -90,7 +92,7 @@ fun HealthStrip(
                 modifier = Modifier.size(18.dp),
             )
             Text(
-                item?.message ?: "Auto-send ready",
+                item?.message ?: stringResource(R.string.health_ready),
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 12.dp),
             )
@@ -98,10 +100,14 @@ fun HealthStrip(
             when {
                 item == null -> Unit
                 fix != null -> TextButton(onClick = { runCatching { context.startActivity(Intent(fix).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }) {
-                    Text(item.fixLabel ?: "Fix")
+                    Text(item.fixLabel ?: stringResource(R.string.action_fix))
                 }
-                item.problem.fixedInAppSettings && onOpenSettings != null -> TextButton(onClick = onOpenSettings) { Text(item.fixLabel ?: "Settings") }
-                item.problem == HealthProblem.DRY_RUN && onTurnOffDryRun != null -> TextButton(onClick = onTurnOffDryRun) { Text(item.fixLabel ?: "Turn off") }
+                item.problem.fixedInAppSettings && onOpenSettings != null -> TextButton(onClick = onOpenSettings) {
+                    Text(item.fixLabel ?: stringResource(R.string.settings_title))
+                }
+                item.problem == HealthProblem.DRY_RUN && onTurnOffDryRun != null -> TextButton(onClick = onTurnOffDryRun) {
+                    Text(item.fixLabel ?: stringResource(R.string.action_turn_off))
+                }
             }
         }
     }
