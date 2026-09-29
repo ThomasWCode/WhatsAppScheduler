@@ -176,8 +176,19 @@ class PostponeAndHousekeepingTest {
         val fresh = listOf(mum, schedules.save(message().copy(targetName = "Sam"), now))
         val moved = schedules.postponeAll(fresh, tomorrowNine.plus(Duration.ofHours(2)))!!
         assertEquals(2, moved.size)
-        assertEquals(2, schedules.restoreAll(moved)!!.size)
+        assertEquals(2, schedules.restoreAll(moved, now = now)!!.size)
         assertEquals(tomorrowNine.toEpochMilli(), schedules.get(fresh[1].id)!!.nextAtMillis)
+    }
+
+    @Test
+    fun noUndoOnceTheMovedSendIsDue() = runTest {
+        val saved = schedules.save(message(), now)
+        val soon = now.plus(Duration.ofMinutes(2))
+        val moved = schedules.postponeAll(listOf(saved), soon)!!
+        // Its alarm could be picked up any moment: the move stays.
+        assertNull(schedules.restoreAll(moved, now = soon.minusSeconds(10)))
+        assertEquals(soon.toEpochMilli(), schedules.get(saved.id)!!.nextAtMillis)
+        assertEquals(1, schedules.restoreAll(moved, now = now)!!.size)
     }
 
     @Test

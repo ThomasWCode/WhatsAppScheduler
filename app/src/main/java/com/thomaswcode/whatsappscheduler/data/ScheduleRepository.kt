@@ -116,10 +116,16 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
         seen.map { postpone(it.id, at, seen = it) ?: error("row changed inside the transaction") }
     }
 
-    /** [restoreTiming] for a whole move, in one transaction: every row, or none (null) if any has changed since. */
-    suspend fun restoreAll(moved: List<Postponed>): List<Schedule>? = db.withTransaction {
+    /**
+     * [restoreTiming] for a whole move, in one transaction: every row, or none (null) if any has changed
+     * since, or if a moved time is within [UNDO_MARGIN] of [now]. An alarm never fires before its time, so
+     * then the moved send can't be picked up while the old time is being put back, which would lose the
+     * mark that lets that send use its occurrence up, and send it twice.
+     */
+    suspend fun restoreAll(moved: List<Postponed>, now: Instant = Instant.now()): List<Schedule>? = db.withTransaction {
         val stands = moved.all { m -> schedules.getById(m.after.id)?.let { it.nextAtMillis == m.after.nextAtMillis && it.lastRunAtMillis == m.after.lastRunAtMillis } == true }
-        if (!stands) return@withTransaction null
+        val farEnough = moved.all { m -> (m.after.nextAtMillis ?: Long.MAX_VALUE) > now.plus(UNDO_MARGIN).toEpochMilli() }
+        if (!stands || !farEnough) return@withTransaction null
         moved.map { restoreTiming(it) ?: error("row changed inside the transaction") }
     }
 
@@ -312,6 +318,9 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
         fun statusFromResult(result: String?): SendStatus? = result?.removePrefix("manual ")?.let { text ->
             SendStatus.entries.firstOrNull { text == it.name || text.startsWith(it.name + ":") }
         }
+
+        /** How far off a moved send must still be for Undo to put the old time back ([restoreAll]). */
+        val UNDO_MARGIN: java.time.Duration = java.time.Duration.ofSeconds(30)
 
         /** At most this many recipients per message, so one mistake can't turn into a flood (§10). */
         const val MAX_BATCH = 10
