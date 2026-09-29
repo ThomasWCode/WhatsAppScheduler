@@ -76,6 +76,19 @@ class ChatCheckerTest {
     }
 
     @Test
+    fun aDefiniteMissTakesAnEarlierTickAway() = runTest {
+        val crew = recipients.resolve(RecipientDraft(TargetKind.GROUP, "Work crew"))
+        recipients.markVerified(crew.id, at.toEpochMilli())
+        val draft = RecipientDraft(TargetKind.GROUP, "Work crew", recipientId = crew.id)
+        // WhatsApp failed: that says nothing about the chat, so the tick stays.
+        ChatChecker({ ChatCheck.Failed("timed out") }, Mutex(), recipients, clock).check(draft)
+        assertEquals(at.toEpochMilli(), recipients.get(crew.id)!!.verifiedAtMillis)
+        // Searched for and not there: it goes.
+        ChatChecker({ ChatCheck.NotFound("No chat named 'Work crew'") }, Mutex(), recipients, clock).check(draft)
+        assertNull(recipients.get(crew.id)!!.verifiedAtMillis)
+    }
+
+    @Test
     fun noCheckWhileASendHoldsTheLock() = runTest {
         val lock = Mutex().apply { lock() }
         var ran = false

@@ -152,7 +152,7 @@ interface RecipientDao {
     suspend fun delete(recipient: Recipient)
 
     @Query("UPDATE recipients SET verifiedAtMillis = :atMillis WHERE id = :id")
-    suspend fun markVerified(id: Long, atMillis: Long)
+    suspend fun markVerified(id: Long, atMillis: Long?)
 
     @Query("UPDATE recipients SET lastUsedAtMillis = :atMillis, useCount = useCount + 1 WHERE id = :id")
     suspend fun markUsed(id: Long, atMillis: Long)

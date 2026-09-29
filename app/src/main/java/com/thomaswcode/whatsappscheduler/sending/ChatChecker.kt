@@ -41,6 +41,11 @@ class ChatChecker(
         } finally {
             lock.unlock()
         }
+        if (result is ChatCheck.NotFound) {
+            // A definite miss: an earlier tick no longer holds (renamed, or left, since). A check that
+            // couldn't tell leaves it.
+            recipients.existing(chat)?.let { recipients.clearVerified(it.id) }
+        }
         if (result != ChatCheck.Found) return CheckOutcome(result, chat.recipientId)
         val id = recipients.resolve(chat).id
         recipients.markVerified(id, clock.millis())
