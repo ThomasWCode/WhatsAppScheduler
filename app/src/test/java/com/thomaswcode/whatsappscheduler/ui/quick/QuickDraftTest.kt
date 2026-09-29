@@ -62,6 +62,17 @@ class QuickDraftTest {
     }
 
     @Test
+    fun chatsOfferedACheckAreNamed() {
+        val club = RecipientDraft(TargetKind.GROUP, "Book club")
+        val work = RecipientDraft(TargetKind.GROUP, "Work crew")
+        val quiz = RecipientDraft(TargetKind.GROUP, "Quiz night")
+        val chess = RecipientDraft(TargetKind.GROUP, "Chess")
+        assertEquals("“Book club”", QuickScheduleViewModel.quoted(listOf(club)))
+        assertEquals("“Book club” and “Work crew”", QuickScheduleViewModel.quoted(listOf(club, work)))
+        assertEquals("“Book club”, “Work crew” and 2 more", QuickScheduleViewModel.quoted(listOf(club, work, quiz, chess)))
+    }
+
+    @Test
     fun aTypedNumberIsANumberNotAChatName() {
         assertTrue(QuickScheduleViewModel.looksLikeNumber("07400 123456"))
         assertTrue(QuickScheduleViewModel.looksLikeNumber("+44 (0)7400-123456"))
