@@ -209,15 +209,16 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
             events.trySend(ListEvent.Failed("It's being sent now, so it wasn't moved."))
             return
         }
-        val prompted = group.map { it.id }.filter(container.fallbackNotifier::isShowing).toSet()
+        val prompted = group.filter { it.rule == Recurrence.Once }.map { it.id }.filter(container.fallbackNotifier::isShowing).toSet()
         viewModelScope.launch {
             runCatching {
                 withContext(NonCancellable) {
                     // Each as the user saw it: one sent or changed since isn't moved.
                     group.mapNotNull { container.repository.postpone(it.id, at, seen = it) }.onEach { moved ->
                         container.alarmScheduler.sync(moved.after)
-                        // A prompt it had was about the old time.
-                        container.fallbackNotifier.cancel(moved.after.id)
+                        // A one-off's prompt was about the time it now leaves. A series' is about an earlier
+                        // occurrence that still needs the user, so it stays.
+                        if (moved.after.rule == Recurrence.Once) container.fallbackNotifier.cancel(moved.after.id)
                     }
                 }
             }
@@ -245,7 +246,7 @@ class ScheduleListViewModel(private val container: AppContainer) : ViewModel() {
                 withContext(NonCancellable) {
                     moved.mapNotNull { container.repository.restoreTiming(it) }.onEach { restored ->
                         container.alarmScheduler.sync(restored)
-                        if (restored.id in prompted) container.fallbackNotifier.notifyAttention(restored, dueAt.value[restored.id])
+                        if (restored.id in prompted && restored.attention != null) container.fallbackNotifier.notifyAttention(restored, dueAt.value[restored.id])
                     }
                 }
             }

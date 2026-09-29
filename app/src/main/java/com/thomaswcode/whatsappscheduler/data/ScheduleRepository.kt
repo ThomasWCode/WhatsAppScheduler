@@ -119,7 +119,8 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
             nextAtMillis = before.nextAtMillis,
             enabled = before.enabled,
             postponedFromMillis = before.postponedFromMillis,
-            attention = before.attention,
+            // Only a one-off's attention was cleared by the move; a series' is as the user has left it since.
+            attention = if (before.rule == Recurrence.Once) before.attention else current.attention,
         )
         schedules.update(restored)
         restored
@@ -238,8 +239,15 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
         // Logged even when the schedule was deleted during the send: history outlives the schedule.
         logs.insert(SendLog(scheduleId = current?.id, atMillis = ranAt.toEpochMilli(), status = status, targetName = sentTo, detail = detail, occurrenceAtMillis = occurrenceAtMillis))
         if (current == null) return@withTransaction null
-        val usedUp = current.nextAtMillis == occurrenceAtMillis
-        val next = if (usedUp) nextAfterRun(current, occurrenceAtMillis, ranAt, movedFromMillis = current.postponedFromMillis) else current.nextAtMillis
+        // Postponed while it was being sent (the move and the alarm can cross): it has gone now, so it
+        // counts as used up and the moved copy is dropped, or the message would go twice.
+        val usedUp = current.nextAtMillis == occurrenceAtMillis || current.postponedFromMillis == occurrenceAtMillis
+        val next = when {
+            !usedUp -> current.nextAtMillis
+            // Used up, a one-off is done, even one whose time a Postpone moved on meanwhile.
+            current.rule == Recurrence.Once -> null
+            else -> nextAfterRun(current, occurrenceAtMillis, ranAt, movedFromMillis = current.postponedFromMillis)
+        }
         // A one-off sent early is dated to when it went out. Its old, still-future time would otherwise
         // bring it back whenever the next occurrence is recomputed, e.g. on switching it back on.
         val firstAt = if (usedUp && current.rule == Recurrence.Once) minOf(current.firstAtMillis, ranAt.toEpochMilli()) else current.firstAtMillis
