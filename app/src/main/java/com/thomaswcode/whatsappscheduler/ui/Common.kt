@@ -16,6 +16,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import com.thomaswcode.whatsappscheduler.R
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -83,7 +84,8 @@ fun Activity.authenticateThen(title: String, onFailure: (String) -> Unit = {}, o
         mainExecutor,
         object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult?) = onSuccess()
-            override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) = onFailure(errString?.toString() ?: "error $errorCode")
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) =
+                onFailure(errString?.toString() ?: getString(R.string.auth_error_code, errorCode))
         },
     )
 }
