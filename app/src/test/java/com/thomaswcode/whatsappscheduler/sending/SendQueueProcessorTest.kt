@@ -318,7 +318,7 @@ class SendQueueProcessorTest {
     }
 
     @Test
-    fun withNoCountdownToShowAPhoneInUseForHalfAnHourHoldsIt() = runTest {
+    fun withNoCountdownToShowAPhoneInUseForHalfAnHourHoldsItQuietly() = runTest {
         store.put(oneOff())
         val sender = FakeSender()
         processor(sender, headsUp = FakeHeadsUp(canShow = false)).run { enqueue(scheduled()); drain() }
@@ -326,6 +326,31 @@ class SendQueueProcessorTest {
         assertEquals(30 * 60_000L, testScheduler.currentTime)
         assertEquals(Attention.HELD, store.row(1).attention)
         assertEquals(listOf("held Mum"), notifier.events)
+        // Its notification only: no picker opens over what the user is doing.
+        assertTrue(notifier.heldGroups.isEmpty())
+    }
+
+    @Test
+    fun aCallThatOutlastsHalfAnHourIsNeverInterrupted() = runTest {
+        store.put(oneOff())
+        val sender = FakeSender()
+        val countdown = FakeHeadsUp(calls = 1_000)
+        processor(sender, headsUp = countdown).run { enqueue(scheduled()); drain() }
+        assertEquals(30 * 60_000L, testScheduler.currentTime)
+        assertTrue(countdown.asked.isEmpty())
+        assertTrue(sender.jobs.isEmpty())
+        assertEquals(clock.instant().plus(Duration.ofMinutes(5)).toEpochMilli(), store.row(1).nextAtMillis)
+    }
+
+    @Test
+    fun aSnoozeWhoseAlarmCantBeSetIsHeldWhereItCanBeSeen() = runTest {
+        store.put(oneOff())
+        alarms.failing = true
+        processor(FakeSender(), headsUp = FakeHeadsUp(choice = HeadsUpChoice.SNOOZE)).run { enqueue(scheduled()); drain() }
+        assertEquals(Attention.HELD, store.row(1).attention)
+        assertNull(store.row(1).nextAtMillis)
+        assertEquals(listOf("held Mum"), notifier.events)
+        assertTrue(notifier.heldGroups.isEmpty())
     }
 
     @Test
@@ -582,7 +607,7 @@ class SendQueueProcessorTest {
             return current.copy(nextAtMillis = to.toEpochMilli(), postponedFromMillis = occurrenceAtMillis).also(::put)
         }
 
-        override suspend fun hold(id: Long, occurrenceAtMillis: Long, ranAt: Instant): HeldRun? {
+        override suspend fun hold(id: Long, occurrenceAtMillis: Long, ranAt: Instant, detail: String): HeldRun? {
             val current = rows[id]?.takeIf { it.nextAtMillis == occurrenceAtMillis } ?: return null
             val waiting = current.copy(nextAtMillis = null, attention = Attention.HELD).also(::put)
             return HeldRun(waiting, waiting)
@@ -621,10 +646,11 @@ class SendQueueProcessorTest {
         override fun pinPaused(reason: String) {
             events += "pinPaused"
         }
+        /** The schedules each Postpone picker opened for. */
         val heldGroups = mutableListOf<List<Long>>()
-        override fun held(schedules: List<Schedule>) {
+        override fun held(schedules: List<Schedule>, pick: Boolean) {
             schedules.forEach { events += "held ${it.targetName}" }
-            heldGroups += schedules.map { it.id }
+            if (pick) heldGroups += schedules.map { it.id }
         }
 
         val missedIds = mutableListOf<Long>()

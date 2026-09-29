@@ -141,9 +141,9 @@ class SendService : LifecycleService() {
         override fun uncertain(schedule: Schedule, occurrenceAtMillis: Long?, reason: String) = fallback.notifyUncertain(schedule, occurrenceAtMillis, reason)
         override fun pinPaused(reason: String) = fallback.notifyPinPaused(reason)
         override fun missed(schedule: Schedule, occurrenceAtMillis: Long) = fallback.notifyMissed(schedule, occurrenceAtMillis)
-        override fun held(schedules: List<Schedule>) {
+        override fun held(schedules: List<Schedule>, pick: Boolean) {
             schedules.forEach(fallback::notifyHeld)
-            choosePostpone(schedules)
+            if (pick) choosePostpone(schedules)
         }
     }
 
