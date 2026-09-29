@@ -115,6 +115,21 @@ class AttentionActionsTest {
     }
 
     @Test
+    fun aMoveWaitsForASendTakingTheRow() = runTest {
+        val m = missed()
+        val admission = Mutex()
+        val guarded = AttentionActions(schedules, alarms, { state }, { requested += it }, { cancelled += it }, clock, admission)
+        admission.lock()
+        val move = async { guarded.postpone(m, now.plus(Duration.ofHours(2))) }
+        runCurrent()
+        assertFalse(move.isCompleted)
+        state = SendState(currentId = m.id)
+        admission.unlock()
+        assertEquals("It's being sent now, so it wasn't moved.", move.await())
+        assertEquals(m, schedules.get(m.id))
+    }
+
+    @Test
     fun aSendThatCantStartKeepsTheNotification() = runTest {
         val m = missed()
         val blocked = AttentionActions(schedules, alarms, { state }, { error("not allowed from the background") }, { cancelled += it }, clock)
