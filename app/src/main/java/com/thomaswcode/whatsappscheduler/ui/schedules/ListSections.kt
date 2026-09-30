@@ -63,6 +63,17 @@ val Schedule.shownStatus: SendStatus?
     get() = lastStatus ?: ScheduleRepository.statusFromResult(lastResult)
 
 /**
+ * What to do about a failed row's failure, under its status line, where there is something to say
+ * ([PlainResult.nextStep]): from the same run as the line's reason ([statusLine]).
+ */
+fun nextStep(section: Section, group: List<Schedule>, runs: Map<Long, LatestRuns>): String? {
+    val schedule = group.first()
+    if (section != Section.ATTENTION || schedule.attention != Attention.FAILED) return null
+    val run = runs[schedule.id]?.behind(schedule.attention)
+    return if (run != null) PlainResult.nextStep(run.detail) else PlainResult.nextStepFromResult(schedule.lastResult)
+}
+
+/**
  * The line under a row's recipients: when it goes, when it went, or why it needs you. [runs] maps a
  * schedule to its latest scheduled runs, the one behind what it waits on saying when that was due: a missed message says when it was
  * due, while a failed one says when it was tried, which differs after Send now.

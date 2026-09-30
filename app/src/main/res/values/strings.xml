@@ -381,6 +381,9 @@
     <string name="notif_failed_reason">Auto-send failed (%1$s)</string>
     <string name="notif_failed_text">%1$s, so the message hasn\'t gone. Tap to open the chat with it ready.</string>
     <string name="notif_failed_text_for">%1$s, so the message for %2$s hasn\'t gone. Tap to open the chat with it ready.</string>
+    <!-- The same, with what to do about it (a whole sentence) before the tap. -->
+    <string name="notif_failed_text_next">%1$s, so the message hasn\'t gone. %2$s Tap to open the chat with it ready.</string>
+    <string name="notif_failed_text_for_next">%1$s, so the message for %2$s hasn\'t gone. %3$s Tap to open the chat with it ready.</string>
     <string name="notif_uncertain_title">May have been sent to %1$s: check the chat</string>
     <string name="notif_uncertain_text">Auto-send was interrupted after tapping Send. Check the chat before sending it again.</string>
     <string name="notif_uncertain_text_for">Auto-send for %1$s was interrupted after tapping Send. Check the chat before sending it again.</string>

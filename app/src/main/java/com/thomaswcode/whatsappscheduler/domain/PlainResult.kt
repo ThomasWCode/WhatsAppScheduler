@@ -28,9 +28,15 @@ object PlainResult {
                 else -> rest.takeIf { it.isNotBlank() }?.trimEnd('.')
             }
             "wake", "unlockKeyguard" -> "Couldn't unlock the phone"
+            "lockedChat" if LOCKED_CHATS in rest -> "Couldn't open Locked chats"
             "search", "lockedChat" -> "Couldn't find the chat$named"
             "deepLink" -> "WhatsApp didn't open the chat for its number"
-            "authPrompt" -> "Couldn't open the locked chat"
+            "authPrompt" -> when {
+                NO_SECRET_CODE in rest -> "Chat Lock asked for its secret code, which isn't stored"
+                NO_PIN in rest -> "Chat Lock asked for the phone's PIN, which isn't stored"
+                CODE_REFUSED in rest -> "WhatsApp didn't accept the stored secret code"
+                else -> "Couldn't open the locked chat"
+            }
             "typeAndSend" -> "Couldn't tap Send"
             "verify" -> "Couldn't confirm it was sent"
             "job" -> "Sending took too long"
@@ -38,9 +44,36 @@ object PlainResult {
         }
     }
 
+    /**
+     * What to do about a run's failure, in a sentence, where there is something the user can do: mostly
+     * about Chat Lock, which a chat can be behind without its details saying so. A chat that isn't in
+     * WhatsApp's search is looked for in Locked chats too, when the app has a way in (the sender); these
+     * say what is missing when it didn't. Null when there is nothing to suggest.
+     */
+    fun nextStep(detail: String?): String? {
+        val text = detail?.removePrefix(MANUAL)?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        if (text.endsWith(AFTER_TAP)) return null
+        val step = text.substringBefore(": ", missingDelimiterValue = "")
+        val rest = text.substringAfter(": ", missingDelimiterValue = "")
+        return when {
+            step == "search" && NOT_FOUND in rest && LOCKED_CHATS in rest -> "Check the name is exactly as WhatsApp shows it."
+            step == "search" && NOT_FOUND in rest -> "If the chat is behind Chat Lock, store the Chat Lock secret code in Settings, so the app can look in Locked chats."
+            step == "lockedChat" && CODE_NOT_SHOWING in rest -> "Check the Chat Lock secret code in Settings is the one set in WhatsApp."
+            step == "lockedChat" && FOLDER_HIDDEN in rest -> "If Locked chats is hidden, store the Chat Lock secret code in Settings."
+            step == "authPrompt" && NO_SECRET_CODE in rest -> "Store the Chat Lock secret code in Settings, then send it again."
+            step == "authPrompt" && NO_PIN in rest -> "Store the phone's PIN in Settings, then send it again."
+            step == "authPrompt" && CODE_REFUSED in rest -> "Check the Chat Lock secret code in Settings, then send it again."
+            else -> null
+        }
+    }
+
     /** [reason] from a schedule's last result text ("FAILED: search: …", "manual FAILED: …"). */
-    fun fromResult(result: String?, chat: String? = null): String? =
-        result?.removePrefix("manual ")?.substringAfter(": ", missingDelimiterValue = "")?.let { reason(it, chat) }
+    fun fromResult(result: String?, chat: String? = null): String? = detailOf(result)?.let { reason(it, chat) }
+
+    /** [nextStep] from a schedule's last result text, as [fromResult]. */
+    fun nextStepFromResult(result: String?): String? = detailOf(result)?.let(::nextStep)
+
+    private fun detailOf(result: String?): String? = result?.removePrefix("manual ")?.substringAfter(": ", missingDelimiterValue = "")
 
     /** How the history puts a run to [chat] in words, by its status. */
     fun headline(status: String, chat: String): String = when (status) {
@@ -54,4 +87,13 @@ object PlainResult {
     }
 
     private const val AFTER_TAP = "(after Send was tapped)"
+
+    // What the steps say (OpenChatBySearch, AccessibilitySender, OpenLockedChat, HandleAuthPrompt).
+    private const val NOT_FOUND = "No chat named"
+    private const val LOCKED_CHATS = "Locked chats"
+    private const val CODE_NOT_SHOWING = "didn't appear for the stored secret code"
+    private const val FOLDER_HIDDEN = "folder not visible"
+    private const val NO_SECRET_CODE = "secret code, but none is stored"
+    private const val NO_PIN = "needs the PIN but none is stored"
+    private const val CODE_REFUSED = "did not accept the stored secret code"
 }
