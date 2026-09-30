@@ -82,14 +82,14 @@ class AccessibilitySender(
                         // chat list to the front first closes it (seen on One UI 8 / WhatsApp 2.26).
                         if (target.isLocked) search.goHome(whatsapp, t)
                         deepLink.launch(target, job.message, whatsapp)
-                        if (target.isLocked) auth.run(pin, appearTimeoutMs = t, stepTimeoutMs = t, alreadyPast = deepLink::composerInFront)
+                        // Looked for with a chat not marked as locked too: WhatsApp asks the same way for one
+                        // that is, and never answering timed every attempt out. It ends as soon as the chat,
+                        // or WhatsApp's "not on WhatsApp", is in front.
+                        val prompted = auth.run(pin, appearTimeoutMs = t, stepTimeoutMs = t, alreadyPast = { deepLink.composerInFront() || deepLink.numberRejected() })
+                        if (prompted && !target.isLocked) foundLocked(job, "WhatsApp asked to unlock it")
                         deepLink.awaitComposer(t)
                     }
-                    else -> {
-                        search.goHome(whatsapp, t)
-                        search.search(target.name, t)
-                        search.openResult(target.name, t)
-                    }
+                    else -> openByName(job, driver, search, auth, whatsapp, pin, secretCode, t)
                 }
                 wake.releaseActivity()
                 TypeAndSend(driver, log, progress).run(job.message, job.dryRun, t)
@@ -122,6 +122,54 @@ class AccessibilitySender(
                 }
             }
         }
+    }
+
+    /**
+     * Opens [job]'s chat by name, through WhatsApp's search. That search leaves out chats behind Chat
+     * Lock, so a name it doesn't have is looked for in Locked chats before giving up, when there is a
+     * way in: the secret code that reveals the folder, or the folder showing without one. Found there,
+     * the chat is remembered as locked; missing from both, it fails once, without retries, since each
+     * would unlock the folder again to look for a chat that isn't there.
+     */
+    private suspend fun openByName(
+        job: SendJob,
+        driver: UiDriver,
+        search: OpenChatBySearch,
+        auth: HandleAuthPrompt,
+        whatsapp: String,
+        pin: String?,
+        secretCode: String?,
+        t: Long,
+    ) {
+        val name = job.target.name
+        search.goHome(whatsapp, t)
+        search.search(name, t)
+        val row = try {
+            search.findResult(name, t)
+        } catch (notInSearch: StepFailure) {
+            // Back to the chat list, which the folder is revealed or shown from.
+            search.goHome(whatsapp, t)
+            val folderShowing = secretCode.isNullOrEmpty() && driver.tryWaitFor(Selectors.waLockedChatsRow, LOCKED_CHATS_LOOK_MS) != null
+            if (secretCode.isNullOrEmpty() && !folderShowing) throw notInSearch
+            log.info("search: '$name' isn't in WhatsApp's search; looking in Locked chats")
+            // Its own failures stand: a secret code WhatsApp didn't take, or a PIN it didn't, say more than "not found".
+            OpenLockedChat(driver, log, search, auth).openFolder(pin, secretCode, t)
+            val inFolder = try {
+                search.findResult(name, t)
+            } catch (notInFolder: StepFailure) {
+                throw StepFailure(notInFolder.step, "No chat named '$name' in search results or in Locked chats", notInFolder.dump, retryable = false)
+            }
+            search.open(inFolder, name, t)
+            foundLocked(job, "it is in Locked chats")
+            return
+        }
+        search.open(row, name, t)
+    }
+
+    /** [job]'s chat is behind Chat Lock though it wasn't marked so ([SendJob.onFoundLocked]). */
+    private suspend fun foundLocked(job: SendJob, how: String) {
+        log.info("chatLock: '${job.target.name}' is behind Chat Lock ($how); remembering it")
+        job.onFoundLocked()
     }
 
     /**
@@ -268,6 +316,8 @@ class AccessibilitySender(
         const val MAX_BACKS = 6
         const val SYSTEM_UI = "com.android.systemui"
         const val FRONT_APP_WAIT_MS = 2_000L
+        /** How long the chat list is watched for the Locked chats folder, when no secret code hides it. */
+        const val LOCKED_CHATS_LOOK_MS = 1_500L
     }
 
     @Suppress("DEPRECATION")

@@ -17,6 +17,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
@@ -177,7 +178,11 @@ fun RecipientField(
     }
 }
 
-/** A recipient as a chip: tap, long-press for details, and × to remove when chosen. At least 48 dp tall to touch. */
+/**
+ * A recipient as a chip: tap, long-press for details, and × to remove when chosen. At least 48 dp tall
+ * to touch. A chosen one opens its details when tapped (Chat Lock, its name in WhatsApp, its number), and
+ * shows a pencil to say so, which nothing else on the sheet would.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun RecipientChip(
@@ -195,7 +200,14 @@ fun RecipientChip(
         color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = Modifier
             .heightIn(min = 48.dp)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick, onLongClickLabel = details, role = Role.Button),
+            .combinedClickable(
+                onClick = onClick,
+                // A chosen chip's tap is its details, which a screen reader then says, as it does for a long press.
+                onClickLabel = details.takeIf { onRemove != null },
+                onLongClick = onLongClick,
+                onLongClickLabel = details,
+                role = Role.Button,
+            ),
     ) {
         // With a remove button the chip is that button's height, 48 dp, rather than padded past it.
         val padding = if (onRemove != null) PaddingValues(start = 10.dp) else PaddingValues(horizontal = 10.dp, vertical = 8.dp)
@@ -204,6 +216,8 @@ fun RecipientChip(
             else if (kind == TargetKind.GROUP) Icon(Icons.Default.Group, contentDescription = stringResource(R.string.group), modifier = Modifier.size(16.dp).padding(end = 2.dp))
             Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (onRemove != null) {
+                // Part of the chip's own tap target, not a button of its own: the chip's label says what it does.
+                Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.padding(start = 6.dp).size(16.dp))
                 // The whole 48 dp square is the button, not only the 20 dp cross (improvements I11).
                 Box(
                     contentAlignment = Alignment.Center,

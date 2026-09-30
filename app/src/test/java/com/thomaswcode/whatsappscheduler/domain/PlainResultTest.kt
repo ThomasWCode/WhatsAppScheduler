@@ -48,6 +48,59 @@ class PlainResultTest {
     }
 
     @Test
+    fun chatLockFailuresSayWhatWasMissing() {
+        assertEquals("Couldn't open Locked chats", PlainResult.reason("lockedChat: 'Locked chats' folder not visible (hidden by a secret code that is not configured?)"))
+        assertEquals("Couldn't open Locked chats", PlainResult.reason("lockedChat: 'Locked chats' didn't appear for the stored secret code (is it the one set in WhatsApp?)"))
+        assertEquals("Couldn't open Locked chats", PlainResult.reason("lockedChat: Locked chats folder did not open after authentication"))
+        assertEquals("Chat Lock asked for its secret code, which isn't stored", PlainResult.reason("authPrompt: The locked chat asks for its Chat Lock secret code, but none is stored in Settings"))
+        assertEquals("Chat Lock asked for the phone's PIN, which isn't stored", PlainResult.reason("authPrompt: Locked chat needs the PIN but none is stored"))
+        assertEquals("WhatsApp didn't accept the stored secret code", PlainResult.reason("authPrompt: WhatsApp did not accept the stored secret code"))
+        assertEquals("Couldn't find the chat 'Book club'", PlainResult.reason("search: No chat named 'Book club' in search results or in Locked chats", "Book club"))
+    }
+
+    @Test
+    fun aChatNotFoundSaysWhatToDoAboutChatLock() {
+        // The app had no way into Locked chats: no secret code stored, and no folder showing.
+        assertEquals(
+            "If the chat is behind Chat Lock, store the Chat Lock secret code in Settings, so the app can look in Locked chats.",
+            PlainResult.nextStep("search: No chat named 'Book club' in search results (0 rows)"),
+        )
+        // It looked there too.
+        val nowhere = "search: No chat named 'Book club' in search results or in Locked chats"
+        assertEquals("Check the name is exactly as WhatsApp shows it.", PlainResult.nextStep(nowhere))
+        assertEquals("Check the name is exactly as WhatsApp shows it.", PlainResult.nextStepFromResult("FAILED: $nowhere"))
+        assertEquals(
+            "Check the Chat Lock secret code in Settings is the one set in WhatsApp.",
+            PlainResult.nextStep("lockedChat: 'Locked chats' didn't appear for the stored secret code (is it the one set in WhatsApp?)"),
+        )
+        assertEquals(
+            "If Locked chats is hidden, store the Chat Lock secret code in Settings.",
+            PlainResult.nextStep("lockedChat: 'Locked chats' folder not visible (hidden by a secret code that is not configured?)"),
+        )
+    }
+
+    @Test
+    fun aLockedChatThatCouldNotBeOpenedSaysWhatToStore() {
+        assertEquals(
+            "Store the Chat Lock secret code in Settings, then send it again.",
+            PlainResult.nextStep("(manual) authPrompt: The locked chat asks for its Chat Lock secret code, but none is stored in Settings"),
+        )
+        assertEquals("Store the phone's PIN in Settings, then send it again.", PlainResult.nextStep("authPrompt: Locked chat needs the PIN but none is stored"))
+        assertEquals("Check the Chat Lock secret code in Settings, then send it again.", PlainResult.nextStep("authPrompt: WhatsApp did not accept the stored secret code"))
+    }
+
+    @Test
+    fun otherFailuresSuggestNothing() {
+        assertNull(PlainResult.nextStep("search: Timed out after 8000ms waiting for wa.searchInput"))
+        assertNull(PlainResult.nextStep("deepLink: Timed out after 8000ms waiting for wa.entry, wa.invalidNumber"))
+        assertNull(PlainResult.nextStep("lockedChat: Locked chats folder did not open after authentication"))
+        assertNull(PlainResult.nextStep("typeAndSend: Send button not found"))
+        assertNull(PlainResult.nextStep("search: No chat named 'Book club' in search results (0 rows) (after Send was tapped)"))
+        assertNull(PlainResult.nextStep(null))
+        assertNull(PlainResult.nextStepFromResult("SENT"))
+    }
+
+    @Test
     fun headlinesSayWhatHappenedToWhom() {
         assertEquals("Sent to Mum", PlainResult.headline("SENT", "Mum"))
         assertEquals("Couldn't send to Mum", PlainResult.headline("FAILED", "Mum"))

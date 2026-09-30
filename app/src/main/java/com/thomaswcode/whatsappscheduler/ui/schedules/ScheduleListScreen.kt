@@ -233,6 +233,7 @@ fun ScheduleListScreen(
             group = group,
             outlined = group.any { it.id == outlined },
             line = busy?.let { stringResource(it) } ?: statusLine(section, group, now, latestRuns, texts, timeFormat),
+            nextStep = if (busy == null) nextStep(section, group, latestRuns) else null,
             busy = busy != null,
             needsYou = section == Section.ATTENTION,
             switchedOn = if (section == Section.REPEATING) first.enabled else null,
@@ -418,6 +419,8 @@ private fun ScheduleRow(
     group: List<Schedule>,
     outlined: Boolean,
     line: String,
+    /** What to do about a failure, under [line] (a failed row's). */
+    nextStep: String?,
     busy: Boolean,
     needsYou: Boolean,
     switchedOn: Boolean?,
@@ -477,6 +480,14 @@ private fun ScheduleRow(
                                 line,
                                 style = MaterialTheme.typography.labelMedium,
                                 color = if (needsYou) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        nextStep?.let {
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.padding(top = 2.dp, bottom = 2.dp),
                             )
                         }
                         Text(first.message, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)

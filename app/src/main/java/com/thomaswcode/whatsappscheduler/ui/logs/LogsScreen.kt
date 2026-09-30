@@ -133,14 +133,15 @@ private fun SendsTab(sends: List<SendLog>?, filter: LogFilter, onFilter: (LogFil
 }
 
 /**
- * One run: what happened and when, why in words where that is known (I2), and the technical detail
- * beneath. Tapping it shows its schedule in the list, while there is one.
+ * One run: what happened and when, why in words where that is known (I2), what to do about it where
+ * there is something, and the technical detail beneath. Tapping it shows its schedule in the list, while there is one.
  */
 @Composable
 private fun SendEntry(log: SendLog, onOpenSchedule: (Long) -> Unit) {
     val stamp = rememberStampFormat()
     val manual = log.detail?.startsWith(PlainResult.MANUAL) == true
     val why = PlainResult.reason(log.detail, log.targetName)
+    val next = PlainResult.nextStep(log.detail)
     val detail = log.detail?.removePrefix(PlainResult.MANUAL)?.takeIf { it.isNotBlank() }
     val scheduleId = log.scheduleId
     val showInList = stringResource(R.string.logs_show_in_list)
@@ -153,6 +154,7 @@ private fun SendEntry(log: SendLog, onOpenSchedule: (Long) -> Unit) {
         Text(PlainResult.headline(log.status.name, log.targetName), style = MaterialTheme.typography.titleSmall)
         Text(if (manual) stringResource(R.string.logs_by_hand, stamp(log.atMillis)) else stamp(log.atMillis), style = MaterialTheme.typography.labelSmall)
         why?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+        next?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary) }
         detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
