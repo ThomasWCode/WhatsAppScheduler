@@ -654,6 +654,36 @@ class SendQueueProcessorTest {
         assertTrue(notifier.events.isEmpty())
     }
 
+    // A chat behind Chat Lock that wasn't marked so, found by the sender
+
+    @Test
+    fun aChatFoundBehindChatLockIsMarkedLocked() = runTest {
+        store.put(oneOff())
+        val sender = FakeSender().apply { findsLockedOn = setOf(1) }
+        processor(sender).run { enqueue(scheduled()); drain() }
+        assertEquals(listOf(1L), store.markedLocked)
+        assertTrue(store.row(1).isLocked)
+        assertEquals(listOf("sent Mum"), notifier.events)
+    }
+
+    @Test
+    fun theRetryAfterFindingChatLockGoesTheLockedWay() = runTest {
+        store.put(oneOff())
+        val sender = FakeSender(failed("typeAndSend")).apply { findsLockedOn = setOf(1) }
+        processor(sender).run { enqueue(scheduled()); drain() }
+        assertEquals(listOf(false, true), sender.jobs.map { it.target.isLocked })
+    }
+
+    @Test
+    fun notBeingAbleToNoteChatLockDoesNotStopTheSend() = runTest {
+        store.put(oneOff())
+        store.failMarkLocked = true
+        val sender = FakeSender().apply { findsLockedOn = setOf(1) }
+        processor(sender).run { enqueue(scheduled()); drain() }
+        assertEquals(listOf(SendStatus.SENT), store.logged)
+        assertTrue(log.lines.any { it.startsWith("E Marking schedule 1's chat as locked failed") })
+    }
+
     private fun failed(step: String) = SendResult.Failed(step, "Timed out")
 
     private class FakeSender(vararg results: SendResult) : MessageSender {
@@ -661,9 +691,13 @@ class SendQueueProcessorTest {
         val jobs = mutableListOf<SendJob>()
         var onSend: (SendJob) -> Unit = {}
 
+        /** The attempts (1-based) in which WhatsApp shows the chat is behind Chat Lock. */
+        var findsLockedOn: Set<Int> = emptySet()
+
         override suspend fun send(job: SendJob): SendResult {
             jobs += job
             onSend(job)
+            if (job.attempt in findsLockedOn) job.onFoundLocked()
             return results.removeFirstOrNull() ?: SendResult.Sent
         }
     }
@@ -729,6 +763,15 @@ class SendQueueProcessorTest {
             val copy = stored.copy(id = 1_000 + id, recurrence = "ONCE", nextAtMillis = null, firstAtMillis = occurrenceAtMillis, sourceScheduleId = id)
             held += copy
             return HeldRun(stored, copy)
+        }
+
+        val markedLocked = mutableListOf<Long>()
+        var failMarkLocked = false
+
+        override suspend fun markLocked(id: Long) {
+            check(!failMarkLocked) { "disk full" }
+            markedLocked += id
+            rows[id]?.let { put(it.copy(isLocked = true)) }
         }
     }
 

@@ -45,6 +45,12 @@ interface SendStore {
      * pending one are left out.
      */
     suspend fun hold(ids: List<Long>, occurrenceAtMillis: Long, ranAt: Instant, detail: String): List<HeldRun>
+
+    /**
+     * Schedule [id]'s chat turned out to be behind Chat Lock: it is marked locked, and so are its
+     * recipient and that recipient's other messages still to go, as Behind Chat Lock in its details does.
+     */
+    suspend fun markLocked(id: Long)
 }
 
 /**

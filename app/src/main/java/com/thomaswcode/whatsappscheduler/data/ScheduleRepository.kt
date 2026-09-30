@@ -384,6 +384,19 @@ class ScheduleRepository(private val db: AppDatabase) : SendStore {
     }
 
     /**
+     * The schedule itself, whatever its state (it may be mid-send), and through its recipient the
+     * messages [ScheduleDao.setPendingLocked] covers. Sent ones keep what they were sent with. Its
+     * alarms need nothing: the target is read from the row when a send begins.
+     */
+    override suspend fun markLocked(id: Long) = db.withTransaction {
+        val schedule = schedules.getById(id) ?: return@withTransaction
+        schedules.setLocked(id)
+        val recipientId = schedule.recipientId ?: return@withTransaction
+        recipients.setLocked(recipientId)
+        schedules.setPendingLocked(recipientId)
+    }
+
+    /**
      * Moves series [current] past [occurrenceAtMillis], as after any run, but its own last run and
      * whatever it already waits on (an earlier failure, say) stay as they were. That occurrence's
      * message waits on the user as a one-off copy of its own ([attention]), with its own history, so

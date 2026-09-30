@@ -29,6 +29,9 @@ class OpenChatByDeepLink(private val context: Context, private val driver: UiDri
     fun composerInFront(): Boolean =
         driver.find(Selectors.waEntry) != null && driver.foregroundPackage()?.startsWith(Selectors.WHATSAPP) == true
 
+    /** WhatsApp has said the number isn't on WhatsApp: no chat, and so no Chat Lock prompt, is coming. */
+    fun numberRejected(): Boolean = driver.find(Selectors.waInvalidNumberDialog) != null
+
     suspend fun awaitComposer(timeoutMs: Long) {
         val (which, node) = driver.waitForAny(step, Selectors.waEntry, Selectors.waInvalidNumberDialog, timeoutMs = timeoutMs)
         if (which === Selectors.waInvalidNumberDialog) {

@@ -110,6 +110,16 @@ interface ScheduleDao {
             "WHERE recipientId = :recipientId AND (nextAtMillis IS NOT NULL OR attention IN ('FAILED', 'MISSED', 'HELD'))"
     )
     suspend fun updatePendingTarget(recipientId: Long, kind: TargetKind, chatName: String, phoneE164: String?, isLocked: Boolean)
+
+    @Query("UPDATE schedules SET isLocked = 1 WHERE id = :id")
+    suspend fun setLocked(id: Long)
+
+    /** Chat Lock alone, for the schedules [updatePendingTarget] would change: a chat found to be locked. */
+    @Query(
+        "UPDATE schedules SET isLocked = 1 " +
+            "WHERE recipientId = :recipientId AND (nextAtMillis IS NOT NULL OR attention IN ('FAILED', 'MISSED', 'HELD'))"
+    )
+    suspend fun setPendingLocked(recipientId: Long)
 }
 
 @Dao
@@ -155,6 +165,9 @@ interface RecipientDao {
 
     @Query("UPDATE recipients SET lastUsedAtMillis = :atMillis, useCount = useCount + 1 WHERE id = :id")
     suspend fun markUsed(id: Long, atMillis: Long)
+
+    @Query("UPDATE recipients SET isLocked = 1 WHERE id = :id")
+    suspend fun setLocked(id: Long)
 }
 
 @Dao
