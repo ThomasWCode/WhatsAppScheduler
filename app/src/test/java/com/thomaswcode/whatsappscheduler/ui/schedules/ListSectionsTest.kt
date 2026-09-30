@@ -13,6 +13,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -162,6 +163,30 @@ class ListSectionsTest {
         assertEquals("Sent Yesterday 09:00", line(Section.SENT, sent.copy(lastStatus = null, lastResult = "SENT: verified")))
         assertEquals("Sent Yesterday 09:00 (dry run)", line(Section.SENT, sent.copy(lastStatus = null, lastResult = "manual DRY_RUN: composer filled")))
         assertEquals("Not sent · was due Yesterday 09:00", line(Section.SENT, schedule(9, next = null)))
+    }
+
+    @Test
+    fun aFailedRowSaysWhatToDoWhereThereIsSomething() {
+        fun failedWith(detail: String) = LatestRuns(mapOf(SendStatus.FAILED to OccurrenceRun(ms("2026-09-28T09:00"), ms("2026-09-28T08:40"), detail)))
+        val failed = schedule(6, next = null).copy(lastRunAtMillis = ms("2026-09-28T08:40"), attention = Attention.FAILED)
+        val notLookedInLockedChats = mapOf(6L to failedWith("search: No chat named 'Mum' in search results (0 rows)"))
+        assertEquals(
+            "If the chat is behind Chat Lock, store the Chat Lock secret code in Settings, so the app can look in Locked chats.",
+            nextStep(Section.ATTENTION, listOf(failed), notLookedInLockedChats),
+        )
+        // From the same run as the line's reason: a later try by hand doesn't change it.
+        val triedByHand = failed.copy(lastResult = "manual DRY_RUN: composer filled, send not tapped")
+        assertEquals(
+            "If the chat is behind Chat Lock, store the Chat Lock secret code in Settings, so the app can look in Locked chats.",
+            nextStep(Section.ATTENTION, listOf(triedByHand), notLookedInLockedChats),
+        )
+        // A row from before runs were logged by occurrence has only its last result.
+        val legacy = failed.copy(lastResult = "FAILED: search: No chat named 'Mum' in search results or in Locked chats")
+        assertEquals("Check the name is exactly as WhatsApp shows it.", nextStep(Section.ATTENTION, listOf(legacy), emptyMap()))
+
+        assertNull("nothing to suggest", nextStep(Section.ATTENTION, listOf(failed), mapOf(6L to failedWith("typeAndSend: Send button not found"))))
+        assertNull("not a failure", nextStep(Section.ATTENTION, listOf(failed.copy(attention = Attention.MISSED)), notLookedInLockedChats))
+        assertNull("not waiting on the user", nextStep(Section.SENT, listOf(failed.copy(attention = null)), notLookedInLockedChats))
     }
 
     @Test

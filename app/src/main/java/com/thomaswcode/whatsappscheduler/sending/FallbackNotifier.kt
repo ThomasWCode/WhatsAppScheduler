@@ -198,11 +198,19 @@ class FallbackNotifier(private val context: Context, private val notifications: 
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 
-    /** Why it failed, in words where the step is known (improvements I2); the technical text is in Logs. */
+    /**
+     * Why it failed, in words where the step is known (improvements I2), and what to do about it where
+     * there is something (a Chat Lock secret code to store, say); the technical text is in Logs.
+     */
     private fun failedText(reason: String, occurrenceAtMillis: Long?): String {
         val why = PlainResult.reason(reason) ?: context.getString(R.string.notif_failed_reason, reason)
-        return occurrenceAtMillis?.let { context.getString(R.string.notif_failed_text_for, why, stamp(it)) }
-            ?: context.getString(R.string.notif_failed_text, why)
+        val next = PlainResult.nextStep(reason)
+        return when {
+            occurrenceAtMillis != null && next != null -> context.getString(R.string.notif_failed_text_for_next, why, stamp(occurrenceAtMillis), next)
+            occurrenceAtMillis != null -> context.getString(R.string.notif_failed_text_for, why, stamp(occurrenceAtMillis))
+            next != null -> context.getString(R.string.notif_failed_text_next, why, next)
+            else -> context.getString(R.string.notif_failed_text, why)
+        }
     }
 
     /** In the phone's zone, and its 12/24-hour choice (improvements I1). */
