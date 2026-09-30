@@ -398,9 +398,24 @@ private fun TimeSettingRow(title: String, subtitle: String, value: LocalTime, on
     }
 }
 
+/** What leaving the own-number field changes: the number saved as the user's, or none when it was cleared. */
+internal data class OwnNumberChange(val e164: String?)
+
+/**
+ * The change leaving the own-number field makes, or null when it makes none: the text isn't a number,
+ * or it is the number stored already. Saving an unchanged field erased the number: the field counts as
+ * left as it first appears, before the stored number has loaded, when it still reads empty.
+ */
+internal fun ownNumberChange(text: String, countryIso: String, stored: String?): OwnNumberChange? {
+    if (text.isBlank()) return OwnNumberChange(null).takeIf { stored != null }
+    val e164 = PhoneNormaliser.parse(text, countryIso).e164OrNull ?: return null
+    return OwnNumberChange(e164).takeIf { e164 != stored }
+}
+
 /**
  * The user's own number, for the quick sheet's Me chip. The text is kept while typing and saved on
- * Done or on leaving the field, with an error for a number that doesn't parse (the B13 pattern).
+ * Done or on leaving the field, with an error for a number that doesn't parse (the B13 pattern). It
+ * shows the stored number, formatted, once that has loaded.
  */
 @Composable
 private fun OwnNumberRow(value: String?, countryIso: String, onSave: (String?) -> Unit) {
@@ -408,7 +423,7 @@ private fun OwnNumberRow(value: String?, countryIso: String, onSave: (String?) -
     val parsed = text.takeIf { it.isNotBlank() }?.let { PhoneNormaliser.parse(it, countryIso) }
     val valid = text.isBlank() || parsed?.e164OrNull != null
     fun commit() {
-        if (valid) onSave(parsed?.e164OrNull)
+        ownNumberChange(text, countryIso, value)?.let { onSave(it.e164) }
     }
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
         Text(stringResource(R.string.settings_own_number))
