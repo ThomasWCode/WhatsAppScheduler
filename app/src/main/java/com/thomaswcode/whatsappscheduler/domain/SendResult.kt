@@ -29,4 +29,9 @@ data class SendJob(
     val message: String,
     val dryRun: Boolean,
     val attempt: Int,
+    /**
+     * Called when the chat turns out to be behind Chat Lock though [target] didn't say so: WhatsApp
+     * asked to unlock it, or it was in Locked chats. The queue remembers that, for the chat's later sends.
+     */
+    val onFoundLocked: suspend () -> Unit = {},
 )

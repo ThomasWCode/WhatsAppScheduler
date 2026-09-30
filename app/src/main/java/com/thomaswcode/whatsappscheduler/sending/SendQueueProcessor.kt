@@ -146,7 +146,8 @@ class SendQueueProcessor(
                 if (attempt == 1) texts.get(R.string.notif_progress_sending, schedule.targetName)
                 else texts.get(R.string.notif_progress_attempt, schedule.targetName, attempt, attempts),
             )
-            result = sender.send(SendJob(schedule.id, schedule.target, schedule.message, dryRun, attempt))
+            val sending = schedule
+            result = sender.send(SendJob(sending.id, sending.target, sending.message, dryRun, attempt, onFoundLocked = { markLocked(sending) }))
             val failed = result as? SendResult.Failed ?: break
             log.warn("Attempt $attempt failed at ${failed.step}: ${failed.reason}")
             if (!failed.retryable || attempt == attempts) break
@@ -335,6 +336,22 @@ class SendQueueProcessor(
     /** Arms [schedule]'s alarm, and says whether that worked; one that fails is logged, not allowed to stop the rest. */
     private fun arm(schedule: Schedule): Boolean =
         runCatching { alarms.sync(schedule) }.onFailure { log.error("Arming schedule ${schedule.id} failed", it) }.isSuccess
+
+    /**
+     * [schedule]'s chat turned out to be behind Chat Lock, which its details didn't say: it is marked so,
+     * and a retry reads that back, as the chat's later sends do, which then go the locked way from the
+     * start and show its padlock. Not being able to note it doesn't stop the send.
+     */
+    private suspend fun markLocked(schedule: Schedule) {
+        log.info("Schedule ${schedule.id}: '${schedule.targetName}' is behind Chat Lock; marking it locked")
+        try {
+            store.markLocked(schedule.id)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log.error("Marking schedule ${schedule.id}'s chat as locked failed", e)
+        }
+    }
 
     /** Re-reads the schedule after a retry delay: it may have been deleted, switched off or edited meanwhile. */
     private suspend fun stillWanted(request: SendRequest, occurrence: Long?): Schedule? {

@@ -18,12 +18,26 @@ class OpenLockedChat(
     private val step = "lockedChat"
 
     suspend fun run(name: String, pin: String?, secretCode: String?, stepTimeoutMs: Long) {
+        openFolder(pin, secretCode, stepTimeoutMs)
+        log.info("$step: folder open, selecting chat")
+        search.openResult(name, stepTimeoutMs)
+    }
+
+    /**
+     * Reveals Locked chats, from WhatsApp's chat list, and opens it: the folder's chats are then on
+     * screen to pick from by name ([OpenChatBySearch.findResult]).
+     */
+    suspend fun openFolder(pin: String?, secretCode: String?, stepTimeoutMs: Long) {
         if (!secretCode.isNullOrEmpty()) {
             log.info("$step: revealing locked chats with secret code")
             search.search(secretCode, stepTimeoutMs, secret = true)
         }
         val folder = driver.tryWaitFor(Selectors.waLockedChatsRow, stepTimeoutMs)
-            ?: driver.fail(step, "'Locked chats' folder not visible (hidden by a secret code that is not configured?)")
+            ?: driver.fail(
+                step,
+                if (secretCode.isNullOrEmpty()) "'Locked chats' folder not visible (hidden by a secret code that is not configured?)"
+                else "'Locked chats' didn't appear for the stored secret code (is it the one set in WhatsApp?)",
+            )
         driver.click(step, folder)
         // WhatsApp authenticates before it shows the folder, so once the folder is up there is no prompt to wait for.
         val prompted = auth.run(pin, appearTimeoutMs = 4_000, stepTimeoutMs = stepTimeoutMs, alreadyPast = ::folderOpen)
@@ -32,8 +46,6 @@ class OpenLockedChat(
         if (driver.find(Selectors.waLockedChatsRow) != null && driver.find(Selectors.waSearchInput) != null) {
             driver.fail(step, "Locked chats folder did not open after authentication")
         }
-        log.info("$step: folder open, selecting chat")
-        search.openResult(name, stepTimeoutMs)
     }
 
     /**

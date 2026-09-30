@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -284,5 +285,34 @@ class RecipientsAndBatchesTest {
         val recipient = recipients.get(linked.recipientId!!)!!
         assertTrue("Chat Lock carries over", recipient.isLocked)
         assertEquals(1, recipients.observeRecent().first().size)
+    }
+
+    @Test
+    fun aChatFoundBehindChatLockIsMarkedWithTheRecipientsMessagesStillToGo() = runTest {
+        val (m, d) = listOf(mum, dad).map { recipients.resolve(it) }
+        val lunch = schedules.saveBatch(template("Lunch on Sunday?"), listOf(m), now = now).saved.single()
+        val dinner = schedules.saveBatch(template("Dinner on Friday?"), listOf(m), now = now).saved.single()
+        val tea = schedules.saveBatch(template("Tea?"), listOf(m), now = now).saved.single()
+        schedules.recordRun(tea.id, tea.nextAtMillis!!, SendStatus.SENT, null, "Mum", tomorrowNine.plusSeconds(20))
+        val toDad = schedules.saveBatch(template("Lunch on Sunday?"), listOf(d), now = now).saved.single()
+
+        schedules.markLocked(lunch.id)
+
+        assertTrue(recipients.get(m.id)!!.isLocked)
+        assertTrue(schedules.get(lunch.id)!!.isLocked)
+        assertTrue("the same chat's message still to go", schedules.get(dinner.id)!!.isLocked)
+        assertFalse("a sent one keeps what it was sent with", schedules.get(tea.id)!!.isLocked)
+        assertFalse("another chat", schedules.get(toDad.id)!!.isLocked)
+        assertFalse(recipients.get(d.id)!!.isLocked)
+    }
+
+    @Test
+    fun aMessageWithoutARecipientIsMarkedAlone() = runTest {
+        // Its chat was removed from recents, so the message keeps its own copy of the details.
+        val lone = schedules.save(template().copy(targetKind = TargetKind.GROUP, targetName = "Book club"), now)
+        assertNull(lone.recipientId)
+        schedules.markLocked(lone.id)
+        assertTrue(schedules.get(lone.id)!!.isLocked)
+        schedules.markLocked(999)
     }
 }
